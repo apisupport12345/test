@@ -121,22 +121,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
-        /* ============================================================
-         * THEME VARIABLES
-         * ============================================================ */
         :root {
-            /* DARK (default) */
             --bg-0: #0f1115;
             --bg-1: #14171d;
             --bg-2: #1a1e26;
             --bg-3: #0a0c10;
             --bg-hover: #1a1e26;
             --bg-hover-2: #242932;
-
             --border-1: #242932;
             --border-2: #2a3038;
             --border-3: #2f3742;
-
             --text-0: #ffffff;
             --text-1: #e2e4e9;
             --text-2: #c7cad1;
@@ -144,27 +138,23 @@
             --text-4: #8b909a;
             --text-5: #6b7280;
             --text-6: #4b5563;
-
             --accent: #3b82f6;
             --accent-hover: #60a5fa;
             --accent-dim: rgba(59,130,246,0.12);
-
             --green: #16a34a;
             --green-light: #4ade80;
             --green-dim: rgba(74,222,128,0.12);
-
             --amber: #fbbf24;
             --red: #ef4444;
             --red-light: #f87171;
             --red-dim: rgba(248,113,113,0.12);
             --purple: #8b5cf6;
-
+            --purple-light: #a78bfa;
             --table-th-bg: #14171d;
             --table-th-color: #93c5fd;
             --table-td-border: #14171d;
             --table-row-even: #0d1014;
             --table-row-hover: #1a2332;
-
             --shadow-lg: 0 16px 44px rgba(0,0,0,0.75);
             --shadow-md: 0 6px 18px rgba(0,0,0,0.4);
         }
@@ -176,11 +166,9 @@
             --bg-3: #fafbfd;
             --bg-hover: #e8eef8;
             --bg-hover-2: #dce6f5;
-
             --border-1: #d5dbe6;
             --border-2: #c8d0dd;
             --border-3: #b8c2d4;
-
             --text-0: #0a0c10;
             --text-1: #1a1e26;
             --text-2: #2d333d;
@@ -188,27 +176,23 @@
             --text-4: #6b7280;
             --text-5: #8891a3;
             --text-6: #a8b0c0;
-
             --accent: #2563eb;
             --accent-hover: #1d4ed8;
             --accent-dim: rgba(37,99,235,0.1);
-
             --green: #16a34a;
             --green-light: #15803d;
             --green-dim: rgba(22,163,74,0.12);
-
             --amber: #d97706;
             --red: #dc2626;
             --red-light: #b91c1c;
             --red-dim: rgba(220,38,38,0.1);
             --purple: #7c3aed;
-
+            --purple-light: #8b5cf6;
             --table-th-bg: #eff3f9;
             --table-th-color: #1e40af;
             --table-td-border: #e5eaf1;
             --table-row-even: #f8fafd;
             --table-row-hover: #e8eef8;
-
             --shadow-lg: 0 16px 44px rgba(0,0,0,0.15);
             --shadow-md: 0 6px 18px rgba(0,0,0,0.08);
         }
@@ -241,12 +225,12 @@
             padding: 0 24px;
             gap: 12px;
             box-shadow: var(--shadow-md);
+            z-index: 40;
         }
         .brand {
             display: flex; align-items: center; gap: 12px;
             font-weight: 800; font-size: 17px;
             color: var(--text-0);
-            letter-spacing: -0.2px;
         }
         .brand-mark {
             width: 30px; height: 30px;
@@ -274,7 +258,6 @@
             font-size: 12.5px;
             font-weight: 700;
             color: var(--green-light);
-            letter-spacing: 0.5px;
         }
         .conn-dot {
             width: 8px; height: 8px; border-radius: 50%;
@@ -284,7 +267,6 @@
         }
         @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.35;} }
 
-        /* Theme toggle */
         .theme-toggle {
             width: 52px; height: 28px;
             border-radius: 14px;
@@ -293,22 +275,18 @@
             position: relative;
             cursor: pointer;
             transition: 0.25s;
-            display: flex; align-items: center;
-            padding: 0 4px;
-            font-size: 13px;
-            user-select: none;
         }
         .theme-toggle:hover { border-color: var(--accent); }
         .theme-toggle .tt-icon {
             position: absolute;
+            top: 50%; transform: translateY(-50%);
             transition: 0.25s;
             font-size: 13px;
         }
         .theme-toggle .tt-sun { left: 6px; opacity: 0; }
         .theme-toggle .tt-moon { right: 6px; opacity: 1; }
-        [data-theme="light"] .theme-toggle .tt-sun { opacity: 1; left: 6px; }
+        [data-theme="light"] .theme-toggle .tt-sun { opacity: 1; }
         [data-theme="light"] .theme-toggle .tt-moon { opacity: 0; }
-
         .theme-toggle .tt-knob {
             position: absolute;
             top: 3px; left: 3px;
@@ -369,7 +347,6 @@
             border-right: 1px solid var(--border-1);
             display: flex; flex-direction: column;
             overflow: hidden;
-            transition: background 0.25s;
         }
         .sidebar-head {
             padding: 16px 20px 12px;
@@ -404,7 +381,6 @@
         }
         .search-input:focus {
             border-color: var(--accent);
-            background: var(--bg-2);
             box-shadow: 0 0 0 3px var(--accent-dim);
         }
 
@@ -459,6 +435,7 @@
             display: flex; flex-direction: column;
             overflow: hidden;
             background: var(--bg-0);
+            min-width: 0;
         }
 
         .tabbar {
@@ -467,6 +444,7 @@
             border-bottom: 1px solid var(--border-1);
             overflow-x: auto;
             min-height: 44px;
+            flex-shrink: 0;
         }
         .tabbar::-webkit-scrollbar { height: 4px; }
         .tabbar::-webkit-scrollbar-thumb { background: var(--border-2); }
@@ -481,7 +459,7 @@
             color: var(--text-5);
             white-space: nowrap;
             min-width: 160px;
-            max-width: 260px;
+            max-width: 280px;
             position: relative;
             user-select: none;
             transition: 0.14s;
@@ -499,6 +477,7 @@
             height: 2px;
             background: var(--accent);
         }
+        .tab.pinned-tab.active::before { background: var(--purple); }
         .tab-dot {
             width: 9px; height: 9px;
             border-radius: 50%;
@@ -507,6 +486,7 @@
         .tab-dot.db-IIB    { background: #4ade80; }
         .tab-dot.db-SI     { background: #fbbf24; }
         .tab-dot.db-REPORT { background: #c084fc; }
+        .tab-dot.pinned-dot { background: var(--purple); }
 
         .tab.running .tab-dot {
             animation: tabpulse 1s infinite;
@@ -525,6 +505,17 @@
             padding: 2px 7px;
             border-radius: 8px;
             border: 1px solid rgba(59,130,246,0.3);
+            margin-left: auto;
+        }
+        .tab-pinned-badge {
+            font-size: 9.5px;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+            color: var(--purple-light);
+            background: rgba(139,92,246,0.15);
+            padding: 2px 7px;
+            border-radius: 8px;
+            border: 1px solid rgba(139,92,246,0.3);
             margin-left: auto;
         }
 
@@ -554,12 +545,14 @@
             display: flex; flex-direction: column;
             overflow: hidden;
             position: relative;
+            min-height: 0;
         }
         .pane {
             display: none;
             flex: 1;
             flex-direction: column;
             overflow: hidden;
+            min-height: 0;
         }
         .pane.active { display: flex; }
 
@@ -572,6 +565,7 @@
             align-items: center;
             gap: 10px;
             flex-wrap: wrap;
+            flex-shrink: 0;
         }
         .toolbar select {
             padding: 9px 14px;
@@ -597,13 +591,12 @@
             transition: 0.15s;
             border: 1px solid transparent;
             font-family: inherit;
-            letter-spacing: 0.2px;
         }
         .tb:hover { transform: translateY(-1px); }
         .tb:active { transform: translateY(0); }
 
         .tb-run { background: var(--green); color: #fff; box-shadow: 0 3px 10px rgba(22,163,74,0.25); }
-        .tb-run:hover { background: #15803d; box-shadow: 0 5px 14px rgba(22,163,74,0.4); }
+        .tb-run:hover { background: #15803d; }
 
         .tb-suggest {
             background: var(--bg-2); color: var(--accent-hover); border-color: var(--border-2);
@@ -614,6 +607,12 @@
             background: var(--bg-2); color: var(--purple); border-color: var(--border-2);
         }
         .tb-format:hover { background: rgba(139,92,246,0.15); border-color: var(--purple); }
+
+        .tb-pin {
+            background: var(--bg-2); color: var(--purple-light); border-color: var(--border-2);
+        }
+        .tb-pin:hover:not(:disabled) { background: rgba(139,92,246,0.15); border-color: var(--purple); }
+        .tb-pin:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
 
         .tb-export {
             background: var(--bg-2); color: var(--green-light); border-color: var(--border-2);
@@ -647,7 +646,7 @@
         .chip.err { background: var(--red-dim); color: var(--red-light); }
 
         /* ========== EDITOR ========== */
-        .editor-wrap { padding: 14px 18px; background: var(--bg-0); }
+        .editor-wrap { padding: 14px 18px; background: var(--bg-0); flex-shrink: 0; }
         .editor-box {
             border: 1px solid var(--border-1);
             border-radius: 10px;
@@ -661,8 +660,8 @@
         }
         textarea.sql {
             width: 100%;
-            min-height: 240px;
-            max-height: 480px;
+            min-height: 180px;
+            max-height: 380px;
             padding: 16px 20px;
             background: var(--bg-3);
             color: var(--text-1);
@@ -678,7 +677,7 @@
         }
         textarea.sql::placeholder { color: var(--text-6); }
 
-        /* ========== RESULTS ========== */
+        /* ========== RESULTS (PERF-OPTIMIZED) ========== */
         .results {
             flex: 1;
             display: flex; flex-direction: column;
@@ -686,6 +685,7 @@
             border-top: 1px solid var(--border-1);
             background: var(--bg-3);
             min-height: 0;
+            contain: layout style;
         }
         .res-bar {
             padding: 10px 18px;
@@ -696,6 +696,7 @@
             gap: 20px;
             font-size: 13px;
             flex-wrap: wrap;
+            flex-shrink: 0;
         }
         .res-bar .label {
             font-size: 11px;
@@ -712,22 +713,6 @@
         .res-time.slow { color: var(--red-light); }
         .res-bar-spacer { flex: 1; }
 
-        .pin-btn {
-            padding: 6px 12px;
-            background: var(--bg-2);
-            border: 1px solid var(--border-2);
-            border-radius: 6px;
-            color: var(--text-3);
-            font-size: 12px;
-            font-weight: 700;
-            cursor: pointer;
-            display: inline-flex; align-items: center; gap: 6px;
-            transition: 0.15s;
-            font-family: inherit;
-        }
-        .pin-btn:hover { background: var(--bg-hover-2); color: var(--purple); border-color: var(--purple); }
-        .pin-btn.pinned { background: rgba(139,92,246,0.15); color: var(--purple); border-color: var(--purple); }
-
         .res-search-wrap { position: relative; display: flex; align-items: center; }
         .res-search-icon {
             position: absolute; left: 10px;
@@ -741,14 +726,14 @@
             border-radius: 8px;
             color: var(--text-1);
             font-size: 13px;
-            width: 240px;
+            width: 220px;
             outline: none;
             font-family: inherit;
             transition: 0.15s;
         }
         .res-search:focus {
             border-color: var(--accent);
-            width: 300px;
+            width: 280px;
             box-shadow: 0 0 0 3px var(--accent-dim);
         }
 
@@ -756,6 +741,8 @@
             flex: 1;
             overflow: auto;
             position: relative;
+            contain: layout style paint;
+            will-change: scroll-position;
         }
         .res-body::-webkit-scrollbar { width: 12px; height: 12px; }
         .res-body::-webkit-scrollbar-track { background: var(--bg-3); }
@@ -764,13 +751,13 @@
             border-radius: 6px;
             border: 3px solid var(--bg-3);
         }
-        .res-body::-webkit-scrollbar-thumb:hover { background: var(--border-3); }
 
         table.data {
             width: 100%;
             border-collapse: collapse;
             font-size: 13px;
             font-family: 'JetBrains Mono', 'Consolas', monospace;
+            table-layout: fixed;
         }
         table.data th {
             background: var(--table-th-bg);
@@ -785,10 +772,10 @@
             white-space: nowrap;
             border-bottom: 2px solid var(--border-1);
             border-right: 1px solid var(--border-1);
-            letter-spacing: 0.4px;
             cursor: pointer;
             user-select: none;
-            transition: background 0.12s;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         table.data th:hover { background: var(--bg-hover-2); }
         table.data th .sort-icon {
@@ -805,7 +792,6 @@
             border-bottom: 1px solid var(--table-td-border);
             border-right: 1px solid var(--table-td-border);
             color: var(--text-2);
-            max-width: 450px;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
@@ -815,7 +801,7 @@
         table.data td.row-no {
             color: var(--text-5);
             background: var(--bg-3) !important;
-            width: 65px;
+            width: 60px;
             text-align: right;
             font-size: 12px;
         }
@@ -842,7 +828,7 @@
             font-size: 12.5px;
         }
 
-        /* ========== BIG LOADER ========== */
+        /* ========== LOADER ========== */
         .loader-overlay {
             display: flex; flex-direction: column;
             align-items: center; justify-content: center;
@@ -863,7 +849,6 @@
             font-size: 15px;
             font-weight: 600;
             color: var(--text-2);
-            letter-spacing: 0.3px;
         }
         .loader-sub { font-size: 12.5px; color: var(--text-5); margin-top: -12px; }
 
@@ -880,27 +865,17 @@
         .placeholder .ph-title { font-size: 17px; color: var(--text-5); font-weight: 600; }
         .placeholder .ph-sub { font-size: 13.5px; color: var(--text-6); }
 
-        /* ========== PINNED PANEL ========== */
-        .pinned-panel {
-            background: var(--bg-1);
-            border-top: 2px solid var(--purple);
-            display: none;
-            flex-direction: column;
-            max-height: 45vh;
-            min-height: 200px;
-            overflow: hidden;
-        }
-        .pinned-panel.visible { display: flex; }
-        .pinned-head {
+        /* ========== PINNED TAB PANEL ========== */
+        .pinned-banner {
             padding: 10px 18px;
             background: linear-gradient(90deg, rgba(139,92,246,0.15), transparent);
             border-bottom: 1px solid var(--border-1);
             display: flex;
             align-items: center;
             gap: 14px;
-            flex-wrap: wrap;
+            flex-shrink: 0;
         }
-        .pinned-title {
+        .pinned-banner .pb-title {
             font-size: 13.5px;
             font-weight: 800;
             color: var(--purple);
@@ -908,14 +883,13 @@
             text-transform: uppercase;
             letter-spacing: 0.8px;
         }
-        .pinned-meta {
-            display: flex; gap: 14px;
+        .pinned-banner .pb-hint {
             font-size: 12.5px;
             color: var(--text-4);
+            font-style: italic;
         }
-        .pinned-meta b { color: var(--text-1); margin-left: 4px; }
-        .pinned-spacer { flex: 1; }
-        .pinned-close {
+        .pinned-banner .pb-spacer { flex: 1; }
+        .pinned-banner .pb-unpin {
             padding: 6px 14px;
             background: var(--bg-2);
             border: 1px solid var(--border-2);
@@ -927,15 +901,27 @@
             font-family: inherit;
             transition: 0.15s;
         }
-        .pinned-close:hover { background: var(--red-dim); color: var(--red); border-color: var(--red); }
+        .pinned-banner .pb-unpin:hover { background: var(--red-dim); color: var(--red); border-color: var(--red); }
 
-        .pinned-body {
-            flex: 1;
-            overflow: auto;
-            background: var(--bg-3);
+        .pinned-editor-box {
+            padding: 14px 18px;
+            background: var(--bg-0);
+            flex-shrink: 0;
         }
-        .pinned-body::-webkit-scrollbar { width: 10px; height: 10px; }
-        .pinned-body::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 5px; }
+        .pinned-readonly {
+            border: 1px solid var(--border-1);
+            border-radius: 10px;
+            background: var(--bg-3);
+            padding: 12px 16px;
+            color: var(--text-3);
+            font-family: 'JetBrains Mono', 'Consolas', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            max-height: 140px;
+            overflow: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
 
         /* ========== STATUS BAR ========== */
         .status {
@@ -964,13 +950,14 @@
             border: 1px solid var(--border-3);
             border-radius: 8px;
             box-shadow: var(--shadow-lg);
-            max-height: 320px;
+            max-height: 280px;
             overflow-y: auto;
             z-index: 9999;
             display: none;
-            min-width: 340px;
+            min-width: 320px;
             font-family: 'JetBrains Mono', monospace;
             font-size: 13px;
+            contain: layout style;
         }
         .ac-box::-webkit-scrollbar { width: 8px; }
         .ac-box::-webkit-scrollbar-thumb { background: var(--border-3); border-radius: 4px; }
@@ -1030,7 +1017,6 @@
 
 <div class="app">
 
-    <!-- HEADER -->
     <div class="header">
         <div class="brand">
             <div class="brand-mark">EIS</div>
@@ -1041,22 +1027,17 @@
         <div class="conn-pill">
             <span class="conn-dot"></span> CONNECTED
         </div>
-
-        <!-- Theme toggle -->
-        <div class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle dark / light mode">
+        <div class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">
             <span class="tt-icon tt-sun">&#9728;</span>
             <span class="tt-icon tt-moon">&#9789;</span>
             <div class="tt-knob"></div>
         </div>
-
         <a class="btn-dashboard" href="<%= dashboardUrl %>" target="_blank" rel="noopener noreferrer">
             <span>&#128202;</span> Dashboard
         </a>
-
         <button class="btn-new" onclick="newTab()">+ New Query Tab</button>
     </div>
 
-    <!-- SIDEBAR -->
     <div class="sidebar">
         <div class="sidebar-head">
             SAVED QUERIES
@@ -1068,9 +1049,7 @@
         <div class="tree" id="tree">
 
             <div class="tgroup">
-                <div class="tgroup-head" onclick="toggleGroup(this)">
-                    <span class="tg-arrow">&#9654;</span> Gen 5 — Error Summary
-                </div>
+                <div class="tgroup-head" onclick="toggleGroup(this)"><span class="tg-arrow">&#9654;</span> Gen 5 — Error Summary</div>
                 <div class="tgroup-body">
                     <div class="qitem" onclick="loadQuery(this)">Broker-wise error count (last 5 min)
                         <script type="text/plain" class="q-sql">SELECT broker_eg, broker_name, ERROR_CODE, ERROR_DESCRIPTION, url, api_name, COUNT(*) AS CNT FROM EISAPP.API_LOG WHERE Request_date_time>=SYSDATE - INTERVAL '05' MINUTE and (substr(error_code,3,3) in ('001','002','007','051','014','111','570','569','052','005','077','003','017','015') and error_code<>'00014' OR error_code in ('401','500')) and ERROR_DESCRIPTION is not null and error_description not like '%No active transaction found, please do check GCC machine and retry%' GROUP BY broker_eg,broker_name, ERROR_CODE, error_description,url,api_name ORDER BY CNT DESC;</script>
@@ -1079,9 +1058,7 @@
             </div>
 
             <div class="tgroup">
-                <div class="tgroup-head" onclick="toggleGroup(this)">
-                    <span class="tg-arrow">&#9654;</span> Daily Use (Last 10 min)
-                </div>
+                <div class="tgroup-head" onclick="toggleGroup(this)"><span class="tg-arrow">&#9654;</span> Daily Use (Last 10 min)</div>
                 <div class="tgroup-body">
                     <div class="qitem" onclick="loadQuery(this)">api_log — recent
                         <script type="text/plain" class="q-sql">select * from eisapp.api_log where request_date_time >= sysdate - interval '10' minute order by request_date_time desc;</script>
@@ -1099,9 +1076,7 @@
             </div>
 
             <div class="tgroup">
-                <div class="tgroup-head" onclick="toggleGroup(this)">
-                    <span class="tg-arrow">&#9654;</span> URN Search
-                </div>
+                <div class="tgroup-head" onclick="toggleGroup(this)"><span class="tg-arrow">&#9654;</span> URN Search</div>
                 <div class="tgroup-body">
                     <div class="qitem" onclick="loadQuery(this)">api_log by URN
                         <script type="text/plain" class="q-sql">select * from eisapp.api_log where URN in ('');</script>
@@ -1125,9 +1100,7 @@
             </div>
 
             <div class="tgroup">
-                <div class="tgroup-head" onclick="toggleGroup(this)">
-                    <span class="tg-arrow">&#9654;</span> URL / Mappers
-                </div>
+                <div class="tgroup-head" onclick="toggleGroup(this)"><span class="tg-arrow">&#9654;</span> URL / Mappers</div>
                 <div class="tgroup-body">
                     <div class="qitem" onclick="loadQuery(this)">source_mapper
                         <script type="text/plain" class="q-sql">select * from EISAPP.source_mapper;</script>
@@ -1148,9 +1121,7 @@
             </div>
 
             <div class="tgroup">
-                <div class="tgroup-head" onclick="toggleGroup(this)">
-                    <span class="tg-arrow">&#9654;</span> SI Monitoring (SBISI)
-                </div>
+                <div class="tgroup-head" onclick="toggleGroup(this)"><span class="tg-arrow">&#9654;</span> SI Monitoring (SBISI)</div>
                 <div class="tgroup-body">
                     <div class="qitem" onclick="loadQuery(this)">SI_TRANS_DB — error summary
                         <script type="text/plain" class="q-sql">SELECT function_name,ERROR_CODE, ERROR_DESC, COUNT(*) AS CNT FROM SBISI.SI_TRANS_DB WHERE SUBSTR(error_code,1,2) = 'SI' and req_time>=SYSDATE - INTERVAL '10' MINUTE GROUP BY ERROR_CODE,ERROR_DESC,function_name ORDER BY CNT DESC;</script>
@@ -1165,12 +1136,10 @@
             </div>
 
             <div class="tgroup">
-                <div class="tgroup-head" onclick="toggleGroup(this)">
-                    <span class="tg-arrow">&#9654;</span> Performance / Latency
-                </div>
+                <div class="tgroup-head" onclick="toggleGroup(this)"><span class="tg-arrow">&#9654;</span> Performance / Latency</div>
                 <div class="tgroup-body">
                     <div class="qitem" onclick="loadQuery(this)">EXP IP response-time buckets
-                        <script type="text/plain" class="q-sql">SELECT exp_ip,COUNT(1), SUM(CASE WHEN RESPONSE_STATUS in ('0','SUCCESS') THEN 1 ELSE 0 END) AS SUCCESS, sum(case when TO_NUMBER(SUBSTR(TO_CHAR(RESPONSE_DATE_TIME-dpg_request_date_time),18))< 0.1 then 1 else 0 end ) as BELOW_100MSEC, sum(case when TO_NUMBER(SUBSTR(TO_CHAR(RESPONSE_DATE_TIME-dpg_request_date_time),18))between 0.1 AND 0.5 then 1 else 0 end ) as "between 100ms-500ms", sum(case when TO_NUMBER(SUBSTR(TO_CHAR(RESPONSE_DATE_TIME-dpg_request_date_time),18))> 5 then 1 else 0 end ) as ABOVE_FIVE_SEC FROM EISAPP.API_LOG WHERE broker_name = 'LOGGING_EXP' and request_date_time>=SYSDATE-INTERVAL '02' MINUTE group by exp_ip;</script>
+                        <script type="text/plain" class="q-sql">SELECT exp_ip,COUNT(1), SUM(CASE WHEN RESPONSE_STATUS in ('0','SUCCESS') THEN 1 ELSE 0 END) AS SUCCESS, sum(case when TO_NUMBER(SUBSTR(TO_CHAR(RESPONSE_DATE_TIME-dpg_request_date_time),18))< 0.1 then 1 else 0 end ) as BELOW_100MSEC, sum(case when TO_NUMBER(SUBSTR(TO_CHAR(RESPONSE_DATE_TIME-dpg_request_date_time),18))> 5 then 1 else 0 end ) as ABOVE_FIVE_SEC FROM EISAPP.API_LOG WHERE broker_name = 'LOGGING_EXP' and request_date_time>=SYSDATE-INTERVAL '02' MINUTE group by exp_ip;</script>
                     </div>
                     <div class="qitem" onclick="loadQuery(this)">SYS latency — backend vs orch
                         <script type="text/plain" class="q-sql">SELECT b.sys_ip,COUNT(1), sum(case when TO_NUMBER(SUBSTR(TO_CHAR(b.request_DATE_TIME-a.request_DATE_TIME),18))< 0.1 then 1 else 0 end ) as BELOW_100MSEC, sum(case when TO_NUMBER(SUBSTR(TO_CHAR(b.request_DATE_TIME-a.request_DATE_TIME),18))> 5 then 1 else 0 end ) as ABOVE_FIVE_SEC FROM EISAPP.backend_log b , EISAPP.orch_api_log a WHERE a.urn=b.urn and b.sys_broker = 'LOGGING_SYS' and b.creation_date_time>=SYSDATE-INTERVAL '02' MINUTE group by b.sys_ip;</script>
@@ -1181,7 +1150,6 @@
         </div>
     </div>
 
-    <!-- MAIN -->
     <div class="main">
         <div class="tabbar" id="tabbar">
             <div class="tab-add" onclick="newTab()" title="New Tab (Ctrl+T)">+</div>
@@ -1189,18 +1157,6 @@
         <div class="tab-content" id="tabContent"></div>
     </div>
 
-    <!-- PINNED PANEL (bottom of main area) -->
-    <div class="pinned-panel" id="pinnedPanel" style="grid-area: main; align-self: end;">
-        <div class="pinned-head">
-            <span class="pinned-title">&#128204; Pinned Result</span>
-            <div class="pinned-meta" id="pinnedMeta"></div>
-            <div class="pinned-spacer"></div>
-            <button class="pinned-close" onclick="unpinResult()">Unpin</button>
-        </div>
-        <div class="pinned-body" id="pinnedBody"></div>
-    </div>
-
-    <!-- STATUS BAR -->
     <div class="status">
         <div class="st-item">
             <span class="st-dot"></span>
@@ -1219,7 +1175,8 @@
 
 <script>
 /* ============================================================
- * EIS QUERY CONSOLE — v4.0
+ * EIS QUERY CONSOLE — v5.0
+ * Performance-optimized + SQL Developer-style Pin
  * ============================================================ */
 
 var DB_META = {
@@ -1260,8 +1217,7 @@ var BOOTSTRAP_KEYWORDS = ["SELECT","FROM","WHERE","AND","OR","NOT","NULL","IS","
     "OFFSET","LIMIT","ASC","DESC","COMMIT","ROLLBACK","WITH","PARTITION","TRUNC"
 ].map(function(k){ return { label: k, insert: k, type: "KEYWORD" }; });
 
-/* ============ PINNED STATE (global) ============ */
-var PINNED = null;  // { columns, rows, message, queryType, executionTimeMs, db, tabTitle }
+var ROW_LIMIT_RENDER = 1000;   // per batch
 
 /* ============================================================
  * THEME
@@ -1304,6 +1260,8 @@ function Tab(num, db) {
     this.filterText = "";
     this.sortCol = null;
     this.sortDir = null;
+    this.isPinned = false;
+    this.pinnedSql = "";
 }
 
 function nextFreeNum() {
@@ -1323,9 +1281,26 @@ function newTab() {
     return t;
 }
 
+function newPinnedTab(sourceTab) {
+    var num = nextFreeNum();
+    var t = new Tab(num, sourceTab.db);
+    t.title = sourceTab.title + " (Pinned)";
+    t.isPinned = true;
+    t.pinnedSql = sourceTab.sql;
+    t.rawCols = sourceTab.rawCols.slice();
+    t.rawRows = sourceTab.rawRows.slice();
+    t.lastResult = sourceTab.lastResult;
+    t.lastExecMs = sourceTab.lastExecMs;
+    tabs.push(t);
+    renderTab(t);
+    switchTab(t.id);
+    saveTabs();
+    return t;
+}
+
 function renderTab(t) {
     var el = document.createElement('div');
-    el.className = 'tab';
+    el.className = 'tab' + (t.isPinned ? ' pinned-tab' : '');
     el.dataset.tabId = t.id;
     el.innerHTML = buildTabHTML(t);
 
@@ -1345,27 +1320,36 @@ function renderTab(t) {
     var pane = document.createElement('div');
     pane.className = 'pane';
     pane.dataset.tabId = t.id;
-    pane.innerHTML = buildPaneHTML(t);
+    pane.innerHTML = t.isPinned ? buildPinnedPaneHTML(t) : buildPaneHTML(t);
     document.getElementById('tabContent').appendChild(pane);
     t.paneEl = pane;
     t.editorEl = pane.querySelector('.sql');
 
-    bindEditorEvents(t);
+    if (t.isPinned) {
+        // Render pinned content immediately
+        renderPinnedResult(t);
+    } else {
+        bindEditorEvents(t);
+    }
     updateCount();
 }
 
 function buildTabHTML(t) {
-    var runningBadge = t.running ? '<span class="tab-running-badge">RUNNING</span>' : '';
-    return '<span class="tab-dot ' + DB_META[t.db].dot + '"></span>' +
-           '<span class="tab-name">' + t.title + '</span>' +
-           runningBadge +
-           '<span class="tab-close" title="Close (Ctrl+W)">&#215;</span>';
+    var badge = '';
+    if (t.running) badge = '<span class="tab-running-badge">RUNNING</span>';
+    else if (t.isPinned) badge = '<span class="tab-pinned-badge">&#128204; PINNED</span>';
+    var dotClass = t.isPinned ? 'pinned-dot' : DB_META[t.db].dot;
+    return '<span class="tab-dot ' + dotClass + '"></span>' +
+           '<span class="tab-name">' + escapeHtml(t.title) + '</span>' +
+           badge +
+           '<span class="tab-close" title="Close">&#215;</span>';
 }
 
 function refreshTabHeader(t) {
     if (!t.el) return;
     t.el.innerHTML = buildTabHTML(t);
     t.el.classList.toggle('running', t.running);
+    t.el.classList.toggle('pinned-tab', t.isPinned);
 }
 
 function buildPaneHTML(t) {
@@ -1379,6 +1363,7 @@ function buildPaneHTML(t) {
         '<button class="tb tb-run"     onclick="runQuery(\'' + t.id + '\')">&#9654; Run</button>' +
         '<button class="tb tb-suggest" onclick="doSuggest(\'' + t.id + '\')">Suggest</button>' +
         '<button class="tb tb-format"  onclick="formatSQL(\'' + t.id + '\')">Format</button>' +
+        '<button class="tb tb-pin"     onclick="pinCurrentResult(\'' + t.id + '\')" data-role="pinBtn" disabled>&#128204; Pin</button>' +
         '<button class="tb tb-export"  onclick="exportResult(\'' + t.id + '\')" disabled>Export Excel</button>' +
         '<button class="tb tb-clear"   onclick="clearEditor(\'' + t.id + '\')">Clear</button>' +
         '<button class="tb tb-close"   onclick="closeTab(\'' + t.id + '\')">Close</button>' +
@@ -1397,7 +1382,6 @@ function buildPaneHTML(t) {
             '<span class="res-stat"><span class="label">Rows</span><b data-role="qRows">&#8212;</b></span>' +
             '<span class="res-stat"><span class="label">Time</span><b data-role="qTime">&#8212;</b></span>' +
             '<span class="res-stat"><span class="label">DB</span><b data-role="qDb">&#8212;</b></span>' +
-            '<button class="pin-btn" data-role="pinBtn" onclick="pinCurrentResult(\'' + t.id + '\')" title="Pin this result">&#128204; Pin</button>' +
             '<div class="res-bar-spacer"></div>' +
             '<div class="res-search-wrap">' +
                 '<span class="res-search-icon">&#128269;</span>' +
@@ -1411,6 +1395,33 @@ function buildPaneHTML(t) {
                 '<div class="ph-sub">Write a query or pick one from the sidebar, then click <b>Run</b>.</div>' +
             '</div>' +
         '</div>' +
+    '</div>';
+}
+
+function buildPinnedPaneHTML(t) {
+    return '' +
+    '<div class="pinned-banner">' +
+        '<span class="pb-title">&#128204; Pinned Result</span>' +
+        '<span class="pb-hint">This tab is read-only. Run a new query in its source tab.</span>' +
+        '<div class="pb-spacer"></div>' +
+        '<button class="pb-unpin" onclick="closeTab(\'' + t.id + '\')">Close Pinned</button>' +
+    '</div>' +
+    '<div class="pinned-editor-box">' +
+        '<div class="pinned-readonly">' + escapeHtml(t.pinnedSql || '(no query)') + '</div>' +
+    '</div>' +
+    '<div class="results">' +
+        '<div class="res-bar" data-role="resBar">' +
+            '<span class="res-stat"><span class="label">Type</span><b data-role="qType">&#8212;</b></span>' +
+            '<span class="res-stat"><span class="label">Rows</span><b data-role="qRows">&#8212;</b></span>' +
+            '<span class="res-stat"><span class="label">Time</span><b data-role="qTime">&#8212;</b></span>' +
+            '<span class="res-stat"><span class="label">DB</span><b data-role="qDb">&#8212;</b></span>' +
+            '<div class="res-bar-spacer"></div>' +
+            '<div class="res-search-wrap">' +
+                '<span class="res-search-icon">&#128269;</span>' +
+                '<input type="text" class="res-search" placeholder="Search in results..." data-role="resSearch">' +
+            '</div>' +
+        '</div>' +
+        '<div class="res-body" data-role="resBody"></div>' +
     '</div>';
 }
 
@@ -1442,7 +1453,7 @@ function closeTab(id) {
 
     if (t.running) {
         if (!confirm('Query is still running in "' + t.title + '". Close anyway?')) return;
-    } else if (t.sql && t.sql.trim()) {
+    } else if (!t.isPinned && t.sql && t.sql.trim()) {
         if (!confirm('Close "' + t.title + '"? Unsaved query will be lost.')) return;
     }
 
@@ -1484,10 +1495,10 @@ function bindEditorEvents(t) {
     });
 
     if (resSearch) {
-        resSearch.addEventListener('input', function() {
+        resSearch.addEventListener('input', debounce(function() {
             t.filterText = resSearch.value;
             renderFilteredResult(t);
-        });
+        }, 200));
     }
 
     ta.addEventListener('keydown', function(e) {
@@ -1510,48 +1521,39 @@ function bindEditorEvents(t) {
     });
 }
 
-/* ============================================================
- * SQL FORMATTER
- * ============================================================ */
-var SQL_MAJOR = ["SELECT","FROM","WHERE","GROUP BY","ORDER BY","HAVING","UNION ALL","UNION","INSERT INTO","VALUES","UPDATE","SET","DELETE FROM","WITH","JOIN","INNER JOIN","LEFT JOIN","RIGHT JOIN","FULL JOIN","LEFT OUTER JOIN","RIGHT OUTER JOIN","CROSS JOIN","ON"];
-var SQL_MINOR = ["AND","OR"];
-var SQL_CLAUSE = { "FROM":1, "WHERE":1, "GROUP BY":1, "ORDER BY":1, "HAVING":1, "UNION":1, "UNION ALL":1,
-                   "JOIN":1, "INNER JOIN":1, "LEFT JOIN":1, "RIGHT JOIN":1, "FULL JOIN":1,
-                   "LEFT OUTER JOIN":1, "RIGHT OUTER JOIN":1, "CROSS JOIN":1, "ON":1,
-                   "SET":1, "VALUES":1, "UPDATE":1, "INSERT INTO":1 };
+function debounce(fn, ms) {
+    var tm;
+    return function() {
+        var ctx = this, args = arguments;
+        clearTimeout(tm);
+        tm = setTimeout(function(){ fn.apply(ctx, args); }, ms);
+    };
+}
 
+/* ============ SQL FORMATTER ============ */
 function formatSQL(tabId) {
-    var t = getTab(tabId); if (!t) return;
+    var t = getTab(tabId); if (!t || t.isPinned) return;
     var raw = t.editorEl.value;
     if (!raw || !raw.trim()) { toast("Nothing to format.", true); return; }
 
-    // 1. Normalize whitespace
     var sql = raw.replace(/\r\n/g, '\n').replace(/\s+/g, ' ').trim();
-
-    // 2. Protect strings and comments
     var tokens = [];
     sql = sql.replace(/'[^']*'/g, function(m){ tokens.push(m); return '\u0001' + (tokens.length-1) + '\u0001'; });
     sql = sql.replace(/"[^"]*"/g, function(m){ tokens.push(m); return '\u0001' + (tokens.length-1) + '\u0001'; });
     sql = sql.replace(/--[^\n]*/g, function(m){ tokens.push(m); return '\u0001' + (tokens.length-1) + '\u0001'; });
     sql = sql.replace(/\/\*[\s\S]*?\*\//g, function(m){ tokens.push(m); return '\u0001' + (tokens.length-1) + '\u0001'; });
 
-    // 3. Uppercase major keywords for easier matching
     var upper = sql.toUpperCase();
-    var result = '';
-    var i = 0;
     var majorRegex = /\b(SELECT|FROM|WHERE|GROUP BY|ORDER BY|HAVING|UNION ALL|UNION|INSERT INTO|VALUES|UPDATE|SET|DELETE FROM|INNER JOIN|LEFT OUTER JOIN|RIGHT OUTER JOIN|LEFT JOIN|RIGHT JOIN|FULL JOIN|CROSS JOIN|JOIN|ON|AND|OR|WITH)\b/g;
-
     var matches = [];
     var m;
     while ((m = majorRegex.exec(upper)) !== null) {
         matches.push({ start: m.index, end: m.index + m[0].length, kw: m[0] });
     }
 
-    // Build output
     var out = '';
     var prev = 0;
     var indent = 0;
-    var firstKw = true;
 
     for (var k = 0; k < matches.length; k++) {
         var mk = matches[k];
@@ -1560,26 +1562,19 @@ function formatSQL(tabId) {
             if (out && !out.endsWith('\n') && !out.endsWith(' ')) out += ' ';
             out += beforeText;
         }
-
         var kw = mk.kw;
-        if (kw === 'AND' || kw === 'OR') {
-            out += '\n' + '  '.repeat(indent + 1) + kw + ' ';
-        } else if (kw === 'ON') {
+        if (kw === 'AND' || kw === 'OR' || kw === 'ON') {
             out += '\n' + '  '.repeat(indent + 1) + kw + ' ';
         } else {
             if (out) out += '\n';
             if (kw === 'UNION' || kw === 'UNION ALL') {
-                out += kw + '\n';
-                indent = 0;
+                out += kw + '\n'; indent = 0;
             } else if (kw === 'FROM' || kw === 'WHERE' || kw === 'GROUP BY' || kw === 'ORDER BY' || kw === 'HAVING') {
-                out += kw + ' ';
-                indent = 0;
+                out += kw + ' '; indent = 0;
             } else if (kw === 'SELECT') {
-                out += kw + ' ';
-                indent = 0;
+                out += kw + ' '; indent = 0;
             } else if (kw.indexOf('JOIN') !== -1) {
-                out += '  ' + kw + ' ';
-                indent = 1;
+                out += '  ' + kw + ' '; indent = 1;
             } else {
                 out += kw + ' ';
             }
@@ -1592,15 +1587,9 @@ function formatSQL(tabId) {
         out += afterText;
     }
 
-    // 4. Clean up
-    out = out.replace(/[ \t]+\n/g, '\n');
-    out = out.replace(/\n{3,}/g, '\n\n');
-    out = out.trim();
-
-    // 5. Restore tokens
+    out = out.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
     out = out.replace(/\u0001(\d+)\u0001/g, function(_, n){ return tokens[parseInt(n, 10)]; });
 
-    // 6. Replace in editor
     t.editorEl.value = out;
     t.sql = out;
     saveTabs();
@@ -1609,6 +1598,7 @@ function formatSQL(tabId) {
 
 /* ============ SUGGESTIONS ============ */
 function autoSuggest(t) {
+    if (t.isPinned) return;
     var ctx = getCtx(t);
     if ((ctx.word && ctx.word.length >= 1) || ctx.dotBefore) {
         showSuggestInstant(t, false);
@@ -1618,7 +1608,7 @@ function autoSuggest(t) {
 }
 
 function doSuggest(id) {
-    var t = getTab(id); if (!t) return;
+    var t = getTab(id); if (!t || t.isPinned) return;
     ensureSuggestLoaded(t);
     showSuggestInstant(t, true);
 }
@@ -1720,7 +1710,7 @@ function ensureSuggestLoaded(t) {
 function renderSuggest(t, items) {
     var box = document.getElementById('acBox');
     if (!items || items.length === 0) { hideSuggest(t); return; }
-    items = items.slice(0, 50);
+    items = items.slice(0, 30);
     t.currentItems = items;
     t.activeIdx = 0;
     var html = '';
@@ -1737,10 +1727,10 @@ function renderSuggest(t, items) {
     box.style.display = 'block';
 
     var p = caretXY(t.editorEl);
-    var h = Math.min(320, items.length * 32 + 8);
+    var h = Math.min(280, items.length * 32 + 8);
     var top = p.top;
     if (top + h > window.innerHeight - 50) top = p.top - h - p.lineHeight - 6;
-    box.style.left = Math.max(6, Math.min(p.left, window.innerWidth - 360)) + 'px';
+    box.style.left = Math.max(6, Math.min(p.left, window.innerWidth - 340)) + 'px';
     box.style.top  = top + 'px';
 }
 
@@ -1757,7 +1747,7 @@ function updateActive(t) {
 }
 
 function pickById(tabId, idx) {
-    var t = getTab(tabId); if (!t) return;
+    var t = getTab(tabId); if (!t || t.isPinned) return;
     pickSuggestion(t, idx);
 }
 
@@ -1844,6 +1834,7 @@ function caretXY(ta) {
 /* ============ RUN QUERY ============ */
 function runQuery(tabId) {
     var t = getTab(tabId); if (!t) return;
+    if (t.isPinned) { toast("Pinned tab is read-only.", true); return; }
     var sql = t.editorEl.value.trim();
     if (!sql) { toast("Query is empty.", true); return; }
     if (t.running) { toast("Query already running in this tab.", true); return; }
@@ -1874,6 +1865,8 @@ function runQuery(tabId) {
     t.lastResult = null;
     var expBtn = t.paneEl.querySelector('.tb-export');
     if (expBtn) expBtn.disabled = true;
+    var pinBtn = t.paneEl.querySelector('[data-role="pinBtn"]');
+    if (pinBtn) pinBtn.disabled = true;
 
     var resBody = t.paneEl.querySelector('[data-role="resBody"]');
     resBody.innerHTML = '' +
@@ -1923,10 +1916,10 @@ function runQuery(tabId) {
             }
 
             renderFilteredResult(t);
-            updatePinButton(t);
 
             setChip(t, res.success ? "ok" : "err", res.success ? "success" : "error");
             if (expBtn) expBtn.disabled = !(res.success && t.rawRows && t.rawRows.length > 0);
+            if (pinBtn) pinBtn.disabled = !(res.success && t.rawRows && t.rawRows.length > 0);
 
             updateStatus();
             toast(res.success ? "Query ran in " + res.executionTimeMs + " ms" : "Query failed", !res.success);
@@ -1939,7 +1932,7 @@ function runQuery(tabId) {
     xhr.send(payload);
 }
 
-/* ============ FILTER + SORT + RENDER ============ */
+/* ============ FILTER + SORT + RENDER (perf-optimized) ============ */
 function renderFilteredResult(t) {
     var resBody = t.paneEl.querySelector('[data-role="resBody"]');
     var res = t.lastResult;
@@ -1986,45 +1979,181 @@ function renderFilteredResult(t) {
         });
     }
 
-    var html = '<div class="alert alert-ok">' + escapeHtml(res.message) +
-               (filter ? ' <b>(' + rows.length + ' of ' + t.rawRows.length + ' shown)</b>' : '') + '</div>';
-    html += buildDataTable(t, rows, filter);
-    resBody.innerHTML = html;
-}
+    // Build using DocumentFragment for speed
+    var frag = document.createDocumentFragment();
 
-function buildDataTable(t, rows, filter) {
-    var html = '<table class="data"><thead><tr><th>#</th>';
+    var alertDiv = document.createElement('div');
+    alertDiv.className = 'alert alert-ok';
+    alertDiv.innerHTML = escapeHtml(res.message) +
+        (filter ? ' <b>(' + rows.length + ' of ' + t.rawRows.length + ' shown)</b>' : '');
+    frag.appendChild(alertDiv);
+
+    if (rows.length > ROW_LIMIT_RENDER) {
+        var warn = document.createElement('div');
+        warn.className = 'alert alert-ok';
+        warn.style.margin = '0 22px 10px 22px';
+        warn.style.fontSize = '12.5px';
+        warn.innerHTML = 'Showing first <b>' + ROW_LIMIT_RENDER + '</b> rows of <b>' + rows.length + '</b>. Use search to narrow.';
+        frag.appendChild(warn);
+    }
+
+    var table = document.createElement('table');
+    table.className = 'data';
+
+    // thead
+    var thead = document.createElement('thead');
+    var trh = document.createElement('tr');
+    var thIdx = document.createElement('th');
+    thIdx.textContent = '#';
+    thIdx.style.width = '60px';
+    trh.appendChild(thIdx);
+
     t.rawCols.forEach(function(c){
+        var th = document.createElement('th');
         var sortCls = '';
         var sortIcon = '\u21C5';
         if (t.sortCol === c) {
             if (t.sortDir === 'asc') { sortCls = 'sorted-asc'; sortIcon = '\u25B2'; }
             else { sortCls = 'sorted-desc'; sortIcon = '\u25BC'; }
         }
-        html += '<th class="' + sortCls + '" onclick="sortByColumn(\'' + t.id + '\',\'' + escapeJs(c) + '\')">' +
-                    escapeHtml(c) + '<span class="sort-icon">' + sortIcon + '</span>' +
-                '</th>';
+        th.className = sortCls;
+        // Avoid re-parsing via innerHTML for header - use text nodes
+        th.appendChild(document.createTextNode(c));
+        var icon = document.createElement('span');
+        icon.className = 'sort-icon';
+        icon.textContent = sortIcon;
+        th.appendChild(icon);
+        th.onclick = function(){ sortByColumn(t.id, c); };
+        trh.appendChild(th);
     });
-    html += '</tr></thead><tbody>';
-    rows.forEach(function(row, i){
-        html += '<tr><td class="row-no">' + (i+1) + '</td>';
-        t.rawCols.forEach(function(c){
+    thead.appendChild(trh);
+    table.appendChild(thead);
+
+    // tbody - limit rendering
+    var tbody = document.createElement('tbody');
+    var limit = Math.min(rows.length, ROW_LIMIT_RENDER);
+    for (var i = 0; i < limit; i++) {
+        var row = rows[i];
+        var tr = document.createElement('tr');
+        var tdIdx = document.createElement('td');
+        tdIdx.className = 'row-no';
+        tdIdx.textContent = (i+1);
+        tr.appendChild(tdIdx);
+
+        for (var j = 0; j < t.rawCols.length; j++) {
+            var c = t.rawCols[j];
             var v = row[c];
-            if (v === null || v === undefined) html += '<td><span class="null-cell">NULL</span></td>';
-            else {
+            var td = document.createElement('td');
+            if (v === null || v === undefined) {
+                var spanN = document.createElement('span');
+                spanN.className = 'null-cell';
+                spanN.textContent = 'NULL';
+                td.appendChild(spanN);
+            } else {
                 var s = String(v);
-                var disp = filter ? highlightMatch(s, filter) : escapeHtml(s);
-                html += '<td title="' + escapeHtml(s) + '">' + disp + '</td>';
+                td.title = s;
+                if (filter) {
+                    td.innerHTML = highlightMatch(s, filter);
+                } else {
+                    td.textContent = s;
+                }
             }
+            tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    frag.appendChild(table);
+
+    // Replace content in one shot
+    resBody.innerHTML = '';
+    resBody.appendChild(frag);
+}
+
+/* ============ PINNED RESULT RENDER ============ */
+function renderPinnedResult(t) {
+    var resBar = t.paneEl.querySelector('[data-role="resBar"]');
+    var resBody = t.paneEl.querySelector('[data-role="resBody"]');
+    if (!resBar || !resBody) return;
+
+    var res = t.lastResult;
+    if (!res) {
+        resBody.innerHTML = '<div class="placeholder"><div class="ph-title">No data</div></div>';
+        return;
+    }
+
+    resBar.querySelector('[data-role="qType"]').textContent = res.queryType || '\u2014';
+    resBar.querySelector('[data-role="qRows"]').textContent = (res.rows ? res.rows.length : 0);
+    var tEl = resBar.querySelector('[data-role="qTime"]');
+    tEl.textContent = res.executionTimeMs + ' ms';
+    tEl.className = 'res-time ' + (res.executionTimeMs < 500 ? 'ok' : res.executionTimeMs < 3000 ? 'warn' : 'slow');
+    resBar.querySelector('[data-role="qDb"]').textContent = DB_META[t.db].label;
+
+    // Render table
+    var frag = document.createDocumentFragment();
+    var alertDiv = document.createElement('div');
+    alertDiv.className = 'alert alert-ok';
+    alertDiv.textContent = res.message;
+    frag.appendChild(alertDiv);
+
+    if (t.rawCols && t.rawRows && t.rawRows.length > 0) {
+        if (t.rawRows.length > ROW_LIMIT_RENDER) {
+            var warn = document.createElement('div');
+            warn.className = 'alert alert-ok';
+            warn.style.margin = '0 22px 10px 22px';
+            warn.style.fontSize = '12.5px';
+            warn.innerHTML = 'Showing first <b>' + ROW_LIMIT_RENDER + '</b> rows of <b>' + t.rawRows.length + '</b>.';
+            frag.appendChild(warn);
+        }
+
+        var table = document.createElement('table');
+        table.className = 'data';
+        var thead = document.createElement('thead');
+        var trh = document.createElement('tr');
+        var thIdx = document.createElement('th'); thIdx.textContent = '#'; thIdx.style.width = '60px';
+        trh.appendChild(thIdx);
+        t.rawCols.forEach(function(c){
+            var th = document.createElement('th');
+            th.textContent = c;
+            trh.appendChild(th);
         });
-        html += '</tr>';
-    });
-    html += '</tbody></table>';
-    return html;
+        thead.appendChild(trh); table.appendChild(thead);
+
+        var tbody = document.createElement('tbody');
+        var limit = Math.min(t.rawRows.length, ROW_LIMIT_RENDER);
+        for (var i = 0; i < limit; i++) {
+            var row = t.rawRows[i];
+            var tr = document.createElement('tr');
+            var tdIdx = document.createElement('td'); tdIdx.className = 'row-no'; tdIdx.textContent = (i+1);
+            tr.appendChild(tdIdx);
+            for (var j = 0; j < t.rawCols.length; j++) {
+                var c = t.rawCols[j];
+                var v = row[c];
+                var td = document.createElement('td');
+                if (v === null || v === undefined) {
+                    var spanN = document.createElement('span');
+                    spanN.className = 'null-cell';
+                    spanN.textContent = 'NULL';
+                    td.appendChild(spanN);
+                } else {
+                    var s = String(v);
+                    td.title = s;
+                    td.textContent = s;
+                }
+                tr.appendChild(td);
+            }
+            tbody.appendChild(tr);
+        }
+        table.appendChild(tbody);
+        frag.appendChild(table);
+    }
+
+    resBody.innerHTML = '';
+    resBody.appendChild(frag);
 }
 
 function sortByColumn(tabId, col) {
-    var t = getTab(tabId); if (!t) return;
+    var t = getTab(tabId); if (!t || t.isPinned) return;
     if (t.sortCol === col) {
         if (t.sortDir === 'asc') t.sortDir = 'desc';
         else if (t.sortDir === 'desc') { t.sortCol = null; t.sortDir = null; }
@@ -2045,98 +2174,18 @@ function highlightMatch(text, filter) {
     } catch(e) { return esc; }
 }
 
-function escapeJs(s) {
-    return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g,'\\n');
-}
-
 /* ============================================================
- * PIN / UNPIN
+ * PIN RESULT → opens NEW PINNED TAB
  * ============================================================ */
 function pinCurrentResult(tabId) {
     var t = getTab(tabId); if (!t) return;
+    if (t.isPinned) { toast("Already pinned.", true); return; }
     if (!t.lastResult || !t.lastResult.success || !t.rawCols || !t.rawRows || t.rawRows.length === 0) {
         toast("Nothing to pin — run a successful query first.", true);
         return;
     }
-    PINNED = {
-        columns: t.rawCols.slice(),
-        rows: t.rawRows.slice(),
-        message: t.lastResult.message,
-        queryType: t.lastResult.queryType,
-        executionTimeMs: t.lastResult.executionTimeMs,
-        db: t.db,
-        tabTitle: t.title
-    };
-    renderPinned();
-    updatePinButton(t);
-    toast("Result pinned");
-}
-
-function unpinResult() {
-    PINNED = null;
-    renderPinned();
-    if (activeTabId) {
-        var t = getTab(activeTabId);
-        if (t) updatePinButton(t);
-    }
-    toast("Result unpinned");
-}
-
-function renderPinned() {
-    var panel = document.getElementById('pinnedPanel');
-    var body = document.getElementById('pinnedBody');
-    var meta = document.getElementById('pinnedMeta');
-    if (!PINNED) {
-        panel.classList.remove('visible');
-        body.innerHTML = '';
-        meta.innerHTML = '';
-        return;
-    }
-    panel.classList.add('visible');
-    meta.innerHTML =
-        '<span>Type: <b>' + escapeHtml(PINNED.queryType || '\u2014') + '</b></span>' +
-        '<span>Rows: <b>' + PINNED.rows.length + '</b></span>' +
-        '<span>Time: <b>' + PINNED.executionTimeMs + ' ms</b></span>' +
-        '<span>DB: <b>' + DB_META[PINNED.db].label + '</b></span>' +
-        '<span>From: <b>' + escapeHtml(PINNED.tabTitle) + '</b></span>';
-
-    // Build a fake tab object for table rendering (no sort state)
-    var fakeTab = {
-        rawCols: PINNED.columns,
-        rawRows: PINNED.rows,
-        sortCol: null,
-        sortDir: null,
-        id: '__pinned__'
-    };
-    // use a simpler table render (no sorting interaction)
-    var html = '<div class="alert alert-ok">' + escapeHtml(PINNED.message) + '</div>';
-    html += '<table class="data"><thead><tr><th>#</th>';
-    PINNED.columns.forEach(function(c){ html += '<th>' + escapeHtml(c) + '</th>'; });
-    html += '</tr></thead><tbody>';
-    PINNED.rows.forEach(function(row, i){
-        html += '<tr><td class="row-no">' + (i+1) + '</td>';
-        PINNED.columns.forEach(function(c){
-            var v = row[c];
-            if (v === null || v === undefined) html += '<td><span class="null-cell">NULL</span></td>';
-            else html += '<td title="' + escapeHtml(String(v)) + '">' + escapeHtml(String(v)) + '</td>';
-        });
-        html += '</tr>';
-    });
-    html += '</tbody></table>';
-    body.innerHTML = html;
-}
-
-function updatePinButton(t) {
-    var btn = t.paneEl.querySelector('[data-role="pinBtn"]');
-    if (!btn) return;
-    var isPinned = PINNED && PINNED.tabTitle === t.title;
-    if (isPinned) {
-        btn.classList.add('pinned');
-        btn.innerHTML = '\u2713 Pinned';
-    } else {
-        btn.classList.remove('pinned');
-        btn.innerHTML = '\uD83D\uDCCC Pin';
-    }
+    newPinnedTab(t);
+    toast("Result pinned into new tab");
 }
 
 /* ============ EXPORT EXCEL ============ */
@@ -2158,11 +2207,8 @@ function exportResult(tabId) {
     var stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
     var fname = 'query_' + t.num + '_' + t.db + '_' + stamp + '.csv';
     var a = document.createElement('a');
-    a.href = url;
-    a.download = fname;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    a.href = url; a.download = fname;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
     toast("Exported " + t.rawRows.length + " rows");
 }
@@ -2190,6 +2236,7 @@ function updateStatus() {
     if (t) {
         document.getElementById('stDb').textContent = DB_META[t.db].label;
         document.getElementById('stTab').innerHTML = 'Tab: <b>' + escapeHtml(t.title) + '</b>' +
+            (t.isPinned ? ' <span style="color:#a78bfa;">&#128204;</span>' : '') +
             (t.running ? ' <span style="color:#60a5fa;">&#9679; running</span>' : '');
         document.getElementById('stLast').innerHTML = 'Last exec: <b>' + (t.lastExecMs != null ? t.lastExecMs + ' ms' : '\u2014') + '</b>';
     }
@@ -2200,7 +2247,7 @@ function updateStatus() {
 function updateCount() { updateStatus(); }
 
 function clearEditor(id) {
-    var t = getTab(id); if (!t) return;
+    var t = getTab(id); if (!t || t.isPinned) return;
     t.editorEl.value = '';
     t.sql = '';
     t.editorEl.focus();
@@ -2221,6 +2268,10 @@ function loadQuery(el) {
     var text = (sqlEl.textContent || sqlEl.innerText).replace(/^\s*\n+/, '').replace(/\s+$/, '');
     var t = getTab(activeTabId);
     if (!t) return;
+    if (t.isPinned) {
+        // Load into a fresh new tab
+        t = newTab();
+    }
     t.editorEl.value = text;
     t.sql = text;
     t.editorEl.focus();
@@ -2231,7 +2282,7 @@ function loadQuery(el) {
     toast("Loaded into " + t.title);
 }
 
-document.getElementById('qSearch').addEventListener('input', function(e) {
+document.getElementById('qSearch').addEventListener('input', debounce(function(e) {
     var q = e.target.value.toLowerCase().trim();
     document.querySelectorAll('.tgroup').forEach(function(g){
         var items = g.querySelectorAll('.qitem');
@@ -2247,7 +2298,7 @@ document.getElementById('qSearch').addEventListener('input', function(e) {
             g.querySelector('.tgroup-head').classList.add('open');
         }
     });
-});
+}, 150));
 
 /* ============ UTILS ============ */
 function escapeHtml(s) {
@@ -2272,33 +2323,38 @@ function toast(msg, isErr) {
 /* ============ PERSIST ============ */
 function saveTabs() {
     try {
-        localStorage.setItem('eis_qc_v4', JSON.stringify({
-            tabs: tabs.map(function(t){ return { num: t.num, db: t.db, sql: t.sql }; }),
+        localStorage.setItem('eis_qc_v5', JSON.stringify({
+            tabs: tabs.map(function(t){
+                return { num: t.num, db: t.db, sql: t.sql, title: t.title, isPinned: t.isPinned, pinnedSql: t.pinnedSql };
+            }),
             active: activeTabId,
-            usedNumbers: usedNumbers,
-            pinned: PINNED
+            usedNumbers: usedNumbers
         }));
     } catch(e){}
 }
 
 function restoreTabs() {
     try {
-        var raw = localStorage.getItem('eis_qc_v4');
-        if (!raw) return false;
+        var raw = localStorage.getItem('eis_qc_v5');
+        if (!raw) {
+            // Try old version
+            raw = localStorage.getItem('eis_qc_v4');
+            if (!raw) return false;
+            localStorage.removeItem('eis_qc_v4');
+        }
         var d = JSON.parse(raw);
         if (!d || !d.tabs || !d.tabs.length) return false;
         usedNumbers = d.usedNumbers || {};
         d.tabs.forEach(function(td){
             var t = new Tab(td.num || nextFreeNum(), td.db || DEFAULT_DB);
             t.sql = td.sql || '';
+            t.title = td.title || ("Query " + t.num);
+            t.isPinned = !!td.isPinned;
+            t.pinnedSql = td.pinnedSql || '';
             tabs.push(t);
             renderTab(t);
-            t.editorEl.value = t.sql;
+            if (t.editorEl) t.editorEl.value = t.sql;
         });
-        if (d.pinned) {
-            PINNED = d.pinned;
-            renderPinned();
-        }
         switchTab(d.active || tabs[0].id);
         return true;
     } catch(e){ return false; }
@@ -2315,7 +2371,7 @@ window.addEventListener('load', function() {
     }
     setTimeout(function() {
         var t = getTab(activeTabId);
-        if (t) ensureSuggestLoaded(t);
+        if (t && !t.isPinned) ensureSuggestLoaded(t);
     }, 400);
     updateCount();
 });
