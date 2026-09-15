@@ -1,1 +1,509 @@
+package com.jdbc;
 
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.ResultSet;
+import java.sql.Statement;
+import java.sql.SQLException;
+
+public class DBUtilityAuto {
+    
+    private static String flagStatus = null;
+    private static String DB_ENVLOCATION = null;
+    private static final Object lock = new Object();
+    
+    // ✅ Caching variables
+    private static boolean flagLoaded = false;
+    private static long lastLoadedTime = 0;
+    private static final long CACHE_DURATION = 60000; // 1 minute cache
+
+    // ✅ FIXED: flag() method with caching
+    public static void flag() {
+        DBConfig.checkAndReload();
+        
+        synchronized (lock) {
+            long currentTime = System.currentTimeMillis();
+            if (flagLoaded && (currentTime - lastLoadedTime) < CACHE_DURATION) {
+                System.out.println("Using cached flag values - Flag: " + flagStatus + ", Location: " + DB_ENVLOCATION);
+                return;
+            }
+            
+            Connection tempConn = null;
+            try {
+                Class.forName(DBConfig.getDriver());
+               
+                try {
+                    tempConn = DriverManager.getConnection(
+                        "jdbc:oracle:thin:@10.191.170.109:1787/REPODB_SRV",
+                        DBConfig.getEisappsupportUsername(),
+                        DBConfig.getPrimaryPassword()
+                    );
+                    System.out.println("Connected to PRIMARY DB 1");
+                } catch(Exception E) {
+                    tempConn = DriverManager.getConnection(
+                        "jdbc:oracle:thin:@10.191.170.110:1787/REPODB_SRV",
+                        DBConfig.getEisappsupportUsername(),
+                        DBConfig.getPrimaryPassword()
+                    );
+                    System.out.println("Connected to PRIMARY DB 2");
+                }
+               
+                String sql = "select * from connection_master";
+                try (Statement smt = tempConn.createStatement();
+                     ResultSet rs = smt.executeQuery(sql)) {
+                    
+                    while (rs.next()) {
+                        flagStatus = rs.getString("FLAG");
+                        DB_ENVLOCATION = rs.getString("DB_LOCATION");
+                        
+                        if (flagStatus == null) flagStatus = "PR";
+                        if (DB_ENVLOCATION == null) DB_ENVLOCATION = "MI";
+                    }
+                    
+                    if (flagStatus == null || DB_ENVLOCATION == null) {
+                        flagStatus = "PR";
+                        DB_ENVLOCATION = "MI";
+                        System.out.println("No flag data found, using defaults: PR/MI");
+                    }
+                    
+                    System.out.println("Flag Status: " + flagStatus + ", Location: " + DB_ENVLOCATION);
+                    flagLoaded = true;
+                    lastLoadedTime = currentTime;
+                }
+               
+            } catch (Exception e) {
+                System.out.println("Primary connection failed, trying DR...");
+               
+                try {
+                    Class.forName(DBConfig.getDriver());
+                    try {
+                        tempConn = DriverManager.getConnection(
+                            "jdbc:oracle:thin:@10.176.0.109:1787/sidashdb_srv",
+                            DBConfig.getEisappsupportUsername(),
+                            DBConfig.getPrimaryPassword()
+                        );
+                        System.out.println("Connected to DR DB 1");
+                    } catch(Exception Er) {
+                        tempConn = DriverManager.getConnection(
+                            "jdbc:oracle:thin:@10.176.0.110:1787/sidashdb_srv",
+                            DBConfig.getEisappsupportUsername(),
+                            DBConfig.getPrimaryPassword()
+                        );
+                        System.out.println("Connected to DR DB 2");
+                    }
+                   
+                    String sql = "select * from connection_master";
+                    try (Statement smt = tempConn.createStatement();
+                         ResultSet rs = smt.executeQuery(sql)) {
+                        
+                        while (rs.next()) {
+                            flagStatus = rs.getString("FLAG");
+                            DB_ENVLOCATION = rs.getString("DB_LOCATION");
+                            
+                            if (flagStatus == null) flagStatus = "DR";
+                            if (DB_ENVLOCATION == null) DB_ENVLOCATION = "MI";
+                        }
+                        
+                        if (flagStatus == null || DB_ENVLOCATION == null) {
+                            flagStatus = "DR";
+                            DB_ENVLOCATION = "MI";
+                            System.out.println("No flag data found in DR, using defaults: DR/MI");
+                        }
+                        
+                        System.out.println("Flag Status: " + flagStatus + ", Location: " + DB_ENVLOCATION);
+                        flagLoaded = true;
+                        lastLoadedTime = currentTime;
+                    }
+                   
+                } catch(Exception e1) {
+                    System.out.println("All connection attempts failed");
+                    flagStatus = "PR";
+                    DB_ENVLOCATION = "MI";
+                    e1.printStackTrace();
+                }
+            } finally {
+                if (tempConn != null) {
+                    try {
+                        tempConn.close();
+                        System.out.println("Flag check connection closed");
+                    } catch (SQLException e) {
+                        System.err.println("Error closing flag connection: " + e.getMessage());
+                    }
+                }
+            }
+        }
+    }
+
+    public static String getFlagStatus() {
+        return flagStatus;
+    }
+
+    public static String getDBEnvLocation() {
+        return DB_ENVLOCATION;
+    }
+
+    public static void refreshFlag() {
+        synchronized (lock) {
+            flagLoaded = false;
+            lastLoadedTime = 0;
+            flag();
+        }
+    }
+
+    // ✅ OLD METHOD - Returns Connection (FOR BACKWARD COMPATIBILITY - 1000 PAGES)
+    public static Connection getIIBDBConnection() {
+        DBConfig.checkAndReload();
+        flag();
+        System.out.println("getIIBDBConnection - flagStatus: " + flagStatus + ", DB_ENVLOCATION: " + DB_ENVLOCATION);
+       
+        if (flagStatus == null || DB_ENVLOCATION == null) {
+            flagStatus = "PR";
+            DB_ENVLOCATION = "MI";
+            System.out.println("Using default values due to null flag/location");
+        }
+        
+        Connection conn = null;
+        if(flagStatus.equals("DR") && DB_ENVLOCATION.equals("MI")) {    
+            System.out.println("In Hyderabad DR Environment");
+            conn = createIIBHyderabadDRConnection();
+        } else if(flagStatus.equals("PR") && DB_ENVLOCATION.equals("MI")) {
+            System.out.println("In Hyderabad PR Environment");
+            conn = createIIBHyderabadPRConnection();
+        } else {
+            System.out.println("In Mumbai Environment");
+           
+            if(flagStatus.equals("DR")) {
+                System.out.println("In Mumbai DR");
+                conn = createIIBMumbaiDRConnection();
+            } else if(flagStatus.equals("PR")) {
+                System.out.println("In Mumbai PR");
+                conn = createIIBMumbaiPRConnection();
+            }
+        }
+        
+        return conn; // ✅ Returns plain Connection
+    }
+
+    // ✅ NEW METHOD - Returns AutoCloseableConnection (FOR NEW CODE)
+    public static AutoCloseableConnection getIIBDBConnectionAuto() {
+        Connection conn = getIIBDBConnection();
+        return new AutoCloseableConnection(conn);
+    }
+
+    // ✅ OLD METHOD - Returns Connection (FOR BACKWARD COMPATIBILITY)
+    public static Connection getSIDBConnection() {
+        DBConfig.checkAndReload();
+        flag();
+        System.out.println("getSIDBConnection - flagStatus: " + flagStatus);
+       
+        if (flagStatus == null) {
+            flagStatus = "PR";
+            System.out.println("Flag status is null, using default: PR");
+        }
+        
+        Connection conn = null;
+        try {
+            Class.forName(DBConfig.getDriver());
+           
+            if (flagStatus.equals("DR")) {
+                System.out.println("Connecting to SI DR Database");
+               
+                try {
+                    conn = DriverManager.getConnection(
+                        "jdbc:oracle:thin:@eissipr-scan1.sbi.co.in:1786/sbisipr",
+                        DBConfig.getSbisisupportUsername(),
+                        DBConfig.getSiPassword()
+                    );
+                    System.out.println("SI DR Connected to URL 1");
+                } catch (SQLException e2) {
+                    try {
+                        conn = DriverManager.getConnection(
+                            "jdbc:oracle:thin:@10.191.170.109:1787/sbisipr",
+                            DBConfig.getSbisisupportUsername(),
+                            DBConfig.getSiPassword()
+                        );
+                        System.out.println("SI DR Connected to URL 2");
+                    } catch(Exception e) {
+                        conn = DriverManager.getConnection(
+                            "jdbc:oracle:thin:@10.191.170.110:1787/sbisipr",
+                            DBConfig.getSbisisupportUsername(),
+                            DBConfig.getSiPassword()
+                        );
+                        System.out.println("SI DR Connected to URL 3");
+                    }
+                }
+            } else if (flagStatus.equals("PR")) {
+                System.out.println("Connecting to SI PR Database");
+               
+                try {
+                    conn = DriverManager.getConnection(
+                        "jdbc:oracle:thin:@eissidr-scan1.sbi.co.in:1786/sbisidr",
+                        DBConfig.getSbisisupportUsername(),
+                        DBConfig.getSiPassword()
+                    );
+                    System.out.println("SI PR Connected to URL 1");
+                } catch (SQLException e1) {
+                    try {
+                        conn = DriverManager.getConnection(
+                            "jdbc:oracle:thin:@10.176.0.109:1787/sbisidr",
+                            DBConfig.getSbisisupportUsername(),
+                            DBConfig.getSiPassword()
+                        );
+                        System.out.println("SI PR Connected to URL 2");
+                    } catch(Exception e2) {
+                        conn = DriverManager.getConnection(
+                            "jdbc:oracle:thin:@10.176.0.110:1787/sbisidr",
+                            DBConfig.getSbisisupportUsername(),
+                            DBConfig.getSiPassword()
+                        );
+                        System.out.println("SI PR Connected to URL 3");
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("SI DB Connection Error: " + e.getMessage());
+        }
+        
+        return conn; // ✅ Returns plain Connection
+    }
+
+    // ✅ NEW METHOD - Returns AutoCloseableConnection
+    public static AutoCloseableConnection getSIDBConnectionAuto() {
+        Connection conn = getSIDBConnection();
+        return new AutoCloseableConnection(conn);
+    }
+
+    // ✅ OLD METHOD - Returns Connection (FOR BACKWARD COMPATIBILITY)
+    public static Connection getReportDBConnection() {
+        DBConfig.checkAndReload();
+        flag();
+        System.out.println("getReportDBConnection - flagStatus: " + flagStatus);
+       
+        if (flagStatus == null) {
+            flagStatus = "PR";
+            System.out.println("Flag status is null, using default: PR");
+        }
+        
+        Connection conn = null;
+        try {
+            Class.forName(DBConfig.getDriver());
+           
+            if (flagStatus.equals("DR")) {
+                System.out.println("Connecting to Report DR Database");
+                conn = DriverManager.getConnection(
+                    "jdbc:oracle:thin:@eissidr-scan1.sbi.co.in:1786/sidashdb_srv",
+                    DBConfig.getEISAPPSUPPORTUsername(),
+                    DBConfig.getPrimaryPassword()
+                );
+                System.out.println("Report DR Connected");
+               
+            } else if (flagStatus.equals("PR")) {
+                System.out.println("Connecting to Report PR Database");
+                conn = DriverManager.getConnection(
+                    "jdbc:oracle:thin:@eissipr-scan1.sbi.co.in:1786/REPODB_SRV",
+                    DBConfig.getEISAPPSUPPORTUsername(),
+                    DBConfig.getPrimaryPassword()
+                );
+                System.out.println("Report PR Connected");
+            }
+        } catch (Exception e) {
+            System.err.println("Report DB Connection Error: " + e.getMessage());
+        }
+        
+        return conn; // ✅ Returns plain Connection
+    }
+
+    // ✅ NEW METHOD - Returns AutoCloseableConnection
+    public static AutoCloseableConnection getReportDBConnectionAuto() {
+        Connection conn = getReportDBConnection();
+        return new AutoCloseableConnection(conn);
+    }
+
+    // ============ PRIVATE CONNECTION CREATION METHODS ============
+    // ✅ NO CHANGE - All remain exactly same
+
+    private static Connection createIIBHyderabadDRConnection() {
+        try {
+            Class.forName(DBConfig.getDriver());
+           
+            String[] urls = {
+                "jdbc:oracle:thin:@10.191.170.107:1787/hiibprdb",
+                "jdbc:oracle:thin:@10.191.170.108:1787/hiibprdb",
+                "jdbc:oracle:thin:@10.191.170.109:1787/hiibprdb",
+                "jdbc:oracle:thin:@10.191.170.110:1787/hiibprdb",
+                "jdbc:oracle:thin:@10.191.170.111:1787/hiibprdb",
+                "jdbc:oracle:thin:@10.191.170.112:1787/hiibprdb"
+            };
+           
+            for (String url : urls) {
+                try {
+                    Connection conn = DriverManager.getConnection(
+                        url,
+                        DBConfig.getEisappsupportUsername(),
+                        DBConfig.getIibPassword()
+                    );
+                    System.out.println("IIB Hyderabad DR Connected: " + url);
+                    return conn;
+                } catch (SQLException e) {
+                    System.out.println("IIB Hyderabad DR Failed: " + url + " - " + e.getMessage());
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Error creating IIB Hyderabad DR connection: " + e.getMessage());
+        }
+        return null;
+    }
+
+    private static Connection createIIBHyderabadPRConnection() {
+        try {
+            Class.forName(DBConfig.getDriver());
+           
+            String[] urls = {
+                "jdbc:oracle:thin:@10.176.0.107:1787/HIIBPRDB_SRV",
+                "jdbc:oracle:thin:@10.176.0.108:1787/HIIBPRDB_SRV",
+                "jdbc:oracle:thin:@10.176.0.109:1787/HIIBPRDB_SRV",
+                "jdbc:oracle:thin:@10.176.0.110:1787/HIIBPRDB_SRV",
+                "jdbc:oracle:thin:@10.176.0.111:1787/HIIBPRDB_SRV"
+            };
+           
+            for (String url : urls) {
+                try {
+                    Connection conn = DriverManager.getConnection(
+                        url,
+                        DBConfig.getEisappsupportUsername(),
+                        DBConfig.getIibPassword()
+                    );
+                    System.out.println("IIB Hyderabad PR Connected: " + url);
+                    return conn;
+                } catch (SQLException e) {
+                    System.out.println("IIB Hyderabad PR Failed: " + url + " - " + e.getMessage());
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Error creating IIB Hyderabad PR connection: " + e.getMessage());
+        }
+        return null;
+    }
+
+    private static Connection createIIBMumbaiDRConnection() {
+        try {
+            Class.forName(DBConfig.getDriver());
+           
+            String[] urls = {
+                "jdbc:oracle:thin:@10.191.170.107:1787/MIIBDRDB_SRV",
+                "jdbc:oracle:thin:@10.191.170.108:1787/MIIBDRDB_SRV",
+                "jdbc:oracle:thin:@10.191.170.109:1787/MIIBDRDB_SRV",
+                "jdbc:oracle:thin:@10.191.170.110:1787/MIIBDRDB_SRV",
+                "jdbc:oracle:thin:@10.191.170.111:1787/MIIBDRDB_SRV",
+                "jdbc:oracle:thin:@10.191.170.112:1787/MIIBDRDB_SRV"
+            };
+           
+            for (String url : urls) {
+                try {
+                    Connection conn = DriverManager.getConnection(
+                        url,
+                        DBConfig.getEisappsupportUsername(),
+                        DBConfig.getDrPassword()
+                    );
+                    System.out.println("IIB Mumbai DR Connected: " + url);
+                    return conn;
+                } catch (SQLException e) {
+                    System.out.println("IIB Mumbai DR Failed: " + url + " - " + e.getMessage());
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Error creating IIB Mumbai DR connection: " + e.getMessage());
+        }
+        return null;
+    }
+
+    private static Connection createIIBMumbaiPRConnection() {
+        try {
+            Class.forName(DBConfig.getDriver());
+           
+            String[] urls = {
+                "jdbc:oracle:thin:@10.176.0.107:1787/MIBDRCDB_SRV",
+                "jdbc:oracle:thin:@10.176.0.108:1787/MIBDRCDB_SRV",
+                "jdbc:oracle:thin:@10.176.0.109:1787/MIBDRCDB_SRV",
+                "jdbc:oracle:thin:@10.176.0.110:1787/MIBDRCDB_SRV",
+                "jdbc:oracle:thin:@10.176.0.111:1787/MIBDRCDB_SRV"
+            };
+           
+            for (String url : urls) {
+                try {
+                    Connection conn = DriverManager.getConnection(
+                        url,
+                        DBConfig.getEisappsupportUsername(),
+                        DBConfig.getDrPassword()
+                    );
+                    System.out.println("IIB Mumbai PR Connected: " + url);
+                    return conn;
+                } catch (SQLException e) {
+                    System.out.println("IIB Mumbai PR Failed: " + url + " - " + e.getMessage());
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Error creating IIB Mumbai PR connection: " + e.getMessage());
+        }
+        return null;
+    }
+
+    // ============ UTILITY METHODS ============
+    
+    public static void reloadDBConfig() {
+        DBConfig.reloadConfig();
+        synchronized (lock) {
+            flagLoaded = false;
+            lastLoadedTime = 0;
+        }
+    }
+   
+    public static void showCurrentConfig() {
+        DBConfig.printCurrentConfig();
+    }
+
+    public static void closeConnection(Connection conn) {
+        if (conn != null) {
+            try {
+                if (!conn.isClosed()) {
+                    conn.close();
+                    System.out.println("Connection closed successfully");
+                }
+            } catch (SQLException e) {
+                System.err.println("Error closing connection: " + e.getMessage());
+            }
+        }
+    }
+}
+
+// ============ AUTO-CLOSEABLE WRAPPER CLASS ============
+class AutoCloseableConnection implements AutoCloseable {
+    private Connection connection;
+    private boolean autoClose = true;
+
+    public AutoCloseableConnection(Connection connection) {
+        this.connection = connection;
+    }
+
+    public Connection getConnection() {
+        return connection;
+    }
+
+    public void setAutoClose(boolean autoClose) {
+        this.autoClose = autoClose;
+    }
+
+    @Override
+    public void close() throws Exception {
+        if (autoClose && connection != null) {
+            try {
+                if (!connection.isClosed()) {
+                    connection.close();
+                    System.out.println("Connection auto-closed successfully");
+                }
+            } catch (SQLException e) {
+                System.err.println("Error auto-closing connection: " + e.getMessage());
+            }
+        }
+    }
+}
