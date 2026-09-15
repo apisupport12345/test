@@ -1,72 +1,935 @@
-------------Gen 5- ------------------
+package com.jdbc;
 
-SELECT  broker_eg, broker_name, ERROR_CODE, ERROR_DESCRIPTION, url, api_name,
+import java.sql.Connection;
+import java.sql.DatabaseMetaData;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+public class QueryRunner {
+
+    // ============ RESULT ============
+    public static class QueryResult {
+        public boolean success;
+        public String message;
+        public List<String> columns = new ArrayList<>();
+        public List<Map<String, Object>> rows = new ArrayList<>();
+        public int updateCount = -1;
+        public long executionTimeMs;
+        public String queryType;
+    }
+
+    // ============ SUGGESTION ============
+    public static class Suggestion {
+        public String label;
+        public String insert;
+        public String type;
+        public Suggestion(String label, String insert, String type) {
+            this.label = label;
+            this.insert = insert;
+            this.type = type;
+        }
+    }
+
+    // ============ KEYWORDS ============
+    private static final String[] KEYWORDS = {
+        "SELECT", "FROM", "WHERE", "AND", "OR", "NOT", "NULL", "IS", "IN",
+        "LIKE", "BETWEEN", "ORDER BY", "GROUP BY", "HAVING", "JOIN", "INNER JOIN",
+        "LEFT JOIN", "RIGHT JOIN", "FULL JOIN", "ON", "AS", "DISTINCT", "COUNT",
+        "SUM", "AVG", "MIN", "MAX", "INSERT INTO", "VALUES", "UPDATE", "SET",
+        "DELETE FROM", "CREATE TABLE", "DROP TABLE", "ALTER TABLE", "TRUNCATE",
+        "UNION", "UNION ALL", "EXISTS", "CASE", "WHEN", "THEN", "ELSE", "END",
+        "ROWNUM", "SYSDATE", "DUAL", "FETCH FIRST", "OFFSET", "LIMIT",
+        "ASC", "DESC", "COMMIT", "ROLLBACK", "WITH", "PARTITION"
+    };
+
+    public static String getDefaultSchema(String dbType) {
+        if ("IIB".equalsIgnoreCase(dbType))    return "EISAPP";
+        if ("SI".equalsIgnoreCase(dbType))     return "SBISI";
+        return null;
+    }
+
+    private static Connection getConn(String dbType) throws Exception {
+        if ("IIB".equalsIgnoreCase(dbType)) {
+            return DBUtilityAuto.getIIBDBConnection();
+        } else if ("SI".equalsIgnoreCase(dbType)) {
+            return DBUtilityAuto.getSIDBConnection();
+        } else {
+            return DBUtilityAuto.getReportDBConnection();
+        }
+    }
+
+    // ============ SCHEMAS ============
+    public static List<Suggestion> getSchemaSuggestions(String dbType) {
+        List<Suggestion> list = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
+        Connection conn = null;
+        ResultSet rs = null;
+        try {
+            conn = getConn(dbType);
+            if (conn == null) return list;
+            DatabaseMetaData md = conn.getMetaData();
+
+            String defSch = getDefaultSchema(dbType);
+            if (defSch != null && seen.add(defSch.toUpperCase())) {
+                list.add(new Suggestion(defSch, defSch + ".", "SCHEMA"));
+            }
+            String userSch = md.getUserName();
+            if (userSch != null && seen.add(userSch.toUpperCase())) {
+                list.add(new Suggestion(userSch, userSch + ".", "SCHEMA"));
+            }
+            rs = md.getSchemas();
+            int count = 0;
+            while (rs.next() && count < 50) {
+                String s = rs.getString("TABLE_SCHEM");
+                if (s == null) continue;
+                String upper = s.toUpperCase();
+                if (upper.startsWith("SYS") || upper.startsWith("XDB")
+                    || upper.equals("MDSYS") || upper.equals("CTXSYS")
+                    || upper.equals("DBSNMP") || upper.equals("OUTLN")
+                    || upper.equals("APPQOSSYS") || upper.equals("ANONYMOUS")
+                    || upper.equals("OLAPSYS") || upper.equals("ORDDATA")
+                    || upper.equals("ORDSYS") || upper.equals("WMSYS")
+                    || upper.equals("LBACSYS") || upper.equals("AUDSYS")
+                    || upper.equals("GSMADMIN_INTERNAL") || upper.equals("OJVMSYS")) continue;
+                if (seen.add(upper)) {
+                    list.add(new Suggestion(s, s + ".", "SCHEMA"));
+                    count++;
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Schema suggestion error: " + e.getMessage());
+        } finally {
+            if (rs != null) try { rs.close(); } catch (Exception ignored) {}
+            if (conn != null) try { conn.close(); } catch (Exception ignored) {}
+        }
+        return list;
+    }
+
+    // ============ TABLES ============
+    public static List<Suggestion> getTableSuggestions(String dbType) {
+        List<Suggestion> list = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
+        Connection conn = null;
+        ResultSet rs = null;
+        try {
+            conn = getConn(dbType);
+            if (conn == null) return list;
+            DatabaseMetaData md = conn.getMetaData();
+
+            String defSch = getDefaultSchema(dbType);
+            if (defSch != null) {
+                rs = md.getTables(null, defSch, "%", new String[]{"TABLE", "VIEW"});
+                while (rs.next()) {
+                    String tbl = rs.getString("TABLE_NAME");
+                    String key = defSch.toUpperCase() + "." + tbl.toUpperCase();
+                    if (seen.add(key)) {
+                        list.add(new Suggestion(defSch + "." + tbl, defSch + "." + tbl, "TABLE"));
+                    }
+                }
+                try { rs.close(); } catch (Exception ignored) {}
+            }
+            String userSch = md.getUserName();
+            if (userSch != null) {
+                rs = md.getTables(null, userSch, "%", new String[]{"TABLE", "VIEW"});
+                while (rs.next()) {
+                    String tbl = rs.getString("TABLE_NAME");
+                    String key = userSch.toUpperCase() + "." + tbl.toUpperCase();
+                    if (seen.add(key)) {
+                        list.add(new Suggestion(tbl, tbl, "TABLE"));
+                    }
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Table suggestion error: " + e.getMessage());
+        } finally {
+            if (rs != null) try { rs.close(); } catch (Exception ignored) {}
+            if (conn != null) try { conn.close(); } catch (Exception ignored) {}
+        }
+        return list;
+    }
+
+    // ============ COLUMNS ============
+    public static List<Suggestion> getColumnSuggestions(String dbType, String schema, String tableName) {
+        List<Suggestion> list = new ArrayList<>();
+        Connection conn = null;
+        ResultSet rs = null;
+        try {
+            conn = getConn(dbType);
+            if (conn == null) return list;
+            DatabaseMetaData md = conn.getMetaData();
+            String sch = (schema != null && !schema.isEmpty()) ? schema : md.getUserName();
+            rs = md.getColumns(null, sch.toUpperCase(), tableName.toUpperCase(), "%");
+            while (rs.next()) {
+                String col = rs.getString("COLUMN_NAME");
+                String type = rs.getString("TYPE_NAME");
+                list.add(new Suggestion(col, col, "COLUMN:" + type));
+            }
+        } catch (Exception e) {
+            System.err.println("Column suggestion error: " + e.getMessage());
+        } finally {
+            if (rs != null) try { rs.close(); } catch (Exception ignored) {}
+            if (conn != null) try { conn.close(); } catch (Exception ignored) {}
+        }
+        return list;
+    }
+
+    public static List<Suggestion> getKeywordSuggestions() {
+        List<Suggestion> list = new ArrayList<>();
+        for (String k : KEYWORDS) list.add(new Suggestion(k, k, "KEYWORD"));
+        return list;
+    }
+
+    // ============ EXECUTE ============
+    public static QueryResult execute(String sql, String dbType) {
+        QueryResult result = new QueryResult();
+        long start = System.currentTimeMillis();
+
+        if (sql == null || sql.trim().isEmpty()) {
+            result.success = false;
+            result.message = "Query empty hai. Kuch likho!";
+            return result;
+        }
+
+        Connection conn = null;
+        Statement stmt = null;
+        ResultSet rs = null;
+
+        try {
+            conn = getConn(dbType);
+            if (conn == null) {
+                result.success = false;
+                result.message = "Connection nahi mila! DB down ho sakta hai.";
+                return result;
+            }
+            stmt = conn.createStatement();
+            String trimmed = sql.trim();
+            while (trimmed.endsWith(";")) trimmed = trimmed.substring(0, trimmed.length() - 1).trim();
+            String upper = trimmed.toUpperCase();
+
+            boolean isSelect = upper.startsWith("SELECT")
+                    || upper.startsWith("WITH")
+                    || upper.startsWith("SHOW")
+                    || upper.startsWith("DESC");
+
+            if (isSelect) {
+                result.queryType = "SELECT";
+                rs = stmt.executeQuery(trimmed);
+                ResultSetMetaData md = rs.getMetaData();
+                int colCount = md.getColumnCount();
+                for (int i = 1; i <= colCount; i++) result.columns.add(md.getColumnLabel(i));
+                int rowLimit = 5000;
+                while (rs.next() && result.rows.size() < rowLimit) {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    for (int i = 1; i <= colCount; i++) row.put(md.getColumnLabel(i), rs.getObject(i));
+                    result.rows.add(row);
+                }
+                result.success = true;
+                result.message = "Query chal gayi. " + result.rows.size() + " rows mile.";
+            } else {
+                result.queryType = upper.split("\\s+")[0];
+                boolean hasResultSet = stmt.execute(trimmed);
+                if (hasResultSet) {
+                    rs = stmt.getResultSet();
+                    ResultSetMetaData md = rs.getMetaData();
+                    int colCount = md.getColumnCount();
+                    for (int i = 1; i <= colCount; i++) result.columns.add(md.getColumnLabel(i));
+                    while (rs.next() && result.rows.size() < 5000) {
+                        Map<String, Object> row = new LinkedHashMap<>();
+                        for (int i = 1; i <= colCount; i++) row.put(md.getColumnLabel(i), rs.getObject(i));
+                        result.rows.add(row);
+                    }
+                } else {
+                    result.updateCount = stmt.getUpdateCount();
+                }
+                result.success = true;
+                result.message = "Query execute ho gayi. Rows affected: " + result.updateCount;
+            }
+        } catch (Exception e) {
+            result.success = false;
+            result.message = "Error: " + e.getMessage();
+        } finally {
+            if (rs != null) try { rs.close(); } catch (Exception ignored) {}
+            if (stmt != null) try { stmt.close(); } catch (Exception ignored) {}
+            if (conn != null) try { conn.close(); } catch (Exception ignored) {}
+            result.executionTimeMs = System.currentTimeMillis() - start;
+        }
+        return result;
+    }
+
+    public static String esc(String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\").replace("\"", "\\\"")
+                .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
+    }
+}
+
+
+--------------------------------------------------------------------------------------
+
+
+<%@ page language="java" contentType="text/html; charset=UTF-8" pageEncoding="UTF-8"%>
+<%@ page import="com.jdbc.QueryRunner" %>
+<%@ page import="com.jdbc.QueryRunner.QueryResult" %>
+<%@ page import="com.jdbc.QueryRunner.Suggestion" %>
+<%@ page import="java.util.*" %>
+<%
+    // ============================================================
+    // AJAX ENDPOINT (columns fetch for suggestions)
+    // ============================================================
+    String ajax = request.getParameter("ajax");
+    if ("cols".equals(ajax)) {
+        String ajaxDb     = request.getParameter("db");
+        String ajaxSchema = request.getParameter("schema");
+        String ajaxTable  = request.getParameter("table");
+        if (ajaxDb == null) ajaxDb = "IIB";
+        if (ajaxTable == null) ajaxTable = "";
+        List<Suggestion> cols = QueryRunner.getColumnSuggestions(ajaxDb, ajaxSchema, ajaxTable);
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < cols.size(); i++) {
+            Suggestion s = cols.get(i);
+            if (i > 0) sb.append(",");
+            sb.append("{\"label\":\"").append(QueryRunner.esc(s.label))
+              .append("\",\"insert\":\"").append(QueryRunner.esc(s.insert))
+              .append("\",\"type\":\"").append(QueryRunner.esc(s.type)).append("\"}");
+        }
+        sb.append("]");
+        response.setContentType("application/json");
+        response.setCharacterEncoding("UTF-8");
+        out.print(sb.toString());
+        out.flush();
+        return;
+    }
+
+    // ============================================================
+    // NORMAL PAGE LOAD
+    // ============================================================
+    String sql    = request.getParameter("sql");
+    String dbType = request.getParameter("dbType");
+    if (dbType == null || dbType.trim().isEmpty()) dbType = "IIB";
+
+    List<Suggestion> schemas  = QueryRunner.getSchemaSuggestions(dbType);
+    List<Suggestion> tables   = QueryRunner.getTableSuggestions(dbType);
+    List<Suggestion> keywords = QueryRunner.getKeywordSuggestions();
+
+    StringBuilder schJson = new StringBuilder("[");
+    for (int i = 0; i < schemas.size(); i++) {
+        Suggestion s = schemas.get(i);
+        if (i > 0) schJson.append(",");
+        schJson.append("{\"label\":\"").append(QueryRunner.esc(s.label))
+               .append("\",\"insert\":\"").append(QueryRunner.esc(s.insert))
+               .append("\",\"type\":\"SCHEMA\"}");
+    }
+    schJson.append("]");
+
+    StringBuilder tblJson = new StringBuilder("[");
+    for (int i = 0; i < tables.size(); i++) {
+        Suggestion s = tables.get(i);
+        if (i > 0) tblJson.append(",");
+        tblJson.append("{\"label\":\"").append(QueryRunner.esc(s.label))
+               .append("\",\"insert\":\"").append(QueryRunner.esc(s.insert))
+               .append("\",\"type\":\"TABLE\"}");
+    }
+    tblJson.append("]");
+
+    StringBuilder kwJson = new StringBuilder("[");
+    for (int i = 0; i < keywords.size(); i++) {
+        Suggestion s = keywords.get(i);
+        if (i > 0) kwJson.append(",");
+        kwJson.append("{\"label\":\"").append(QueryRunner.esc(s.label))
+              .append("\",\"insert\":\"").append(QueryRunner.esc(s.insert))
+              .append("\",\"type\":\"KEYWORD\"}");
+    }
+    kwJson.append("]");
+
+    QueryResult qr = null;
+    if (sql != null && !sql.trim().isEmpty()) {
+        qr = QueryRunner.execute(sql, dbType);
+    }
+
+    String dbLabel = "IIB".equals(dbType) ? "IIB DB (eisapp)"
+                   : "SI".equals(dbType)  ? "SI DB (sbisi)"
+                   : "Report DB";
+%>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Query Runner</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            height: 100%; width: 100%;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: #0f1419;
+            color: #cdd6f4;
+            overflow-x: hidden;
+        }
+        /* ============ TOP BAR ============ */
+        .topbar {
+            background: linear-gradient(90deg, #1a3d6d 0%, #2b5ba0 100%);
+            padding: 12px 22px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 2px 20px rgba(0,0,0,0.5);
+            border-bottom: 1px solid #2b3a55;
+            position: sticky;
+            top: 0;
+            z-index: 50;
+        }
+        .brand {
+            display: flex; align-items: center; gap: 10px;
+            font-size: 18px; font-weight: 700; color: #fff;
+        }
+        .brand-icon { font-size: 20px; }
+        .brand small {
+            font-size: 11.5px; font-weight: 400;
+            opacity: 0.85; margin-left: 6px;
+        }
+        .db-indicator {
+            display: flex; align-items: center; gap: 8px;
+            background: rgba(0,0,0,0.3);
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 12.5px;
+            color: #d7e3f5;
+            border: 1px solid rgba(255,255,255,0.15);
+        }
+        .db-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: #4ade80; box-shadow: 0 0 10px #4ade80;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+
+        /* ============ LAYOUT: SIDEBAR + MAIN ============ */
+        .layout {
+            display: grid;
+            grid-template-columns: 320px 1fr;
+            min-height: calc(100vh - 55px);
+            width: 100%;
+        }
+        @media (max-width: 1000px) {
+            .layout { grid-template-columns: 1fr; }
+            .sidebar { max-height: 340px; }
+        }
+
+        /* ============ SIDEBAR ============ */
+        .sidebar {
+            background: #181825;
+            border-right: 1px solid #313244;
+            padding: 16px;
+            overflow-y: auto;
+            max-height: calc(100vh - 55px);
+            position: sticky;
+            top: 55px;
+        }
+        .sidebar::-webkit-scrollbar { width: 8px; }
+        .sidebar::-webkit-scrollbar-track { background: #181825; }
+        .sidebar::-webkit-scrollbar-thumb { background: #45475a; border-radius: 4px; }
+
+        .sidebar h3 {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: #89b4fa;
+            margin-bottom: 10px;
+            margin-top: 6px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .search-box {
+            width: 100%;
+            padding: 8px 12px;
+            background: #1e1e2e;
+            border: 1px solid #45475a;
+            border-radius: 8px;
+            color: #cdd6f4;
+            font-size: 12.5px;
+            margin-bottom: 12px;
+            outline: none;
+        }
+        .search-box:focus { border-color: #89b4fa; }
+
+        .query-group {
+            margin-bottom: 6px;
+            border: 1px solid #313244;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #1e1e2e;
+        }
+        .group-header {
+            padding: 9px 12px;
+            background: #22223a;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 12.5px;
+            font-weight: 700;
+            color: #cdd6f4;
+            user-select: none;
+            transition: 0.15s;
+        }
+        .group-header:hover { background: #2a2a44; }
+        .group-header .arrow {
+            transition: transform 0.2s;
+            font-size: 10px;
+            color: #89b4fa;
+        }
+        .group-header.open .arrow { transform: rotate(90deg); }
+        .group-body {
+            display: none;
+            padding: 4px 0;
+        }
+        .group-body.open { display: block; }
+
+        .q-item {
+            padding: 8px 14px 8px 20px;
+            cursor: pointer;
+            font-size: 12.5px;
+            color: #b9c5da;
+            border-left: 3px solid transparent;
+            transition: 0.12s;
+            line-height: 1.35;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .q-item:hover {
+            background: #2a2a44;
+            color: #fff;
+            border-left-color: #89b4fa;
+        }
+        .q-item.highlight {
+            background: #2a2a44;
+            border-left-color: #4ade80;
+        }
+        .q-item .q-dot {
+            width: 6px; height: 6px;
+            border-radius: 50%;
+            background: #585b70;
+            flex-shrink: 0;
+        }
+        .q-item:hover .q-dot { background: #89b4fa; }
+
+        /* ============ MAIN PANEL ============ */
+        .main-panel {
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+            width: 100%;
+        }
+        .editor-panel {
+            background: #1e1e2e;
+            padding: 16px 22px;
+            border-bottom: 2px solid #0f1419;
+        }
+        .editor-wrap {
+            position: relative;
+            background: #181825;
+            border-radius: 10px;
+            border: 2px solid #313244;
+            overflow: hidden;
+        }
+        .editor-wrap:focus-within {
+            border-color: #89b4fa;
+            box-shadow: 0 0 0 4px rgba(137,180,250,0.12);
+        }
+        textarea.sql-editor {
+            width: 100%;
+            min-height: 260px;
+            padding: 14px 16px;
+            background: #181825;
+            color: #cdd6f4;
+            border: none;
+            outline: none;
+            resize: vertical;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.7;
+            caret-color: #89b4fa;
+            tab-size: 4;
+        }
+        textarea.sql-editor::placeholder { color: #585b70; }
+
+        /* ============ SUGGESTIONS ============ */
+        .suggest-box {
+            position: absolute;
+            background: #1e1e2e;
+            border: 1px solid #45475a;
+            border-radius: 10px;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.7);
+            max-height: 280px;
+            overflow-y: auto;
+            z-index: 100;
+            display: none;
+            min-width: 280px;
+        }
+        .suggest-box::-webkit-scrollbar { width: 8px; }
+        .suggest-box::-webkit-scrollbar-track { background: #181825; }
+        .suggest-box::-webkit-scrollbar-thumb { background: #45475a; border-radius: 4px; }
+
+        .suggest-item {
+            padding: 8px 13px;
+            cursor: pointer;
+            font-family: 'Consolas', monospace;
+            font-size: 13px;
+            color: #cdd6f4;
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            align-items: center;
+            border-bottom: 1px solid #313244;
+        }
+        .suggest-item:last-child { border-bottom: none; }
+        .suggest-item:hover, .suggest-item.active {
+            background: #313244; color: #fff;
+        }
+        .suggest-item .tag {
+            font-size: 10px; padding: 2px 8px;
+            border-radius: 10px; font-weight: 700;
+            letter-spacing: 0.5px; white-space: nowrap;
+        }
+        .tag-KEYWORD { background: #4a3a6e; color: #c9a9ff; }
+        .tag-SCHEMA  { background: #1e3a5f; color: #7eb8ff; }
+        .tag-TABLE   { background: #1e4d3a; color: #7ee2a8; }
+        .tag-COLUMN  { background: #4d3a1e; color: #ffc87e; }
+
+        /* ============ BUTTONS ============ */
+        .toolbar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 12px;
+        }
+        button {
+            padding: 11px 24px;
+            border: none;
+            border-radius: 9px;
+            font-size: 13.5px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: 0.18s;
+            letter-spacing: 0.3px;
+        }
+        .btn-run {
+            background: linear-gradient(135deg, #2e7d32 0%, #43a047 100%);
+            color: #fff;
+            box-shadow: 0 4px 14px rgba(67,160,71,0.4);
+        }
+        .btn-run:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(67,160,71,0.55);
+        }
+        .btn-clear {
+            background: #313244; color: #cdd6f4;
+            border: 2px solid #45475a;
+        }
+        .btn-clear:hover { background: #45475a; }
+        .db-sel {
+            padding: 11px 14px;
+            background: #181825;
+            color: #cdd6f4;
+            border: 2px solid #313244;
+            border-radius: 9px;
+            font-size: 13.5px;
+            font-weight: 600;
+            cursor: pointer;
+            outline: none;
+        }
+        .db-sel:focus { border-color: #89b4fa; }
+
+        .hint-inline {
+            font-size: 11.5px;
+            color: #7f849c;
+            margin-left: auto;
+        }
+        .hint-inline code {
+            background: #313244; padding: 3px 7px;
+            border-radius: 5px; color: #89b4fa;
+            font-family: 'Consolas', monospace;
+        }
+
+        /* ============ RESULT ============ */
+        .result-panel {
+            background: #181825;
+            padding: 18px 22px 40px 22px;
+            flex: 1;
+            min-height: 200px;
+        }
+        .result-header {
+            display: flex; align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap; gap: 10px;
+            margin-bottom: 14px;
+        }
+        .result-title {
+            font-size: 16px; font-weight: 700;
+            color: #89b4fa;
+        }
+        .meta-bar {
+            display: flex; gap: 8px; flex-wrap: wrap;
+        }
+        .meta-bar span {
+            background: #313244; color: #cdd6f4;
+            padding: 5px 12px; border-radius: 20px;
+            font-size: 12px; font-weight: 600;
+            border: 1px solid #45475a;
+        }
+        .meta-bar span b { color: #89b4fa; }
+
+        .alert {
+            padding: 12px 16px;
+            border-radius: 9px;
+            margin-bottom: 14px;
+            font-size: 13.5px;
+            font-weight: 500;
+        }
+        .alert-success {
+            background: rgba(46,158,82,0.12);
+            border-left: 5px solid #4ade80;
+            color: #a7f3c9;
+        }
+        .alert-error {
+            background: rgba(217,48,37,0.12);
+            border-left: 5px solid #f87171;
+            color: #fca5a5;
+            font-family: 'Consolas', monospace;
+            white-space: pre-wrap;
+            font-size: 12.5px;
+        }
+
+        .table-wrap {
+            max-height: 60vh;
+            overflow: auto;
+            border: 1px solid #313244;
+            border-radius: 10px;
+            background: #1e1e2e;
+        }
+        .table-wrap::-webkit-scrollbar { width: 10px; height: 10px; }
+        .table-wrap::-webkit-scrollbar-track { background: #181825; }
+        .table-wrap::-webkit-scrollbar-thumb {
+            background: #45475a; border-radius: 5px;
+            border: 2px solid #181825;
+        }
+        .table-wrap::-webkit-scrollbar-thumb:hover { background: #585b70; }
+
+        table {
+            width: 100%; border-collapse: collapse;
+            font-size: 12.5px;
+        }
+        th {
+            background: #1a3d6d; color: #fff;
+            padding: 11px 13px; text-align: left;
+            position: sticky; top: 0; z-index: 2;
+            font-weight: 600; white-space: nowrap;
+            border-bottom: 2px solid #2b5ba0;
+        }
+        td {
+            padding: 9px 13px;
+            border-bottom: 1px solid #282838;
+            color: #cdd6f4;
+            max-width: 400px; overflow: hidden;
+            text-overflow: ellipsis; white-space: nowrap;
+        }
+        tr:nth-child(even) td { background: #1a1a2a; }
+        tr:hover td { background: #2a2a3e; }
+        td.idx {
+            color: #7f849c; font-weight: 600;
+            font-size: 11.5px;
+            background: #181825 !important;
+            width: 50px; text-align: center;
+        }
+        .null-val { color: #585b70; font-style: italic; }
+        .empty {
+            text-align: center; padding: 50px;
+            color: #7f849c; font-size: 13.5px;
+            background: #1e1e2e; border-radius: 10px;
+            border: 1px dashed #313244;
+        }
+        .welcome {
+            text-align: center; padding: 70px 20px;
+            color: #585b70;
+        }
+        .welcome h2 {
+            color: #45475a; font-size: 20px;
+            margin-bottom: 10px; font-weight: 600;
+        }
+        .welcome p { font-size: 13.5px; color: #7f849c; margin-top: 4px; }
+    </style>
+</head>
+<body>
+
+<!-- ============ TOP BAR ============ -->
+<div class="topbar">
+    <div class="brand">
+        <span class="brand-icon">⚡</span>
+        Query Runner
+        <small>SQL Developer Style</small>
+    </div>
+    <div class="db-indicator">
+        <span class="db-dot"></span>
+        <span>Active: <b style="color:#89b4fa;"><%= dbLabel %></b></span>
+    </div>
+</div>
+
+<div class="layout">
+
+    <!-- ============ SIDEBAR (SAVED QUERIES) ============ -->
+    <div class="sidebar">
+        <h3>📚 Saved Queries</h3>
+        <input type="text" class="search-box" id="qSearch" placeholder="🔍 Search queries...">
+
+        <div id="queryList">
+
+            <!-- ================= GEN 5 ================= -->
+            <div class="query-group" data-group="Gen 5">
+                <div class="group-header" onclick="toggleGroup(this)">
+                    <span>🔴 Gen 5 — Error Summary</span>
+                    <span class="arrow">▶</span>
+                </div>
+                <div class="group-body">
+                    <div class="q-item" onclick="loadQuery(this)">
+                        <span class="q-dot"></span>Gen 5 — Broker-wise error count (last 5 min)
+                        <script type="text/plain" class="q-sql">SELECT broker_eg, broker_name, ERROR_CODE, ERROR_DESCRIPTION, url, api_name,
 COUNT(*) AS CNT FROM EISAPP.API_LOG WHERE Request_date_time>=SYSDATE - INTERVAL '05' MINUTE and
 (substr(error_code,3,3) in ('001','002','007','051','014','111','570','569','052','005','077','003','017','015') and error_code<>'00014' OR error_code in ('401','500'))
 and ERROR_DESCRIPTION is not null and error_description not like '%No active transaction found, please do check GCC machine and retry%'
 GROUP BY broker_eg,broker_name, ERROR_CODE, error_description,url,api_name
-ORDER BY CNT DESC;
+ORDER BY CNT DESC;</script>
+                    </div>
+                </div>
+            </div>
 
----------------------------Daily use GEN 5----------------------------------
-
-select * from eisapp.api_log where
+            <!-- ================= DAILY USE ================= -->
+            <div class="query-group" data-group="Daily Use">
+                <div class="group-header" onclick="toggleGroup(this)">
+                    <span>📅 Daily Use (Last 10 min)</span>
+                    <span class="arrow">▶</span>
+                </div>
+                <div class="group-body">
+                    <div class="q-item" onclick="loadQuery(this)">
+                        <span class="q-dot"></span>api_log — last 10 minutes
+                        <script type="text/plain" class="q-sql">select * from eisapp.api_log where
 request_date_time >= sysdate - interval '10' minute
 --and api_name = ''
 --and url = ''
 --and ERROR_CODE = ''
 --and error_code is null
-order by request_date_time desc;
-
-select error_code, error_description, count(1) from eisapp.api_log where
+order by request_date_time desc;</script>
+                    </div>
+                    <div class="q-item" onclick="loadQuery(this)">
+                        <span class="q-dot"></span>api_log — error summary by api
+                        <script type="text/plain" class="q-sql">select error_code, error_description, count(1) from eisapp.api_log where
 request_date_time >= sysdate - interval '10' minute
 and api_name = ''
-GROUP by error_code, error_description;
-
-select * from eisapp.BACKEND_log where
+GROUP by error_code, error_description;</script>
+                    </div>
+                    <div class="q-item" onclick="loadQuery(this)">
+                        <span class="q-dot"></span>backend_log — last 10 minutes
+                        <script type="text/plain" class="q-sql">select * from eisapp.BACKEND_log where
 request_date_time >= sysdate - interval '10' minute
 --and api_name = ''
 --AND txn_endpoint = ''
 --and END_POINT_URL = ''
 --and error_code is null
-order by request_date_time desc;
-
-select error_code, error_description, count(1) from eisapp.BACKEND_log where
+order by request_date_time desc;</script>
+                    </div>
+                    <div class="q-item" onclick="loadQuery(this)">
+                        <span class="q-dot"></span>backend_log — error summary by api
+                        <script type="text/plain" class="q-sql">select error_code, error_description, count(1) from eisapp.BACKEND_log where
 request_date_time >= sysdate - interval '10' minute
 and api_name = ''
-GROUP by error_code, error_description;
+GROUP by error_code, error_description;</script>
+                    </div>
+                </div>
+            </div>
 
+            <!-- ================= URN SEARCH ================= -->
+            <div class="query-group" data-group="URN Search">
+                <div class="group-header" onclick="toggleGroup(this)">
+                    <span>🔑 URN Search (All Tables)</span>
+                    <span class="arrow">▶</span>
+                </div>
+                <div class="group-body">
+                    <div class="q-item" onclick="loadQuery(this)">
+                        <span class="q-dot"></span>api_log by URN
+                        <script type="text/plain" class="q-sql">select * from eisapp.api_log where URN in ('');</script>
+                    </div>
+                    <div class="q-item" onclick="loadQuery(this)">
+                        <span class="q-dot"></span>api_details by URN
+                        <script type="text/plain" class="q-sql">select * from eisapp.api_details where URN in('');</script>
+                    </div>
+                    <div class="q-item" onclick="loadQuery(this)">
+                        <span class="q-dot"></span>orch_api_log by URN
+                        <script type="text/plain" class="q-sql">select * from eisapp.orch_api_log where URN in ('');</script>
+                    </div>
+                    <div class="q-item" onclick="loadQuery(this)">
+                        <span class="q-dot"></span>orch_api_details by URN
+                        <script type="text/plain" class="q-sql">select * from eisapp.orch_api_details where URN in ('');</script>
+                    </div>
+                    <div class="q-item" onclick="loadQuery(this)">
+                        <span class="q-dot"></span>backend_log by URN
+                        <script type="text/plain" class="q-sql">select * from eisapp.backend_log where URN in ('');</script>
+                    </div>
+                    <div class="q-item" onclick="loadQuery(this)">
+                        <span class="q-dot"></span>backend_details by URN
+                        <script type="text/plain" class="q-sql">select * from eisapp.backend_details where URN in ('');</script>
+                    </div>
+                </div>
+            </div>
 
------------------------------GEN5--------------------------
+            <!-- ================= URL / MAPPERS ================= -->
+            <div class="query-group" data-group="Mappers">
+                <div class="group-header" onclick="toggleGroup(this)">
+                    <span>🗺 URL / Mappers</span>
+                    <span class="arrow">▶</span>
+                </div>
+                <div class="group-body">
+                    <div class="q-item" onclick="loadQuery(this)">
+                        <span class="q-dot"></span>source_mapper
+                        <script type="text/plain" class="q-sql">select * from EISAPP.source_mapper;</script>
+                    </div>
+                    <div class="q-item" onclick="loadQuery(this)">
+                        <span class="q-dot"></span>url_mapper
+                        <script type="text/plain" class="q-sql">select * from EISAPP.url_mapper;</script>
+                    </div>
+                    <div class="q-item" onclick="loadQuery(this)">
+                        <span class="q-dot"></span>urn_details
+                        <script type="text/plain" class="q-sql">select * from EISAPP.urn_details;</script>
+                    </div>
+                    <div class="q-item" onclick="loadQuery(this)">
+                        <span class="q-dot"></span>cache_details
+                        <script type="text/plain" class="q-sql">SELECT * FROM EISAPP.cache_details;</script>
+                    </div>
+                    <div class="q-item" onclick="loadQuery(this)">
+                        <span class="q-dot"></span>Find API by name (NOMINEE)
+                        <script type="text/plain" class="q-sql">select distinct api_name from eisapp.api_log where UPPER(api_name) like '%NOMINEE%';</script>
+                    </div>
+                </div>
+            </div>
 
-select * from eisapp.api_log where URN in ('');
-
-select * from eisapp.api_details where URN in('');
-
-select * from eisapp.orch_api_log where URN in ('');
-
-select * from eisapp.orch_api_details where URN in ('');
-
-select * from eisapp.backend_log where URN in ('');
-
-select * from eisapp.backend_details where URN in ('');
-
-
-----------------------------url--------------------------------------
-
-select * from EISAPP.source_mapper;
-
-select * from EISAPP.url_mapper;
-
-select * from EISAPP.urn_details;
-
-SELECT * FROM EISAPP.cache_details;
-
-select distinct api_name from eisapp.api_log where UPPER(api_name) like '%NOMINEE%';
-
-
--------------------------------API LOG----------------------------------
-
-select trim(API_NAME),
+            <!-- ================= API LOG SUMMARY ================= -->
+            <div class="query-group" data-group="API Log">
+                <div class="group-header" onclick="toggleGroup(this)">
+                    <span>📊 API Log — TD/BD Summary</span>
+                    <span class="arrow">▶</span>
+                </div>
+                <div class="group-body">
+                    <div class="q-item" onclick="loadQuery(this)">
+                        <span class="q-dot"></span>API-wise TD/BD (last 60 min)
+                        <script type="text/plain" class="q-sql">select trim(API_NAME),
 COUNT(1) "TOTAL_HITS",
 SUM(CASE WHEN RESPONSE_STATUS in ('0','SUCCESS') THEN 1 ELSE 0 END) AS SUCCESS,
 SUM(CASE WHEN error_code ='SI001' then 1 else 0 end) As "SI001",
@@ -88,15 +951,12 @@ SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','051',
 ROUND((SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','051','014','015') OR error_code IN ('00014','70007') ) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END)*100)/COUNT(1),2) AS BD_PERCENT
 from eisapp.api_log where
 request_date_time>=SYSDATE - INTERVAL '60' minute
---request_date_time between to_date('16-OCT-2025 17:00:00','DD-MON-YYYY HH24:MI:SS') and to_date('16-OCT-2025 18:00:00','DD-MON-YYYY HH24:MI:SS')
 GROUP BY trim(API_NAME)
-ORDER BY TD_PERCENT DESC;
-
-
-
---------------------------------BACKEND LOG----------------------------------
-
-select TRIM(api_name),
+ORDER BY TD_PERCENT DESC;</script>
+                    </div>
+                    <div class="q-item" onclick="loadQuery(this)">
+                        <span class="q-dot"></span>Backend-wise TD/BD (last 60 min)
+                        <script type="text/plain" class="q-sql">select TRIM(api_name),
 COUNT(1) "TOTAL_HITS",
 SUM(CASE WHEN error_code is null THEN 1 ELSE 0 END) AS SUCCESS,
 SUM(CASE WHEN error_code ='SI001' then 1 else 0 end) As "SI001",
@@ -118,15 +978,22 @@ SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','051',
 ROUND((SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','051','014','015') OR error_code IN ('00014','70007') ) and error_code IS NOT NULL THEN 1 ELSE 0 END)*100)/COUNT(1),2) AS BD_PERCENT
 from eisapp.BACKEND_LOG  WHERE
 REQUEST_DATE_TIME>=SYSDATE - INTERVAL '60' minute
---request_date_time between to_date('16-OCT-2025 17:00:00','DD-MON-YYYY HH24:MI:SS') and to_date('16-OCT-2025 18:00:00','DD-MON-YYYY HH24:MI:SS')
---AND txn_endpoint = ''
---and sys_broker = ''
 GROUP BY TRIM(api_name)
-ORDER BY TD_PERCENT DESC;
+ORDER BY TD_PERCENT DESC;</script>
+                    </div>
+                </div>
+            </div>
 
---------------------THIRD PARTY----------------------------------
-
-select SUP_URL,ORIGINAL_URN,TRANSACTION_URN,source_id,
+            <!-- ================= THIRD PARTY ================= -->
+            <div class="query-group" data-group="Third Party">
+                <div class="group-header" onclick="toggleGroup(this)">
+                    <span>🌐 Third Party / SUP_URL</span>
+                    <span class="arrow">▶</span>
+                </div>
+                <div class="group-body">
+                    <div class="q-item" onclick="loadQuery(this)">
+                        <span class="q-dot"></span>Third Party — TD/BD by SUP_URL (last 60 min)
+                        <script type="text/plain" class="q-sql">select SUP_URL,ORIGINAL_URN,TRANSACTION_URN,source_id,
 COUNT(1) "TOTAL_HITS",
 SUM(CASE WHEN RESPONSE_STATUS in ('0','SUCCESS') THEN 1 ELSE 0 END) AS SUCCESS,
 SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') or error_code in('SI001','SI007','SI017','SI569','SI570','SI051','SI111')) and error_code<>'00014' THEN 1 ELSE 0 END) AS TD,
@@ -147,77 +1014,43 @@ SUM(CASE WHEN error_code ='SI003' then 1 else 0 end) As "SI003",
 SUM(CASE WHEN error_code ='SI017' then 1 else 0 end) As "SI017",
 SUM(CASE  WHEN ((nvl( substr(error_code,3,3),'A') not in  ('002','014') and  error_code not in('SI001','SI007','SI017','SI569','SI570','SI051','SI111','SI052','SI005','SI077','SI003','SI017')) OR error_code IN ('00014','70007') ) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END) AS BD_new,
 ROUND((SUM(CASE  WHEN ((nvl( substr(error_code,3,3),'A') not in  ('002','014') and  error_code not in('SI001','SI007','SI017','SI569','SI570','SI051','SI111','SI052','SI005','SI077','SI003','SI017')) OR error_code IN ('00014','70007') ) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END)*100)/count(1),2) AS BD_per_new
-from eisapp.api_LOG PARTITION(JUN_26) where URL in ('http://eispri.sbi.co.in:3011/TF/thirdParty/wrapper/services/misc',
-'http://eispri.sbi.co.in:3011/thirdPartyCMP/wrapper/services/misc',
-'http://eispri.sbi.co.in:3029/CCSID/thirdParty/wrapper/services/misc',
-'http://eispri.sbi.co.in:3024/thirdParty/microService/dedupe/misc',
-'http://eispri.sbi.co.in:3043/Y2/ht/thirdParty/microService/cifEnquiry/misc',
-'http://eispri.sbi.co.in:3040/thirdParty/wrapper/Loylty/services/misc',
-'http://eispri.sbi.co.in:3029/CCSID/PFM/thirdParty/wrapper/services/misc',
-'http://eispri.sbi.co.in:3011/thirdParty/AadhaarSeedDeseedCallback/misc',
-'http://eispri.sbi.co.in:3038/thirdParty/EKYCgenerateOTP/service/misc',
-'http://eispri.sbi.co.in:3016/IVR/thirdParty/wrapper/services/misc',
-'http://eispri.sbi.co.in:3011/thirdParty/rlms/lamfu/misc',
-'http://eispri.sbi.co.in:3017/thirdParty/wrapper/PMScheme/services/misc',
-'http://eispri.sbi.co.in:3011/thirdParty/OIGIDAM/wrapper/services/misc',
-'http://eispri.sbi.co.in:3038/thirdParty/EKYCgetDetails/service/misc',
-'http://eispri.sbi.co.in:3019/thirdParty/wrapper/services/misc',
-'http://eispri.sbi.co.in:3011/thirdPartyNXTGEN/wrapper/services/misc',
-'http://eispri.sbi.co.in:3017/thirdParty/wrapper/services/misc',
-'http://eispri.sbi.co.in:3028/thirdParty/wrapper/CRM/services/misc',
-'http://eispri.sbi.co.in:3011/thirdParty/wrapper/INB/services/misc',
-'http://eispri.sbi.co.in:3011/thirdParty/wrapper/CERSAI/misc',
-'http://eispri.sbi.co.in:3011/thirdParty/wrapper/RLMS/services/misc',
-'http://eispri.sbi.co.in:3034/thirdParty/microService/cifEnquiry/misc',
-'http://eispri.sbi.co.in:3011/ThirdParty/BASE/GetAccountDetails/misc',
-'http://eispri.sbi.co.in:3040/thirdParty/wrapper/SP1/services/misc',
-'http://eispri.sbi.co.in:3032/thirdParty/microService/cifEnquiryLW/misc',
-'http://eispri.sbi.co.in:3011/ThirdParty/Generic/BASE/misc',
-'http://eispri.sbi.co.in:3011/thirdParty/wrapper/NCRP_I4C/services/misc',
-'http://eispri.sbi.co.in:3011/thirdParty/vidyaLakshmiPortal/misc',
-'http://eispri.sbi.co.in:3017/thirdParty/wrapper/NSE/services/misc',
-'http://eispri.sbi.co.in:3017/thirdPartyLargePayload/wrapper/services/misc',
-'http://eispri.sbi.co.in:3011/thirdParty/BMC/wrapper/services/misc',
-'http://eispri.sbi.co.in:3039/thirdParty/wrapper/Martech/services/misc',
-'http://eispri.sbi.co.in:3038/thirdParty/EKYCAuthenticate/Aadharservice/misc',
-'http://eispri.sbi.co.in:3038/thirdParty/AadharSeedingNPCIMulti/Bio/misc',
-'http://eispri.sbi.co.in:3030/thirdParty/ivr/mobilechange/misc') AND
+from eisapp.api_LOG where
 creation_date_time>=SYSDATE - INTERVAL '60' minute
---creation_date_time between to_date('06-JUN-2023 10:00:00','DD-MON-YYYY HH24:MI:SS') and to_date('06-JUN-2023  10:30:00','DD-MON-YYYY HH24:MI:SS')
 GROUP BY SUP_URL,ORIGINAL_URN,TRANSACTION_URN,source_id
 HAVING (SUM(CASE WHEN (RESPONSE_STATUS  not in ('0','SUCCESS') and error_code is not null) THEN 1 ELSE 0 END)*100)/COUNT(1)=100
-order by TD_PERCENT desc;
-
-------------------to find a particular service----------------
-
-select * from eisapp.api_LOG where  
+order by TD_PERCENT desc;</script>
+                    </div>
+                    <div class="q-item" onclick="loadQuery(this)">
+                        <span class="q-dot"></span>Find particular service by URL/URN
+                        <script type="text/plain" class="q-sql">select * from eisapp.api_LOG where  
 URL = 'http://eispri.sbi.co.in:3017/thirdParty/wrapper/services/misc'
 and SUP_URL = ''
 and ORIGINAL_URN = ''
 and TRANSACTION_URN = ''
 and source_id = ''
 and trunc(request_date_time)=trunc(sysdate)
-order by creation_date_time desc ;
+order by creation_date_time desc;</script>
+                    </div>
+                </div>
+            </div>
 
-
-
--------------- MINUTE WISE-----------------
---TO FIND MINUTE WISE TDBD/HITS JUST ADD BELOW LINE IN SELECT AND GROUP BY
---TO_CHAR(request_date_time, 'YYYY-MM-DD HH24:MI') AS minute_slot
-
-
----------------SI Monitoring----------
-
-SELECT function_name,ERROR_CODE, ERROR_DESC, COUNT(*) AS CNT FROM SBISI.SI_TRANS_DB
-WHERE --trunc(REQ_TIME)=trunc(SYSDATE )
-SUBSTR(error_code,1,2) = 'SI'
+            <!-- ================= SI MONITORING ================= -->
+            <div class="query-group" data-group="SI Monitoring">
+                <div class="group-header" onclick="toggleGroup(this)">
+                    <span>🔷 SI Monitoring (SBISI schema)</span>
+                    <span class="arrow">▶</span>
+                </div>
+                <div class="group-body">
+                    <div class="q-item" onclick="loadQuery(this)">
+                        <span class="q-dot"></span>SI_TRANS_DB — error summary (last 10 min)
+                        <script type="text/plain" class="q-sql">SELECT function_name,ERROR_CODE, ERROR_DESC, COUNT(*) AS CNT FROM SBISI.SI_TRANS_DB
+WHERE SUBSTR(error_code,1,2) = 'SI'
 and req_time>=SYSDATE - INTERVAL '10' MINUTE
-GROUP BY ERROR_CODE,ERROR_DESC,function_name ORDER BY CNT DESC;
-
-
--------------EKYC TD% (SI207) and (SI372)------
-
-select COUNT(1) as TOTAL_HITS,
+GROUP BY ERROR_CODE,ERROR_DESC,function_name ORDER BY CNT DESC;</script>
+                    </div>
+                    <div class="q-item" onclick="loadQuery(this)">
+                        <span class="q-dot"></span>EKYC_log — TD% (SI207, SI392)
+                        <script type="text/plain" class="q-sql">select COUNT(1) as TOTAL_HITS,
 SUM(CASE WHEN ERROR_CODE IS NULL THEN 1 ELSE 0 END) AS SUCCESS,
 SUM(CASE WHEN ERROR_CODE IS NOT NULL AND error_code NOT IN ('SI392','SI207') THEN 1 ELSE 0 END) "BD",
 SUM(CASE WHEN ERROR_CODE='SI392' THEN 1 ELSE 0 END) "SI392",
@@ -225,39 +1058,17 @@ ROUND((SUM(CASE WHEN ERROR_CODE='SI392' THEN 1 ELSE 0 END)/COUNT(1))*100,2) "SI3
 SUM(CASE WHEN ERROR_CODE='SI207' THEN 1 ELSE 0 END) "SI207",
 ROUND((SUM(CASE WHEN ERROR_CODE='SI207' THEN 1 ELSE 0 END)/COUNT(1))*100,2) "SI207%",
 ROUND((SUM(CASE WHEN error_code IN ('SI392','SI207') THEN 1 ELSE 0 END)/COUNT(1))*100,2) "TD%"
-from SBISI.EKYC_log where resp_date_time >=sysdate - interval '15' minute;
-
-
-select error_code,error_desc,count(1),function_name from SBISI.SI_TRANS_DB where  function_name in ('EKYCGETDETAILS','EKYCGenerateOTP')
----and SUBSTR(error_code,1,2) = 'SI'
-and req_time>=SYSDATE - INTERVAL '10' MINUTE group by error_code,error_desc,function_name;
-
-select *  from SBISI.SI_TRANS_DB where  function_name in ('EKYCGETDETAILS','EKYCGenerateOTP')
----and SUBSTR(error_code,1,2) = 'SI'
-and error_code = 'SI392'
-and req_time>=SYSDATE - INTERVAL '10' MINUTE  order by req_time desc;
-
------------------NPCI ESCALATION--------------
-
-select count(1), nvl(error_desc,'Success')
-from SBISI.EKYC_log
-where resp_date_time >=sysdate - interval '10' minute
-group by nvl(error_desc,'Success')
-order by 1 desc;
-
-select *  from SBISI.ekyc_log where
+from SBISI.EKYC_log where resp_date_time >=sysdate - interval '15' minute;</script>
+                    </div>
+                    <div class="q-item" onclick="loadQuery(this)">
+                        <span class="q-dot"></span>EKYC (SI392) — recent transactions
+                        <script type="text/plain" class="q-sql">select *  from SBISI.ekyc_log where
  error_code = 'SI392'
-and req_date_time>=SYSDATE - INTERVAL '10' MINUTE  order by req_date_time desc;
-
-select * from SBISI.ekyc_log where ref_no in ('SBILT24112021140737631568',
-'SBILT24112021140737631568',
-'SBILT24112021140727569388',
-'SBILT24112021140727569388',
-'SBILT24112021140728088991',
-'SBILT24112021140717785729');
-
-
-select 'ekyc' as FUNCTION_NAME, COUNT(1) as TOTAL_HITS,
+and req_date_time>=SYSDATE - INTERVAL '10' MINUTE  order by req_date_time desc;</script>
+                    </div>
+                    <div class="q-item" onclick="loadQuery(this)">
+                        <span class="q-dot"></span>EKYC + SI_TRANS_DB combined TD%
+                        <script type="text/plain" class="q-sql">select 'ekyc' as FUNCTION_NAME, COUNT(1) as TOTAL_HITS,
 SUM(CASE WHEN ERROR_CODE IS NULL THEN 1 ELSE 0 END) AS SUCCESS,
 SUM(CASE WHEN ERROR_CODE IS NOT NULL AND error_code NOT IN ('SI392','SI207') THEN 1 ELSE 0 END) "BD",
 SUM(CASE WHEN ERROR_CODE='SI392' THEN 1 ELSE 0 END) "SI392",
@@ -267,7 +1078,6 @@ ROUND((SUM(CASE WHEN ERROR_CODE='SI207' THEN 1 ELSE 0 END)/COUNT(1))*100,2) "SI2
 SUM(CASE WHEN error_code IN ('SI392','SI207') THEN 1 ELSE 0 END) TD_COUNT,
 ROUND((SUM(CASE WHEN error_code IN ('SI392','SI207') THEN 1 ELSE 0 END)/COUNT(1))*100,2) "TD%"
 from SBISI.EKYC_log where resp_date_time >=sysdate - interval '15' minute
-
 union all
 select FUNCTION_NAME ,COUNT(1) as TOTAL_HITS,
 SUM(CASE WHEN ERROR_CODE IS NULL THEN 1 ELSE 0 END) AS SUCCESS,
@@ -280,25 +1090,29 @@ SUM(CASE WHEN error_code IN ('SI392','SI207') THEN 1 ELSE 0 END) TD_COUNT,
 ROUND((SUM(CASE WHEN error_code IN ('SI392','SI207') THEN 1 ELSE 0 END)/COUNT(1))*100,2) "TD%"
 from SBISI.si_trans_db where reQ_time >=sysdate - interval '15' minute
 GROUP BY FUNCTION_NAME
-ORDER BY TD_COUNT DESC;
+ORDER BY TD_COUNT DESC;</script>
+                    </div>
+                    <div class="q-item" onclick="loadQuery(this)">
+                        <span class="q-dot"></span>NPCI Escalation — error_desc count
+                        <script type="text/plain" class="q-sql">select count(1), nvl(error_desc,'Success')
+from SBISI.EKYC_log
+where resp_date_time >=sysdate - interval '10' minute
+group by nvl(error_desc,'Success')
+order by 1 desc;</script>
+                    </div>
+                </div>
+            </div>
 
------------------EPAY--------------
-
-WITH CTE AS (select
-SUM(CASE WHEN a.payment_status='Y' THEN 1 ELSE 0 END) AS EPAY_SEND,
-MAX(A.payment_date_time) AS EPAY_LAST_SEND_DATE,
-SUM(CASE WHEN b.POST_FLAG='Y' THEN 1 ELSE 0 END) AS EPAY_POST,
-MAX(B.POST_DATE_TIME) AS EPAY_LAST_POST_DATE
-from EPAY_txn_master a INNER JOIN EPAY_feed_master b ON a.REFERENCE_NO=b.REFERENCE_NO
-WHERE
-A.PAYMENT_DATE_TIME between
-to_date('06-NOV-24 19:00:00','DD-MM-YY HH24:MI:SS') and to_date('06-11-24 20:00:00','DD-MM-YY HH24:MI:SS'))
-SELECT CTE.EPAY_SEND, CTE.EPAY_LAST_SEND_DATE,CTE.EPAY_POST,CTE.EPAY_LAST_POST_DATE
-FROM CTE;
-
----------------------------------------------------high response--------------------------------------------------------
-
-SELECT exp_ip,COUNT(1),
+            <!-- ================= PERFORMANCE ================= -->
+            <div class="query-group" data-group="Performance">
+                <div class="group-header" onclick="toggleGroup(this)">
+                    <span>⚡ Performance / Response Time</span>
+                    <span class="arrow">▶</span>
+                </div>
+                <div class="group-body">
+                    <div class="q-item" onclick="loadQuery(this)">
+                        <span class="q-dot"></span>High response — EXP IP response buckets
+                        <script type="text/plain" class="q-sql">SELECT exp_ip,COUNT(1),
 SUM(CASE WHEN RESPONSE_STATUS in ('0','SUCCESS') THEN 1 ELSE 0 END) AS SUCCESS,
 SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') or error_code in('SI001','SI007','SI017','SI569','SI570','SI051','SI111','SI015')) and error_code<>'00014' THEN 1 ELSE 0 END) AS TD,
 ROUND((SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') or error_code in('SI001','SI007','SI017','SI569','SI570','SI051','SI111','SI015')) and error_code
@@ -314,199 +1128,460 @@ sum(case when TO_NUMBER(SUBSTR(TO_CHAR(RESPONSE_DATE_TIME-dpg_request_date_time)
 sum(case when TO_NUMBER(SUBSTR(TO_CHAR(RESPONSE_DATE_TIME-dpg_request_date_time),18))> 5 then 1 else 0 end ) as ABOVE_FIVE_SEC
 FROM EISAPP.API_LOG WHERE broker_name = 'LOGGING_EXP' and
 request_date_time>=SYSDATE-INTERVAL '02' MINUTE
-group by exp_ip;
-
------------------------------------------------------------------------------------------sys -----------------------------------------------------------------------------------
-SELECT b.sys_ip,COUNT(1),sum(case when TO_NUMBER(SUBSTR(TO_CHAR(b.request_DATE_TIME-a.request_DATE_TIME),18))< 0.1 then 1 else 0 end ) as BELOW_100MSEC ,
+group by exp_ip;</script>
+                    </div>
+                    <div class="q-item" onclick="loadQuery(this)">
+                        <span class="q-dot"></span>SYS latency — backend vs orch (last 2 min)
+                        <script type="text/plain" class="q-sql">SELECT b.sys_ip,COUNT(1),
+sum(case when TO_NUMBER(SUBSTR(TO_CHAR(b.request_DATE_TIME-a.request_DATE_TIME),18))< 0.1 then 1 else 0 end ) as BELOW_100MSEC ,
 sum(case when TO_NUMBER(SUBSTR(TO_CHAR(b.request_DATE_TIME-a.request_DATE_TIME),18))between 0.1 AND 0.5 then 1 else 0 end ) as "between 100ms-500ms" ,
 sum(case when TO_NUMBER(SUBSTR(TO_CHAR(b.request_DATE_TIME-a.request_DATE_TIME),18))between 0.5 AND 1 then 1 else 0 end ) as "between 500ms-1s" ,
 sum(case when TO_NUMBER(SUBSTR(TO_CHAR(b.request_DATE_TIME-a.request_DATE_TIME),18)) between 1.001 and 5 then 1 else 0 end ) as ONE_TO_5_SEC,
 sum(case when TO_NUMBER(SUBSTR(TO_CHAR(b.request_DATE_TIME-a.request_DATE_TIME),18))> 5 then 1 else 0 end ) as ABOVE_FIVE_SEC
 FROM  EISAPP.backend_log b , EISAPP.orch_api_log a WHERE a.urn=b.urn and b.sys_broker = 'LOGGING_SYS' and
 b.creation_date_time>=SYSDATE-INTERVAL '02' MINUTE
-group by b.sys_ip;
+group by b.sys_ip;</script>
+                    </div>
+                </div>
+            </div>
 
---------------------------------------------------------------------------------------ACTIVE-ACTIVE QUERY----------------------------------------------------------------------------------------
+            <!-- ================= EPAY ================= -->
+            <div class="query-group" data-group="EPAY">
+                <div class="group-header" onclick="toggleGroup(this)">
+                    <span>💳 EPAY</span>
+                    <span class="arrow">▶</span>
+                </div>
+                <div class="group-body">
+                    <div class="q-item" onclick="loadQuery(this)">
+                        <span class="q-dot"></span>EPAY send vs post summary
+                        <script type="text/plain" class="q-sql">WITH CTE AS (select
+SUM(CASE WHEN a.payment_status='Y' THEN 1 ELSE 0 END) AS EPAY_SEND,
+MAX(A.payment_date_time) AS EPAY_LAST_SEND_DATE,
+SUM(CASE WHEN b.POST_FLAG='Y' THEN 1 ELSE 0 END) AS EPAY_POST,
+MAX(B.POST_DATE_TIME) AS EPAY_LAST_POST_DATE
+from EPAY_txn_master a INNER JOIN EPAY_feed_master b ON a.REFERENCE_NO=b.REFERENCE_NO
+WHERE
+A.PAYMENT_DATE_TIME between
+to_date('06-NOV-24 19:00:00','DD-MM-YY HH24:MI:SS') and to_date('06-11-24 20:00:00','DD-MM-YY HH24:MI:SS'))
+SELECT CTE.EPAY_SEND, CTE.EPAY_LAST_SEND_DATE,CTE.EPAY_POST,CTE.EPAY_LAST_POST_DATE
+FROM CTE;</script>
+                    </div>
+                </div>
+            </div>
 
-----SUCCESS in PR BUT TD / BD FAILURE in DR-----
+        </div>
+    </div>
 
-with PR_APIS as(select /*+parallel(08)*/ api_name, count(1) as success_hits  from eisapp.api_log
-where request_date_time BETWEEN TO_DATE ('24-NOV-2025 18:31:00', 'DD-MON-YYYY HH24:MI:SS') AND TO_DATE ('24-nov-2025 18:36:00', 'DD-MON-YYYY HH24:MI:SS')
-AND error_code is null
-group by api_name
-),
+    <!-- ============ MAIN ============ -->
+    <div class="main-panel">
 
-DR_APIS as(select  /*+parallel(08)*/ api_name,count(1) AS HITS,
-SUM(case when error_code is null then 1 end) SUCCESS ,
-SUM(case when error_code is not null then 1 end) FAIL,
-SUM(CASE WHEN error_code='SI001' THEN 1 ELSE 0 END)   DR_SI001,
-SUM(CASE WHEN substr(error_code,3,3) ='002' then 1 else 0 end) DR_DYNMIC_002,
-SUM(CASE WHEN error_code='SI002' THEN 1 ELSE 0 END) DR_SI002,
-SUM(CASE WHEN substr(error_code,3,3) ='014' and error_code <> '00014' then 1 else 0 end) DR_DYNMIC_014,
-SUM(CASE WHEN error_code='SI014' THEN 1 ELSE 0 END) DR_SI014,
-SUM(CASE WHEN error_code='SI051' THEN 1 ELSE 0 END) DR_SI051,
-SUM(CASE WHEN error_code='SI569' THEN 1 ELSE 0 END) DR_SI569,
-SUM(CASE WHEN error_code='SI570' THEN 1 ELSE 0 END) DR_SI570,
-SUM(CASE WHEN error_code='SI111' THEN 1 ELSE 0 END) DR_SI111,
-SUM(CASE WHEN error_code='SI052' THEN 1 ELSE 0 END) DR_SI052,
-SUM(CASE WHEN ((nvl(substr(error_code,3,3),'A') not in ('002','014') and error_code not in('SI001','SI007','SI017','SI569','SI570','SI051','SI111','SI052','SI015')) OR error_code IN ('00014','70007')) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END) AS DR_BD,
-(count(1)/SUM(case when error_code is not null then 1 end)) AS NUMB
-from eisapp.api_log@form_hiDB
-where --trunc(request_date_time) = '25-APR-25'
-request_date_time BETWEEN TO_DATE ('24-NOV-2025 18:31:00', 'DD-MON-YYYY HH24:MI:SS') AND TO_DATE ('24-nov-2025 18:36:00', 'DD-MON-YYYY HH24:MI:SS')
-group by api_name
-HAVING (count(1)/SUM(case when error_code is not null then 1 end)) = 1
-)
-select /*+parallel(08)*/
-Dr.API_NAME AS FAILURE_DR_APIS,pr.success_hits as pr_success_hits ,dr.SUCCESS as DR_SUCCESS,DR.FAIL AS TOTAL_DR_FAILURE,DR.DR_SI001,dr.DR_DYNMIC_002,dr.DR_SI002, dr.DR_DYNMIC_014,dr.DR_SI014,dr.DR_SI051,dr.DR_SI569,dr.DR_SI570,dr.dr_SI111,dr.DR_SI052, dr.DR_BD as dr_TOTAL_BD
-from pr_apis pr left join   Dr_apis dr
-  on pr.api_name = dr.api_name
-WHERE DR.NUMB = 1
-order by TOTAL_DR_FAILURE desc
-;
+        <!-- EDITOR -->
+        <div class="editor-panel">
+            <form method="post" action="query.jsp" id="qForm">
+                <div class="editor-wrap">
+                    <textarea name="sql" id="sql" class="sql-editor"
+                              spellcheck="false" autocomplete="off"
+                              placeholder="-- Left sidebar se query select karo&#10;-- ya yahan type karo (Ctrl+Space for suggestions)&#10;-- Ctrl+Enter to run"><%= sql != null ? sql : "" %></textarea>
+                    <div id="suggestBox" class="suggest-box"></div>
+                </div>
 
+                <div class="toolbar">
+                    <select name="dbType" id="dbType" class="db-sel" onchange="switchDb()">
+                        <option value="IIB"    <%= "IIB".equals(dbType)    ? "selected" : "" %>>IIB DB (eisapp)</option>
+                        <option value="SI"     <%= "SI".equals(dbType)     ? "selected" : "" %>>SI DB (sbisi)</option>
+                        <option value="REPORT" <%= "REPORT".equals(dbType) ? "selected" : "" %>>Report DB</option>
+                    </select>
+                    <button type="submit" class="btn-run">▶ Run Query</button>
+                    <button type="button" class="btn-clear" onclick="clearAll()">🗑 Clear</button>
+                    <div class="hint-inline">
+                        <code>Ctrl+Space</code> suggest &nbsp;·&nbsp;
+                        <code>Ctrl+Enter</code> run &nbsp;·&nbsp;
+                        <code>Esc</code> close
+                    </div>
+                </div>
+            </form>
+        </div>
 
----------SUCCESS in PR BUT TD FAILURE in DR-----
+        <!-- RESULT -->
+        <div class="result-panel">
+            <% if (qr == null) { %>
+                <div class="welcome">
+                    <h2>👋 Ready to run your query</h2>
+                    <p>Left sidebar se query choose karo ya khud likho, phir <b>Run Query</b> dabao.</p>
+                </div>
+            <% } else { %>
+                <div class="result-header">
+                    <div class="result-title">📊 Result</div>
+                    <div class="meta-bar">
+                        <span><b>DB:</b> <%= dbType %></span>
+                        <% if (qr.queryType != null) { %>
+                            <span><b>Type:</b> <%= qr.queryType %></span>
+                        <% } %>
+                        <span><b>Time:</b> <%= qr.executionTimeMs %> ms</span>
+                        <span><b>Rows:</b> <%= qr.rows.size() %></span>
+                        <% if (qr.updateCount >= 0) { %>
+                            <span><b>Affected:</b> <%= qr.updateCount %></span>
+                        <% } %>
+                    </div>
+                </div>
 
+                <% if (qr.success) { %>
+                    <div class="alert alert-success">✅ <%= qr.message %></div>
+                <% } else { %>
+                    <div class="alert alert-error">❌ <%= qr.message %></div>
+                <% } %>
 
+                <% if (qr.success && !qr.columns.isEmpty()) { %>
+                    <div class="table-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <% for (String col : qr.columns) { %>
+                                        <th><%= col %></th>
+                                    <% } %>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <%
+                                    int i = 1;
+                                    for (Map<String, Object> row : qr.rows) {
+                                %>
+                                    <tr>
+                                        <td class="idx"><%= i++ %></td>
+                                        <% for (String col : qr.columns) {
+                                               Object val = row.get(col);
+                                        %>
+                                            <td title="<%= val == null ? "NULL" : val.toString().replace("\"","&quot;") %>">
+                                                <%= val == null ? "<span class='null-val'>NULL</span>" : val.toString() %>
+                                            </td>
+                                        <% } %>
+                                    </tr>
+                                <% } %>
+                            </tbody>
+                        </table>
+                    </div>
+                <% } else if (qr.success && qr.columns.isEmpty()) { %>
+                    <div class="empty">✅ Query execute ho gayi — koi row return nahi hui.</div>
+                <% } %>
+            <% } %>
+        </div>
+    </div>
+</div>
 
-with PR_APIS as(select /*+parallel(04)*/ api_name, count(1) as success_hits  from eisapp.api_log
-where request_date_time BETWEEN TO_DATE ('24-NOV-2025 18:31:00', 'DD-MON-YYYY HH24:MI:SS') AND TO_DATE ('24-nov-2025 18:36:00', 'DD-MON-YYYY HH24:MI:SS')
- AND error_code is null
-group by api_name
-),
+<!-- ============ JS ============ -->
+<script>
+    var SERVER_SCHEMAS  = <%= schJson.toString() %>;
+    var SERVER_TABLES   = <%= tblJson.toString() %>;
+    var SERVER_KEYWORDS = <%= kwJson.toString() %>;
+    var CURRENT_DB      = "<%= dbType %>";
 
-DR_APIS as(select  /*+parallel(04)*/ api_name,count(1) AS HITS,
-SUM(case when error_code is null then 1 end) SUCCESS ,
-SUM(case when ((substr(error_code,3,3) in ('002','014')) or error_code in('SI001','SI007','SI017','SI569','SI570','SI051','SI111','SI052')) and error_code<>'00014' then 1 end) FAIL,
-SUM(CASE WHEN error_code='SI001' THEN 1 ELSE 0 END)   DR_SI001,
-SUM(CASE WHEN substr(error_code,3,3) ='002' then 1 else 0 end) DR_DYNMIC_002,
-SUM(CASE WHEN error_code='SI002' THEN 1 ELSE 0 END) DR_SI002,
-SUM(CASE WHEN substr(error_code,3,3) ='014' and error_code <> '00014' then 1 else 0 end) DR_DYNMIC_014,
-SUM(CASE WHEN error_code='SI014' THEN 1 ELSE 0 END) DR_SI014,
-SUM(CASE WHEN error_code='SI051' THEN 1 ELSE 0 END) DR_SI051,
-SUM(CASE WHEN error_code='SI569' THEN 1 ELSE 0 END) DR_SI569,
-SUM(CASE WHEN error_code='SI570' THEN 1 ELSE 0 END) DR_SI570,
-SUM(CASE WHEN error_code='SI111' THEN 1 ELSE 0 END) DR_SI111,
-SUM(CASE WHEN error_code='SI052' THEN 1 ELSE 0 END) DR_SI052,
-(count(1)/SUM(case when ((substr(error_code,3,3) in ('002','014') )or error_code in('SI001','SI007','SI017','SI569','SI570','SI051','SI111','SI052','SI015')) and error_code<>'00014' then 1 end)) AS NUMB
-from eisapp.api_log@form_hiDB
-where --trunc(request_date_time) = '25-APR-25'
-request_date_time BETWEEN TO_DATE ('24-NOV-2025 18:31:00', 'DD-MON-YYYY HH24:MI:SS') AND TO_DATE ('24-nov-2025 18:36:00', 'DD-MON-YYYY HH24:MI:SS')
-group by api_name
-HAVING (count(1)/SUM(case when ((substr(error_code,3,3) in ('002','014')) or error_code in('SI001','SI007','SI017','SI569','SI570','SI051','SI111','SI052','SI015')) and error_code<>'00014' then 1 end)) = 1
-)
-select /*+parallel(04)*/ Dr.API_NAME AS FAILURE_DR_APIS,pr.success_hits as pr_success_hits ,dr.SUCCESS as DR_SUCCESS,DR.FAIL AS TOTAL_DR_FAILURE,DR.DR_SI001,dr.DR_DYNMIC_002,dr.DR_SI002, dr.DR_DYNMIC_014,dr.DR_SI014,dr.DR_SI051,dr.DR_SI569,dr.DR_SI570,dr.dr_SI111,dr.DR_SI052
-from pr_apis pr left join   Dr_apis dr
-on pr.api_name = dr.api_name
-WHERE DR.NUMB = 1
-order by TOTAL_DR_FAILURE desc
-;
+    var editor     = document.getElementById('sql');
+    var suggestBox = document.getElementById('suggestBox');
+    var editorWrap = editor.parentElement;
+    var activeIdx  = -1;
+    var currentItems = [];
+    var columnCache = {};
 
+    /* ========== SIDEBAR: Toggle Group ========== */
+    function toggleGroup(header) {
+        var body = header.nextElementSibling;
+        var isOpen = body.classList.contains('open');
+        body.classList.toggle('open', !isOpen);
+        header.classList.toggle('open', !isOpen);
+    }
 
-----------------------------MIN WISE EXP QUERY---------------------
-SELECT /*+ parallel(16)*/ API_NAME,to_char(request_date_time,'HH24:MI') AS MIN, COUNT(1),
-SUM(CASE WHEN RESPONSE_STATUS in ('0','SUCCESS') THEN 1 ELSE 0 END) AS SUCCESS,
-SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') or error_code in('SI001','SI007','SI017','SI569','SI570','SI051','SI111','SI015')) and error_code<>'00014' THEN 1 ELSE 0 END) AS TD,
-ROUND((SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') or error_code in('SI001','SI007','SI017','SI569','SI570','SI051','SI111','SI015')) and error_code<>'00014' THEN 1 ELSE 0 END)*100)/COUNT(1),2) AS TD_PERCENT,
-SUM(CASE WHEN error_code in('SI001','SI002','SI014','SI007','SI017','SI569','SI570','SI051','SI111') THEN 1 ELSE 0 END) AS EIS_TD,
-ROUND((SUM(CASE WHEN error_code in('SI001','SI002','SI014','SI007','SI017','SI569','SI570','SI051','SI111') THEN 1 ELSE 0 END)*100)/COUNT(1),2) AS EIS_TD_PER,
-SUM(CASE WHEN error_code='SI001' THEN 1 ELSE 0 END) "SI001",
-SUM(CASE WHEN substr(error_code,3,3) ='002' then 1 else 0 end) "002",
-SUM(CASE WHEN error_code='SI002' THEN 1 ELSE 0 END) "SI002",
-SUM(CASE WHEN error_code='CB002' THEN 1 ELSE 0 END) "CB002",
-SUM(CASE WHEN error_code='CB014' THEN 1 ELSE 0 END) "CB014",
-SUM(CASE WHEN substr(error_code,3,3) ='014' and error_code <> '00014' then 1 else 0 end) "014",
-SUM(CASE WHEN error_code='SI051' THEN 1 ELSE 0 END) "SI051",
-SUM(CASE WHEN error_code='SI569' THEN 1 ELSE 0 END) "SI569",
-SUM(CASE WHEN error_code='SI570' THEN 1 ELSE 0 END) "SI570",
-SUM(CASE WHEN ((nvl( substr(error_code,3,3),'A') not in ('002','014') and error_code not in('SI001','SI007','SI017','SI569','SI570','SI051','SI111','SI015')) OR error_code IN ('00014','70007') ) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END) AS BD_new,
-ROUND((SUM(CASE WHEN ((nvl( substr(error_code,3,3),'A') not in ('002','014') and error_code not in('SI001','SI007','SI017','SI569','SI570','SI051','SI111','SI015')) OR error_code IN ('00014','70007') ) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END)*100)/count(1),2) AS BD_per_new
-FROM EISAPP.API_LOG WHERE
-SOURCE_ID='Y2'
-AND API_NAME IN ('custEnquiryMicro_expDS','YONOLoginJourneyMicro_expDS','microserviceCIFEnquiry_expDS') AND
-----REQUEST_DATE_TIME between to_date('03-JUN-2025 00:00:00','DD-MON-YYYY HH24:MI:SS') and to_date('04-JUN-2025 23:59:59','DD-MON-YYYY HH24:MI:SS')
-request_date_time >= sysdate - INTERVAL '60' MINUTE
-group by API_NAME,to_char(request_date_time,'HH24:MI')
-ORDER BY 1;
+    /* ========== SIDEBAR: Load Query ========== */
+    function loadQuery(el) {
+        var sqlEl = el.querySelector('.q-sql');
+        if (!sqlEl) return;
+        var text = sqlEl.textContent || sqlEl.innerText;
+        // Trim leading blank lines
+        text = text.replace(/^\s*\n+/, '').replace(/\s+$/, '');
+        editor.value = text;
+        editor.focus();
+        // Highlight selected
+        document.querySelectorAll('.q-item').forEach(function(i){ i.classList.remove('highlight'); });
+        el.classList.add('highlight');
+        // Auto-scroll to editor on mobile
+        if (window.innerWidth < 1000) {
+            editor.scrollIntoView({behavior:'smooth', block:'start'});
+        }
+    }
 
+    /* ========== SIDEBAR: Search ========== */
+    document.getElementById('qSearch').addEventListener('input', function(e) {
+        var q = e.target.value.toLowerCase().trim();
+        var groups = document.querySelectorAll('.query-group');
+        groups.forEach(function(g) {
+            var items = g.querySelectorAll('.q-item');
+            var anyVisible = false;
+            items.forEach(function(it) {
+                var text = it.textContent.toLowerCase();
+                if (!q || text.indexOf(q) !== -1) {
+                    it.style.display = '';
+                    anyVisible = true;
+                } else {
+                    it.style.display = 'none';
+                }
+            });
+            g.style.display = anyVisible || !q ? '' : 'none';
+            // Auto open if searching
+            if (q && anyVisible) {
+                var h = g.querySelector('.group-header');
+                var b = g.querySelector('.group-body');
+                b.classList.add('open');
+                h.classList.add('open');
+            }
+        });
+    });
 
+    /* ========== SUGGESTIONS ========== */
+    function allSuggestions() {
+        return SERVER_KEYWORDS.concat(SERVER_SCHEMAS).concat(SERVER_TABLES);
+    }
 
-----------------------------HOUR WISE EXP QUERY---------------------
-SELECT /*+ parallel(16)*/ API_NAME,to_char(request_date_time,'HH24') AS HOUR, COUNT(1),
-SUM(CASE WHEN RESPONSE_STATUS in ('0','SUCCESS') THEN 1 ELSE 0 END) AS SUCCESS,
-SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') or error_code in('SI001','SI007','SI017','SI569','SI570','SI051','SI111','SI015')) and error_code<>'00014' THEN 1 ELSE 0 END) AS TD,
-ROUND((SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') or error_code in('SI001','SI007','SI017','SI569','SI570','SI051','SI111','SI015')) and error_code<>'00014' THEN 1 ELSE 0 END)*100)/COUNT(1),2) AS TD_PERCENT,
-SUM(CASE WHEN error_code in('SI001','SI002','SI014','SI007','SI017','SI569','SI570','SI051','SI111') THEN 1 ELSE 0 END) AS EIS_TD,
-ROUND((SUM(CASE WHEN error_code in('SI001','SI002','SI014','SI007','SI017','SI569','SI570','SI051','SI111') THEN 1 ELSE 0 END)*100)/COUNT(1),2) AS EIS_TD_PER,
-SUM(CASE WHEN error_code='SI001' THEN 1 ELSE 0 END) "SI001",
-SUM(CASE WHEN substr(error_code,3,3) ='002' then 1 else 0 end) "002",
-SUM(CASE WHEN error_code='SI002' THEN 1 ELSE 0 END) "SI002",
-SUM(CASE WHEN error_code='CB002' THEN 1 ELSE 0 END) "CB002",
-SUM(CASE WHEN error_code='CB014' THEN 1 ELSE 0 END) "CB014",
-SUM(CASE WHEN substr(error_code,3,3) ='014' and error_code <> '00014' then 1 else 0 end) "014",
-SUM(CASE WHEN error_code='SI051' THEN 1 ELSE 0 END) "SI051",
-SUM(CASE WHEN error_code='SI569' THEN 1 ELSE 0 END) "SI569",
-SUM(CASE WHEN error_code='SI570' THEN 1 ELSE 0 END) "SI570",
-SUM(CASE WHEN ((nvl( substr(error_code,3,3),'A') not in ('002','014') and error_code not in('SI001','SI007','SI017','SI569','SI570','SI051','SI111','SI015')) OR error_code IN ('00014','70007') ) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END) AS BD_new,
-ROUND((SUM(CASE WHEN ((nvl( substr(error_code,3,3),'A') not in ('002','014') and error_code not in('SI001','SI007','SI017','SI569','SI570','SI051','SI111','SI015')) OR error_code IN ('00014','70007') ) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END)*100)/count(1),2) AS BD_per_new
-FROM EISAPP.API_LOG WHERE
-SOURCE_ID='Y2'
-AND API_NAME IN ('custEnquiryMicro_expDS','YONOLoginJourneyMicro_expDS','microserviceCIFEnquiry_expDS') AND
-----REQUEST_DATE_TIME between to_date('03-JUN-2025 00:00:00','DD-MON-YYYY HH24:MI:SS') and to_date('04-JUN-2025 23:59:59','DD-MON-YYYY HH24:MI:SS')
-request_date_time >= sysdate - INTERVAL '60' MINUTE
-group by API_NAME, to_char(request_date_time,'HH24')
-ORDER BY 1;
+    function getCaretPosition(el) {
+        var div = document.createElement('div');
+        var style = window.getComputedStyle(el);
+        var props = ['fontFamily','fontSize','fontWeight','lineHeight','letterSpacing',
+                     'paddingTop','paddingLeft','paddingRight','paddingBottom',
+                     'borderTopWidth','borderLeftWidth','whiteSpace','wordWrap','wordBreak'];
+        props.forEach(function(p){ div.style[p] = style[p]; });
+        div.style.position = 'absolute';
+        div.style.visibility = 'hidden';
+        div.style.whiteSpace = 'pre-wrap';
+        div.style.wordWrap = 'break-word';
+        div.style.width = (el.clientWidth - parseInt(style.paddingLeft) - parseInt(style.paddingRight)) + 'px';
 
+        var value = el.value.substring(0, el.selectionStart);
+        div.textContent = value;
+        var span = document.createElement('span');
+        span.textContent = el.value.substring(el.selectionStart) || '.';
+        div.appendChild(span);
+        document.body.appendChild(div);
 
+        var rect = span.getBoundingClientRect();
+        var editorRect = el.getBoundingClientRect();
+        var lineH = parseInt(style.lineHeight) || 22;
+        var pos = {
+            left: rect.left - editorRect.left + el.scrollLeft,
+            top:  rect.top  - editorRect.top  + el.scrollTop + lineH,
+            lineHeight: lineH
+        };
+        document.body.removeChild(div);
+        return pos;
+    }
 
+    function getContext() {
+        var pos = editor.selectionStart;
+        var val = editor.value;
+        var start = pos;
+        while (start > 0 && /[A-Za-z0-9_$#]/.test(val.charAt(start - 1))) start--;
+        var end = pos;
+        while (end < val.length && /[A-Za-z0-9_$#]/.test(val.charAt(end))) end++;
+        var word = val.substring(start, pos);
 
-----------------------------MIN WISE SYS QUERY---------------------
-select to_char(request_date_time,'HH24:MI') AS MIN,
-COUNT(1) "TOTAL_HITS",
-SUM(CASE WHEN error_code is null THEN 1 ELSE 0 END) AS SUCCESS,
-SUM(CASE WHEN error_code ='SI001' then 1 else 0 end) As "SI001",
-SUM(CASE WHEN error_code ='SI002' then 1 else 0 end) As "SI002",
-SUM(CASE WHEN substr(error_code,3,3) ='002' AND error_code <>'SI002' then 1 else 0 end) As "DYNAMIC 002",
-SUM(CASE WHEN error_code ='SI007' and error_code<> '70007' then 1 else 0 end) As "SI007",
-SUM(CASE WHEN error_code ='SI051' then 1 else 0 end) As "SI051",
-SUM(CASE WHEN substr(error_code,3,3) ='014' and error_code <> '00014' then 1 else 0 end) AS "014",
-SUM(CASE WHEN error_code ='SI569' then 1 else 0 end) As "SI569",
-SUM(CASE WHEN error_code ='SI570' then 1 else 0 end) As "SI570",
-SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI569','SI570','SI015')) and error_code <> '00014' THEN 1 ELSE 0 END) AS TD,
-ROUND((SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI569','SI570','SI015')) and error_code <> '00014' THEN 1 ELSE 0 END)*100)/COUNT(1),2) AS TD_PERCENT,
-SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','051','014') OR error_code IN ('00014','70007') ) and error_code IS NOT NULL THEN 1 ELSE 0 END) AS BD,
-ROUND((SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','051','014') OR error_code IN ('00014','70007') ) and error_code IS NOT NULL THEN 1 ELSE 0 END)*100)/COUNT(1),2) AS BD_PERCENT
-from eisapp.BACKEND_LOG where
-REQUEST_DATE_TIME between to_date('03-JUN-2025 00:00:00','DD-MON-YYYY HH24:MI:SS') and to_date('04-JUN-2025 23:59:59','DD-MON-YYYY HH24:MI:SS')
---request_date_time >= sysdate - INTERVAL '60' MINUTE
-GROUP BY to_char(request_date_time,'HH24:MI')
-ORDER BY 1;
+        var prefix = "";
+        var dotBefore = false;
+        if (start > 0 && val.charAt(start - 1) === '.') {
+            dotBefore = true;
+            var p = start - 2;
+            while (p >= 0 && /[A-Za-z0-9_$#]/.test(val.charAt(p))) p--;
+            prefix = val.substring(p + 1, start - 1);
+        }
+        return { word: word, start: start, end: end, dotBefore: dotBefore, prefix: prefix };
+    }
 
+    function fetchColumns(schema, table, callback) {
+        var key = (schema || '').toUpperCase() + '.' + table.toUpperCase();
+        if (columnCache[key]) { callback(columnCache[key]); return; }
+        var url = 'query.jsp?ajax=cols&db=' + encodeURIComponent(CURRENT_DB) +
+                  '&schema=' + encodeURIComponent(schema || '') +
+                  '&table=' + encodeURIComponent(table);
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', url, true);
+        xhr.onreadystatechange = function() {
+            if (xhr.readyState === 4 && xhr.status === 200) {
+                try {
+                    var data = JSON.parse(xhr.responseText);
+                    columnCache[key] = data;
+                    callback(data);
+                } catch(e) { callback([]); }
+            }
+        };
+        xhr.send();
+    }
 
+    function showSuggestions(forceAll) {
+        var ctx = getContext();
+        var items;
 
-----------------------------HOUR WISE SYS QUERY---------------------
-select to_char(request_date_time,'HH24') AS HOUR,
-COUNT(1) "TOTAL_HITS",
-SUM(CASE WHEN error_code is null THEN 1 ELSE 0 END) AS SUCCESS,
-SUM(CASE WHEN error_code ='SI001' then 1 else 0 end) As "SI001",
-SUM(CASE WHEN error_code ='SI002' then 1 else 0 end) As "SI002",
-SUM(CASE WHEN substr(error_code,3,3) ='002' AND error_code <>'SI002' then 1 else 0 end) As "DYNAMIC 002",
-SUM(CASE WHEN error_code ='SI007' and error_code<> '70007' then 1 else 0 end) As "SI007",
-SUM(CASE WHEN error_code ='SI051' then 1 else 0 end) As "SI051",
-SUM(CASE WHEN substr(error_code,3,3) ='014' and error_code <> '00014' then 1 else 0 end) AS "014",
-SUM(CASE WHEN error_code ='SI569' then 1 else 0 end) As "SI569",
-SUM(CASE WHEN error_code ='SI570' then 1 else 0 end) As "SI570",
-SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI569','SI570','SI015')) and error_code <> '00014' THEN 1 ELSE 0 END) AS TD,
-ROUND((SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI569','SI570','SI015')) and error_code <> '00014' THEN 1 ELSE 0 END)*100)/COUNT(1),2) AS TD_PERCENT,
-SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','051','014') OR error_code IN ('00014','70007') ) and error_code IS NOT NULL THEN 1 ELSE 0 END) AS BD,
-ROUND((SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','051','014') OR error_code IN ('00014','70007') ) and error_code IS NOT NULL THEN 1 ELSE 0 END)*100)/COUNT(1),2) AS BD_PERCENT
-from eisapp.BACKEND_LOG where
-REQUEST_DATE_TIME between to_date('03-JUN-2025 00:00:00','DD-MON-YYYY HH24:MI:SS') and to_date('04-JUN-2025 23:59:59','DD-MON-YYYY HH24:MI:SS')
---request_date_time >= sysdate - INTERVAL '60' MINUTE
-GROUP BY to_char(request_date_time,'HH24')
-ORDER BY 1;
+        if (ctx.dotBefore) {
+            var prefixUpper = ctx.prefix.toUpperCase();
+            var isSchema = SERVER_SCHEMAS.some(function(s) {
+                return s.label.toUpperCase() === prefixUpper;
+            });
+            if (isSchema) {
+                items = SERVER_TABLES.filter(function(t) {
+                    return t.label.toUpperCase().startsWith(prefixUpper + ".");
+                }).map(function(t) {
+                    var shortName = t.label.substring(t.label.indexOf('.') + 1);
+                    return { label: shortName, insert: shortName, type: "TABLE" };
+                });
+                if (ctx.word) {
+                    var w = ctx.word.toLowerCase();
+                    items = items.filter(function(t){ return t.label.toLowerCase().indexOf(w) !== -1; });
+                }
+                renderAndPosition(items);
+            } else {
+                fetchColumns(null, ctx.prefix, function(cols) {
+                    var w = (ctx.word || '').toLowerCase();
+                    var filtered = cols;
+                    if (w) filtered = cols.filter(function(c){ return c.label.toLowerCase().indexOf(w) !== -1; });
+                    renderAndPosition(filtered);
+                });
+            }
+            return;
+        }
 
+        items = allSuggestions();
+        var w = (ctx.word || '').toLowerCase();
+        if (!forceAll && w) {
+            var starts = [], contains = [];
+            items.forEach(function(it) {
+                var lbl = it.label.toLowerCase();
+                if (lbl.startsWith(w)) starts.push(it);
+                else if (lbl.indexOf(w) !== -1) contains.push(it);
+            });
+            items = starts.concat(contains);
+        }
+        renderAndPosition(items);
+    }
 
-----------------------------------------------------------------------------------
+    function renderAndPosition(items) {
+        if (!items || items.length === 0) { hideSuggestions(); return; }
+        items = items.slice(0, 30);
+        currentItems = items;
+        activeIdx = 0;
+        var html = '';
+        items.forEach(function(it, i) {
+            var cls = 'suggest-item' + (i === 0 ? ' active' : '');
+            var t = it.type.split(':')[0];
+            var tagClass = 'tag-' + t;
+            var tagText = t === 'COLUMN' ? 'COL' : t;
+            html += '<div class="' + cls + '" data-i="' + i + '" onclick="pickSuggestion(' + i + ')">' +
+                        '<span>' + escapeHtml(it.label) + '</span>' +
+                        '<span class="tag ' + tagClass + '">' + tagText + '</span>' +
+                    '</div>';
+        });
+        suggestBox.innerHTML = html;
+        suggestBox.style.display = 'block';
 
+        var p = getCaretPosition(editor);
+        var boxH = Math.min(280, items.length * 34 + 6);
+        var editorH = editor.clientHeight;
+        var topPos = p.top;
+        if (topPos + boxH > editorH) topPos = Math.max(0, p.top - boxH - p.lineHeight);
+        suggestBox.style.left = Math.max(0, Math.min(p.left, editor.clientWidth - 290)) + 'px';
+        suggestBox.style.top = topPos + 'px';
+    }
+
+    function hideSuggestions() {
+        suggestBox.style.display = 'none';
+        currentItems = [];
+        activeIdx = -1;
+    }
+
+    function escapeHtml(s) {
+        return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+                .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+    }
+
+    function pickSuggestion(idx) {
+        if (idx < 0 || idx >= currentItems.length) return;
+        var item = currentItems[idx];
+        var ctx = getContext();
+        var val = editor.value;
+        var before = val.substring(0, ctx.start);
+        var after  = val.substring(ctx.end);
+        editor.value = before + item.insert + after;
+        var newPos = before.length + item.insert.length;
+        editor.selectionStart = editor.selectionEnd = newPos;
+        hideSuggestions();
+        editor.focus();
+    }
+
+    editor.addEventListener('keydown', function(e) {
+        var boxVisible = suggestBox.style.display === 'block';
+        if (e.key === ' ' && e.ctrlKey) { e.preventDefault(); showSuggestions(true); return; }
+        if (boxVisible) {
+            if (e.key === 'ArrowDown') { e.preventDefault(); activeIdx = (activeIdx + 1) % currentItems.length; updateActive(); return; }
+            if (e.key === 'ArrowUp')   { e.preventDefault(); activeIdx = (activeIdx - 1 + currentItems.length) % currentItems.length; updateActive(); return; }
+            if (e.key === 'Enter' || e.key === 'Tab') {
+                if (activeIdx >= 0) { e.preventDefault(); pickSuggestion(activeIdx); return; }
+            }
+            if (e.key === 'Escape') { e.preventDefault(); hideSuggestions(); return; }
+        }
+        if (e.key === 'Enter' && e.ctrlKey) {
+            e.preventDefault();
+            document.getElementById('qForm').submit();
+        }
+    });
+
+    function updateActive() {
+        var items = suggestBox.querySelectorAll('.suggest-item');
+        items.forEach(function(el, i) {
+            if (i === activeIdx) { el.classList.add('active'); el.scrollIntoView({block:'nearest'}); }
+            else { el.classList.remove('active'); }
+        });
+    }
+
+    var inputTimer = null;
+    editor.addEventListener('input', function() {
+        clearTimeout(inputTimer);
+        inputTimer = setTimeout(function() {
+            var ctx = getContext();
+            if (ctx.word.length >= 1 || ctx.dotBefore) showSuggestions(false);
+            else hideSuggestions();
+        }, 100);
+    });
+
+    document.addEventListener('click', function(e) {
+        if (!editorWrap.contains(e.target)) hideSuggestions();
+    });
+
+    editor.addEventListener('scroll', function() {
+        if (suggestBox.style.display === 'block') {
+            var p = getCaretPosition(editor);
+            suggestBox.style.top = p.top + 'px';
+        }
+    });
+
+    function clearAll() {
+        editor.value = '';
+        editor.focus();
+        hideSuggestions();
+        document.querySelectorAll('.q-item').forEach(function(i){ i.classList.remove('highlight'); });
+    }
+
+    function switchDb() {
+        var db = document.getElementById('dbType').value;
+        var url = window.location.pathname + '?dbType=' + encodeURIComponent(db);
+        window.location.href = url;
+    }
+
+    window.addEventListener('load', function() {
+        editor.focus();
+        editor.selectionStart = editor.selectionEnd = editor.value.length;
+        // Auto-open first group for convenience
+        var firstBody = document.querySelector('.group-body');
+        var firstHead = document.querySelector('.group-header');
+        if (firstBody && firstHead) {
+            firstBody.classList.add('open');
+            firstHead.classList.add('open');
+        }
+    });
+</script>
+</body>
+</html>
