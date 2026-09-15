@@ -29,21 +29,19 @@ public class QueryRunner {
         public String insert;
         public String type;
         public Suggestion(String label, String insert, String type) {
-            this.label = label;
-            this.insert = insert;
-            this.type = type;
+            this.label = label; this.insert = insert; this.type = type;
         }
     }
 
     private static final String[] KEYWORDS = {
-        "SELECT", "FROM", "WHERE", "AND", "OR", "NOT", "NULL", "IS", "IN",
-        "LIKE", "BETWEEN", "ORDER BY", "GROUP BY", "HAVING", "JOIN", "INNER JOIN",
-        "LEFT JOIN", "RIGHT JOIN", "FULL JOIN", "ON", "AS", "DISTINCT", "COUNT",
-        "SUM", "AVG", "MIN", "MAX", "INSERT INTO", "VALUES", "UPDATE", "SET",
-        "DELETE FROM", "CREATE TABLE", "DROP TABLE", "ALTER TABLE", "TRUNCATE",
-        "UNION", "UNION ALL", "EXISTS", "CASE", "WHEN", "THEN", "ELSE", "END",
-        "ROWNUM", "SYSDATE", "DUAL", "FETCH FIRST", "OFFSET", "LIMIT",
-        "ASC", "DESC", "COMMIT", "ROLLBACK", "WITH", "PARTITION"
+        "SELECT","FROM","WHERE","AND","OR","NOT","NULL","IS","IN",
+        "LIKE","BETWEEN","ORDER BY","GROUP BY","HAVING","JOIN","INNER JOIN",
+        "LEFT JOIN","RIGHT JOIN","FULL JOIN","ON","AS","DISTINCT","COUNT",
+        "SUM","AVG","MIN","MAX","INSERT INTO","VALUES","UPDATE","SET",
+        "DELETE FROM","CREATE TABLE","DROP TABLE","ALTER TABLE","TRUNCATE",
+        "UNION","UNION ALL","EXISTS","CASE","WHEN","THEN","ELSE","END",
+        "ROWNUM","SYSDATE","DUAL","FETCH FIRST","OFFSET","LIMIT",
+        "ASC","DESC","COMMIT","ROLLBACK","WITH","PARTITION"
     };
 
     public static String getDefaultSchema(String dbType) {
@@ -53,33 +51,28 @@ public class QueryRunner {
     }
 
     private static Connection getConn(String dbType) throws Exception {
-        if ("IIB".equalsIgnoreCase(dbType)) {
-            return DBUtilityAuto.getIIBDBConnection();
-        } else if ("SI".equalsIgnoreCase(dbType)) {
-            return DBUtilityAuto.getSIDBConnection();
-        } else {
-            return DBUtilityAuto.getReportDBConnection();
-        }
+        if ("IIB".equalsIgnoreCase(dbType))      return DBUtilityAuto.getIIBDBConnection();
+        if ("SI".equalsIgnoreCase(dbType))       return DBUtilityAuto.getSIDBConnection();
+        return DBUtilityAuto.getReportDBConnection();
     }
 
     public static List<Suggestion> getSchemaSuggestions(String dbType) {
         List<Suggestion> list = new ArrayList<>();
         Set<String> seen = new LinkedHashSet<>();
-        Connection conn = null;
-        ResultSet rs = null;
+        Connection conn = null; ResultSet rs = null;
         try {
             conn = getConn(dbType);
             if (conn == null) return list;
             DatabaseMetaData md = conn.getMetaData();
 
             String defSch = getDefaultSchema(dbType);
-            if (defSch != null && seen.add(defSch.toUpperCase())) {
+            if (defSch != null && seen.add(defSch.toUpperCase()))
                 list.add(new Suggestion(defSch, defSch + ".", "SCHEMA"));
-            }
+
             String userSch = md.getUserName();
-            if (userSch != null && seen.add(userSch.toUpperCase())) {
+            if (userSch != null && seen.add(userSch.toUpperCase()))
                 list.add(new Suggestion(userSch, userSch + ".", "SCHEMA"));
-            }
+
             rs = md.getSchemas();
             int count = 0;
             while (rs.next() && count < 50) {
@@ -94,10 +87,7 @@ public class QueryRunner {
                     || upper.equals("ORDSYS") || upper.equals("WMSYS")
                     || upper.equals("LBACSYS") || upper.equals("AUDSYS")
                     || upper.equals("GSMADMIN_INTERNAL") || upper.equals("OJVMSYS")) continue;
-                if (seen.add(upper)) {
-                    list.add(new Suggestion(s, s + ".", "SCHEMA"));
-                    count++;
-                }
+                if (seen.add(upper)) { list.add(new Suggestion(s, s + ".", "SCHEMA")); count++; }
             }
         } catch (Exception e) {
             System.err.println("Schema suggestion error: " + e.getMessage());
@@ -111,8 +101,7 @@ public class QueryRunner {
     public static List<Suggestion> getTableSuggestions(String dbType) {
         List<Suggestion> list = new ArrayList<>();
         Set<String> seen = new LinkedHashSet<>();
-        Connection conn = null;
-        ResultSet rs = null;
+        Connection conn = null; ResultSet rs = null;
         try {
             conn = getConn(dbType);
             if (conn == null) return list;
@@ -120,25 +109,24 @@ public class QueryRunner {
 
             String defSch = getDefaultSchema(dbType);
             if (defSch != null) {
-                rs = md.getTables(null, defSch, "%", new String[]{"TABLE", "VIEW"});
+                rs = md.getTables(null, defSch, "%", new String[]{"TABLE","VIEW"});
                 while (rs.next()) {
                     String tbl = rs.getString("TABLE_NAME");
                     String key = defSch.toUpperCase() + "." + tbl.toUpperCase();
-                    if (seen.add(key)) {
+                    if (seen.add(key))
                         list.add(new Suggestion(defSch + "." + tbl, defSch + "." + tbl, "TABLE"));
-                    }
                 }
                 try { rs.close(); } catch (Exception ignored) {}
             }
+
             String userSch = md.getUserName();
             if (userSch != null) {
-                rs = md.getTables(null, userSch, "%", new String[]{"TABLE", "VIEW"});
+                rs = md.getTables(null, userSch, "%", new String[]{"TABLE","VIEW"});
                 while (rs.next()) {
                     String tbl = rs.getString("TABLE_NAME");
                     String key = userSch.toUpperCase() + "." + tbl.toUpperCase();
-                    if (seen.add(key)) {
+                    if (seen.add(key))
                         list.add(new Suggestion(tbl, tbl, "TABLE"));
-                    }
                 }
             }
         } catch (Exception e) {
@@ -152,8 +140,7 @@ public class QueryRunner {
 
     public static List<Suggestion> getColumnSuggestions(String dbType, String schema, String tableName) {
         List<Suggestion> list = new ArrayList<>();
-        Connection conn = null;
-        ResultSet rs = null;
+        Connection conn = null; ResultSet rs = null;
         try {
             conn = getConn(dbType);
             if (conn == null) return list;
@@ -190,15 +177,12 @@ public class QueryRunner {
             return result;
         }
 
-        Connection conn = null;
-        Statement stmt = null;
-        ResultSet rs = null;
-
+        Connection conn = null; Statement stmt = null; ResultSet rs = null;
         try {
             conn = getConn(dbType);
             if (conn == null) {
                 result.success = false;
-                result.message = "Could not obtain DB connection. Check DB availability.";
+                result.message = "Could not obtain DB connection.";
                 return result;
             }
             stmt = conn.createStatement();
@@ -206,10 +190,8 @@ public class QueryRunner {
             while (trimmed.endsWith(";")) trimmed = trimmed.substring(0, trimmed.length() - 1).trim();
             String upper = trimmed.toUpperCase();
 
-            boolean isSelect = upper.startsWith("SELECT")
-                    || upper.startsWith("WITH")
-                    || upper.startsWith("SHOW")
-                    || upper.startsWith("DESC");
+            boolean isSelect = upper.startsWith("SELECT") || upper.startsWith("WITH")
+                    || upper.startsWith("SHOW") || upper.startsWith("DESC");
 
             if (isSelect) {
                 result.queryType = "SELECT";
@@ -217,7 +199,7 @@ public class QueryRunner {
                 ResultSetMetaData md = rs.getMetaData();
                 int colCount = md.getColumnCount();
                 for (int i = 1; i <= colCount; i++) result.columns.add(md.getColumnLabel(i));
-                int rowLimit = 5000;
+                int rowLimit = 10000;
                 while (rs.next() && result.rows.size() < rowLimit) {
                     Map<String, Object> row = new LinkedHashMap<>();
                     for (int i = 1; i <= colCount; i++) row.put(md.getColumnLabel(i), rs.getObject(i));
@@ -233,7 +215,7 @@ public class QueryRunner {
                     ResultSetMetaData md = rs.getMetaData();
                     int colCount = md.getColumnCount();
                     for (int i = 1; i <= colCount; i++) result.columns.add(md.getColumnLabel(i));
-                    while (rs.next() && result.rows.size() < 5000) {
+                    while (rs.next() && result.rows.size() < 10000) {
                         Map<String, Object> row = new LinkedHashMap<>();
                         for (int i = 1; i <= colCount; i++) row.put(md.getColumnLabel(i), rs.getObject(i));
                         result.rows.add(row);
@@ -263,8 +245,8 @@ public class QueryRunner {
     }
 }
 
+-------------------------------------------------------------------------------------
 
------------------------------------------------------------------------
 
 <%@ page language="java" contentType="text/html; charset=UTF-8" pageEncoding="UTF-8"%>
 <%@ page import="com.jdbc.QueryRunner" %>
@@ -273,11 +255,11 @@ public class QueryRunner {
 <%@ page import="java.util.*" %>
 <%
     // ============================================================
-    // ALL AJAX ENDPOINTS — must be FIRST
+    // AJAX ENDPOINTS
     // ============================================================
     String ajax = request.getParameter("ajax");
 
-    // ---------- AJAX: run query ----------
+    // ---- RUN ----
     if ("run".equals(ajax)) {
         String runSql = request.getParameter("sql");
         String runDb  = request.getParameter("dbType");
@@ -313,20 +295,27 @@ public class QueryRunner {
         sb.append("]}");
         response.setContentType("application/json");
         response.setCharacterEncoding("UTF-8");
-        out.print(sb.toString());
-        out.flush();
+        out.print(sb.toString()); out.flush();
         return;
     }
 
-    // ---------- AJAX: suggestions ----------
+    // ---- SUGGEST ----
     if ("suggest".equals(ajax)) {
         String ajaxDb = request.getParameter("db");
         if (ajaxDb == null) ajaxDb = "IIB";
-        List<Suggestion> schemas  = QueryRunner.getSchemaSuggestions(ajaxDb);
-        List<Suggestion> tables   = QueryRunner.getTableSuggestions(ajaxDb);
+
+        List<Suggestion> schemas = new ArrayList<>();
+        List<Suggestion> tables  = new ArrayList<>();
+        String err = null;
+        try { schemas = QueryRunner.getSchemaSuggestions(ajaxDb); }
+        catch (Throwable t) { err = "schemas: " + t.getMessage(); }
+        try { tables = QueryRunner.getTableSuggestions(ajaxDb); }
+        catch (Throwable t) { err = (err == null ? "" : err + "; ") + "tables: " + t.getMessage(); }
         List<Suggestion> keywords = QueryRunner.getKeywordSuggestions();
 
-        StringBuilder sb = new StringBuilder("{\"schemas\":[");
+        StringBuilder sb = new StringBuilder("{");
+        if (err != null) sb.append("\"error\":\"").append(QueryRunner.esc(err)).append("\",");
+        sb.append("\"schemas\":[");
         for (int i = 0; i < schemas.size(); i++) {
             Suggestion s = schemas.get(i);
             if (i > 0) sb.append(",");
@@ -353,12 +342,11 @@ public class QueryRunner {
         sb.append("]}");
         response.setContentType("application/json");
         response.setCharacterEncoding("UTF-8");
-        out.print(sb.toString());
-        out.flush();
+        out.print(sb.toString()); out.flush();
         return;
     }
 
-    // ---------- AJAX: columns ----------
+    // ---- COLS ----
     if ("cols".equals(ajax)) {
         String ajaxDb     = request.getParameter("db");
         String ajaxSchema = request.getParameter("schema");
@@ -377,8 +365,7 @@ public class QueryRunner {
         sb.append("]");
         response.setContentType("application/json");
         response.setCharacterEncoding("UTF-8");
-        out.print(sb.toString());
-        out.flush();
+        out.print(sb.toString()); out.flush();
         return;
     }
 
@@ -391,606 +378,607 @@ public class QueryRunner {
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Query Runner — Enterprise</title>
+    <title>Query Runner</title>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         html, body {
             height: 100%; width: 100%;
-            font-family: -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: #1e1e1e;
-            color: #d4d4d4;
+            font-family: 'Segoe UI', 'Inter', -apple-system, Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #1b1d23;
+            color: #e4e6eb;
+            font-size: 15px;
             overflow: hidden;
-            font-size: 13px;
         }
 
-        /* ============ APP LAYOUT ============ */
+        /* ========== LAYOUT ========== */
         .app {
             display: grid;
-            grid-template-rows: 44px 1fr 22px;
-            grid-template-columns: 280px 1fr;
+            grid-template-rows: 52px 1fr 28px;
+            grid-template-columns: 300px 1fr;
             grid-template-areas:
                 "header header"
                 "sidebar main"
-                "statusbar statusbar";
+                "status status";
             height: 100vh;
-            width: 100vw;
         }
 
-        /* ============ TOP MENU BAR ============ */
+        /* ========== HEADER ========== */
         .header {
             grid-area: header;
-            background: #252526;
-            border-bottom: 1px solid #3e3e42;
-            display: flex;
-            align-items: center;
-            padding: 0 14px;
+            background: #23262e;
+            border-bottom: 1px solid #2f333d;
+            display: flex; align-items: center;
+            padding: 0 20px;
             gap: 16px;
-            user-select: none;
         }
-        .logo {
-            display: flex; align-items: center; gap: 8px;
-            font-weight: 700; font-size: 14px;
-            color: #4ec9b0;
-            letter-spacing: 0.3px;
+        .brand {
+            display: flex; align-items: center; gap: 10px;
+            font-weight: 700; font-size: 16px; color: #e4e6eb;
         }
-        .logo-mark {
-            width: 22px; height: 22px;
-            background: linear-gradient(135deg, #4ec9b0, #2d8f7c);
-            border-radius: 5px;
+        .brand-mark {
+            width: 26px; height: 26px;
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+            border-radius: 6px;
             display: flex; align-items: center; justify-content: center;
-            font-size: 12px;
-            color: #1e1e1e;
-            font-weight: 900;
+            color: #fff; font-size: 13px; font-weight: 800;
         }
-        .menubar {
-            display: flex; gap: 4px;
-            font-size: 12.5px;
-            color: #cccccc;
+        .brand-tag {
+            font-size: 11px; font-weight: 500;
+            color: #6b7280;
+            margin-left: 6px;
+            padding: 2px 8px;
+            background: #2a2e38;
+            border-radius: 10px;
         }
-        .menubar .menu-item {
-            padding: 6px 10px;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-        .menubar .menu-item:hover { background: #37373d; }
-        .header-right {
-            margin-left: auto;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-size: 12px;
-            color: #858585;
-        }
-        .env-badge {
-            padding: 4px 10px;
-            background: #2d3a2e;
-            color: #4ec9b0;
-            border-radius: 3px;
-            font-size: 11px;
-            font-weight: 600;
-            border: 1px solid #3c5142;
-        }
-        .btn-new-tab {
+        .header-spacer { flex: 1; }
+        .conn-status {
+            display: flex; align-items: center; gap: 8px;
             padding: 6px 14px;
-            background: #0e639c;
+            background: #1e3a2a;
+            border: 1px solid #2f5a3f;
+            border-radius: 6px;
+            font-size: 12.5px;
+            font-weight: 600;
+            color: #4ade80;
+        }
+        .conn-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: #4ade80;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+
+        .btn-primary {
+            padding: 8px 16px;
+            background: #2563eb;
             color: #fff;
             border: none;
-            border-radius: 4px;
-            font-size: 12px;
+            border-radius: 6px;
+            font-size: 13.5px;
             font-weight: 600;
             cursor: pointer;
+            display: flex; align-items: center; gap: 6px;
+            transition: 0.15s;
         }
-        .btn-new-tab:hover { background: #1177bb; }
+        .btn-primary:hover { background: #1d4ed8; }
 
-        /* ============ SIDEBAR ============ */
+        /* ========== SIDEBAR ========== */
         .sidebar {
             grid-area: sidebar;
-            background: #252526;
-            border-right: 1px solid #3e3e42;
-            overflow-y: auto;
-            display: flex;
-            flex-direction: column;
+            background: #1f2229;
+            border-right: 1px solid #2f333d;
+            display: flex; flex-direction: column;
+            overflow: hidden;
         }
-        .sidebar::-webkit-scrollbar { width: 10px; }
-        .sidebar::-webkit-scrollbar-thumb { background: #424242; }
-
-        .sidebar-header {
-            padding: 10px 14px;
-            font-size: 11px;
+        .sidebar-title {
+            padding: 14px 18px 10px;
+            font-size: 11.5px;
             text-transform: uppercase;
-            letter-spacing: 1px;
-            color: #858585;
+            letter-spacing: 1.2px;
+            color: #6b7280;
             font-weight: 700;
-            border-bottom: 1px solid #3e3e42;
+            border-bottom: 1px solid #2f333d;
         }
-        .search-box {
-            margin: 8px 12px;
-            padding: 6px 10px;
-            background: #3c3c3c;
-            border: 1px solid #3e3e42;
-            border-radius: 4px;
-            color: #cccccc;
-            font-size: 12.5px;
+        .search-wrap {
+            padding: 10px 14px;
+            border-bottom: 1px solid #2f333d;
+        }
+        .search-input {
+            width: 100%;
+            padding: 8px 12px;
+            background: #262a33;
+            border: 1px solid #2f333d;
+            border-radius: 6px;
+            color: #e4e6eb;
+            font-size: 13px;
             outline: none;
+            font-family: inherit;
         }
-        .search-box:focus { border-color: #0e639c; }
+        .search-input:focus { border-color: #3b82f6; }
 
-        .query-group { border-bottom: 1px solid #2d2d30; }
-        .group-header {
-            padding: 8px 14px;
+        .tree { flex: 1; overflow-y: auto; padding: 6px 0; }
+        .tree::-webkit-scrollbar { width: 10px; }
+        .tree::-webkit-scrollbar-thumb { background: #3a3f4b; border-radius: 5px; }
+
+        .tgroup { border-bottom: 1px solid #262a33; }
+        .tgroup-head {
+            padding: 10px 16px;
             cursor: pointer;
-            font-size: 12.5px;
+            font-size: 13.5px;
             font-weight: 600;
-            color: #cccccc;
-            display: flex;
-            align-items: center;
-            gap: 6px;
+            color: #c7cad1;
+            display: flex; align-items: center; gap: 8px;
             user-select: none;
+            transition: background 0.12s;
         }
-        .group-header:hover { background: #2a2d2e; }
-        .group-arrow {
-            font-size: 9px;
-            color: #858585;
+        .tgroup-head:hover { background: #262a33; }
+        .tg-arrow {
+            font-size: 10px; color: #6b7280;
             transition: transform 0.15s;
-            width: 10px;
+            width: 10px; display: inline-block;
         }
-        .group-header.open .group-arrow { transform: rotate(90deg); }
-        .group-body { display: none; padding: 2px 0; background: #1e1e1e; }
-        .group-body.open { display: block; }
+        .tgroup-head.open .tg-arrow { transform: rotate(90deg); }
+        .tg-count {
+            margin-left: auto;
+            font-size: 11px;
+            color: #6b7280;
+            background: #2a2e38;
+            padding: 1px 8px;
+            border-radius: 10px;
+        }
+        .tgroup-body { display: none; padding: 4px 0 8px; }
+        .tgroup-body.open { display: block; }
 
-        .q-item {
-            padding: 6px 14px 6px 26px;
+        .qitem {
+            padding: 8px 16px 8px 32px;
             cursor: pointer;
-            font-size: 12.5px;
-            color: #b0b0b0;
-            border-left: 2px solid transparent;
+            font-size: 13px;
+            color: #a8adb8;
+            line-height: 1.4;
             transition: 0.1s;
+            border-left: 2px solid transparent;
         }
-        .q-item:hover {
-            background: #2a2d2e;
-            color: #fff;
-            border-left-color: #0e639c;
+        .qitem:hover {
+            background: #262a33;
+            color: #e4e6eb;
+            border-left-color: #3b82f6;
         }
-        .q-item.selected {
-            background: #094771;
+        .qitem.active {
+            background: #1e3a5f;
             color: #fff;
-            border-left-color: #4ec9b0;
+            border-left-color: #3b82f6;
         }
 
-        /* ============ MAIN ============ */
+        /* ========== MAIN ========== */
         .main {
             grid-area: main;
-            display: flex;
-            flex-direction: column;
+            display: flex; flex-direction: column;
             overflow: hidden;
-            background: #1e1e1e;
+            background: #181a1f;
         }
 
-        /* ============ TAB BAR ============ */
+        /* Tab bar */
         .tabbar {
-            background: #252526;
+            background: #23262e;
             display: flex;
-            align-items: stretch;
-            border-bottom: 1px solid #3e3e42;
+            border-bottom: 1px solid #2f333d;
             overflow-x: auto;
-            min-height: 35px;
-            max-height: 35px;
+            min-height: 42px;
         }
         .tabbar::-webkit-scrollbar { height: 4px; }
-        .tabbar::-webkit-scrollbar-thumb { background: #424242; }
+        .tabbar::-webkit-scrollbar-thumb { background: #3a3f4b; }
 
         .tab {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 8px 12px 8px 14px;
-            background: #2d2d30;
-            border-right: 1px solid #3e3e42;
+            display: flex; align-items: center; gap: 10px;
+            padding: 0 12px 0 16px;
+            background: #1f2229;
+            border-right: 1px solid #2f333d;
             cursor: pointer;
-            font-size: 12.5px;
-            color: #969696;
+            font-size: 13.5px;
+            color: #8b909a;
             white-space: nowrap;
-            min-width: 140px;
+            min-width: 150px;
+            max-width: 240px;
             position: relative;
             user-select: none;
-            transition: background 0.1s;
+            transition: 0.12s;
         }
-        .tab:hover { background: #333336; }
+        .tab:hover { background: #262a33; color: #c7cad1; }
         .tab.active {
-            background: #1e1e1e;
-            color: #fff;
+            background: #181a1f;
+            color: #e4e6eb;
+            font-weight: 600;
         }
         .tab.active::before {
             content: '';
             position: absolute;
             top: 0; left: 0; right: 0;
             height: 2px;
-            background: #0e639c;
+            background: #3b82f6;
         }
         .tab-dot {
             width: 8px; height: 8px;
             border-radius: 50%;
             flex-shrink: 0;
         }
-        .tab-dot.db-IIB    { background: #4ec9b0; box-shadow: 0 0 6px rgba(78,201,176,0.6); }
-        .tab-dot.db-SI     { background: #dcb67a; box-shadow: 0 0 6px rgba(220,182,122,0.6); }
-        .tab-dot.db-REPORT { background: #c586c0; box-shadow: 0 0 6px rgba(197,134,192,0.6); }
+        .tab-dot.db-IIB    { background: #4ade80; }
+        .tab-dot.db-SI     { background: #fbbf24; }
+        .tab-dot.db-REPORT { background: #c084fc; }
 
-        .tab-name { flex: 1; }
+        .tab-name {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
         .tab-close {
-            width: 16px; height: 16px;
-            border-radius: 3px;
+            width: 20px; height: 20px;
+            border-radius: 4px;
             display: flex; align-items: center; justify-content: center;
-            font-size: 14px;
-            color: #858585;
+            font-size: 16px;
+            color: #6b7280;
             line-height: 1;
             transition: 0.1s;
         }
-        .tab-close:hover { background: #4e4e4e; color: #fff; }
+        .tab-close:hover { background: #3a3f4b; color: #fff; }
 
         .tab-add {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 0 14px;
+            display: flex; align-items: center; justify-content: center;
+            padding: 0 16px;
             cursor: pointer;
-            color: #858585;
-            font-size: 16px;
-            border-right: 1px solid #3e3e42;
+            color: #6b7280;
+            font-size: 18px;
         }
-        .tab-add:hover { background: #2d2d30; color: #fff; }
+        .tab-add:hover { background: #262a33; color: #e4e6eb; }
 
-        /* ============ TAB CONTENT ============ */
-        .tab-content-area {
+        /* Tab content */
+        .tab-content {
             flex: 1;
-            display: flex;
-            flex-direction: column;
+            display: flex; flex-direction: column;
             overflow: hidden;
             position: relative;
         }
-        .tab-pane {
+        .pane {
             display: none;
             flex: 1;
             flex-direction: column;
             overflow: hidden;
         }
-        .tab-pane.active { display: flex; }
+        .pane.active { display: flex; }
 
-        /* ============ EDITOR TOOLBAR ============ */
-        .editor-toolbar {
-            background: #2d2d30;
-            border-bottom: 1px solid #3e3e42;
-            padding: 7px 12px;
+        /* Toolbar */
+        .toolbar {
+            background: #23262e;
+            border-bottom: 1px solid #2f333d;
+            padding: 10px 16px;
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 10px;
             flex-wrap: wrap;
         }
-        .toolbar-select {
-            padding: 5px 8px;
-            background: #3c3c3c;
-            color: #cccccc;
-            border: 1px solid #3e3e42;
-            border-radius: 4px;
-            font-size: 12px;
+        .toolbar select {
+            padding: 8px 12px;
+            background: #262a33;
+            color: #e4e6eb;
+            border: 1px solid #3a3f4b;
+            border-radius: 6px;
+            font-size: 13.5px;
             font-weight: 600;
             cursor: pointer;
             outline: none;
+            font-family: inherit;
         }
-        .toolbar-select:focus { border-color: #0e639c; }
+        .toolbar select:focus { border-color: #3b82f6; }
 
-        .tb-btn {
-            padding: 6px 14px;
-            border: none;
-            border-radius: 4px;
-            font-size: 12px;
+        .tb {
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 13.5px;
             font-weight: 600;
             cursor: pointer;
+            display: flex; align-items: center; gap: 6px;
             transition: 0.12s;
-            letter-spacing: 0.2px;
+            border: 1px solid transparent;
+            font-family: inherit;
         }
-        .tb-btn:hover { transform: translateY(-1px); }
-        .tb-btn:active { transform: translateY(0); }
+        .tb:hover { transform: translateY(-1px); }
+        .tb:active { transform: translateY(0); }
 
-        .tb-run { background: #16825d; color: #fff; }
-        .tb-run:hover { background: #1e9b6f; }
+        .tb-run {
+            background: #16a34a;
+            color: #fff;
+        }
+        .tb-run:hover { background: #15803d; }
 
         .tb-suggest {
-            background: #3c3c3c;
-            color: #4ec9b0;
-            border: 1px solid #4e4e4e;
+            background: #262a33;
+            color: #3b82f6;
+            border-color: #3a3f4b;
         }
-        .tb-suggest:hover { background: #4e4e4e; color: #7ee2c4; }
+        .tb-suggest:hover { background: #2f333d; color: #60a5fa; }
 
         .tb-clear {
-            background: #3c3c3c;
-            color: #d4d4d4;
-            border: 1px solid #4e4e4e;
+            background: #262a33;
+            color: #e4e6eb;
+            border-color: #3a3f4b;
         }
-        .tb-clear:hover { background: #4e4e4e; }
+        .tb-clear:hover { background: #2f333d; }
 
         .tb-close {
-            background: #3c3c3c;
-            color: #f48771;
-            border: 1px solid #4e4e4e;
+            background: #262a33;
+            color: #ef4444;
+            border-color: #3a3f4b;
         }
-        .tb-close:hover { background: #5a2a2a; color: #ffab91; }
+        .tb-close:hover { background: #3a2020; color: #f87171; }
+
+        .tb-export {
+            background: #262a33;
+            color: #4ade80;
+            border-color: #3a3f4b;
+        }
+        .tb-export:hover { background: #1e3a2a; color: #6ee7b7; }
+        .tb-export:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            transform: none;
+        }
 
         .toolbar-spacer { flex: 1; }
+        .status-chip {
+            padding: 5px 12px;
+            border-radius: 12px;
+            font-size: 11.5px;
+            font-weight: 700;
+            background: #262a33;
+            color: #6b7280;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+        }
+        .status-chip.ok { background: #1e3a2a; color: #4ade80; }
+        .status-chip.loading { background: #3a3020; color: #fbbf24; }
+        .status-chip.err { background: #3a2020; color: #f87171; }
 
-        .status-pill {
-            padding: 4px 10px;
-            border-radius: 10px;
-            font-size: 11px;
-            font-weight: 600;
-            background: #3c3c3c;
-            color: #858585;
-        }
-        .status-pill.ok {
-            background: #2d3a2e;
-            color: #4ec9b0;
-        }
-        .status-pill.loading {
-            background: #3a302d;
-            color: #dcb67a;
-        }
-
-        /* ============ EDITOR ============ */
+        /* Editor */
         .editor-wrap {
-            position: relative;
-            padding: 8px 12px;
-            background: #1e1e1e;
+            padding: 12px 16px;
+            background: #181a1f;
         }
-        .editor-inner {
-            position: relative;
-            border: 1px solid #3e3e42;
-            border-radius: 4px;
+        .editor-box {
+            border: 1px solid #2f333d;
+            border-radius: 8px;
+            background: #14161a;
             overflow: hidden;
-            background: #1e1e1e;
         }
-        .editor-inner:focus-within {
-            border-color: #0e639c;
-            box-shadow: 0 0 0 2px rgba(14,99,156,0.25);
+        .editor-box:focus-within {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59,130,246,0.15);
         }
-        textarea.sql-editor {
+        textarea.sql {
             width: 100%;
-            min-height: 180px;
-            max-height: 380px;
-            padding: 10px 14px;
-            background: #1e1e1e;
-            color: #d4d4d4;
+            min-height: 220px;
+            max-height: 460px;
+            padding: 14px 18px;
+            background: #14161a;
+            color: #e4e6eb;
             border: none;
             outline: none;
             resize: vertical;
-            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-            font-size: 13px;
-            line-height: 1.55;
-            caret-color: #aeafad;
+            font-family: 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
+            font-size: 14px;
+            line-height: 1.65;
+            caret-color: #3b82f6;
             tab-size: 4;
             display: block;
         }
-        textarea.sql-editor::placeholder { color: #6a6a6a; }
+        textarea.sql::placeholder { color: #4b5159; }
 
-        /* ============ AUTOCOMPLETE ============ */
-        .suggest-box {
-            position: fixed;
-            background: #252526;
-            border: 1px solid #454545;
-            border-radius: 3px;
-            box-shadow: 0 6px 24px rgba(0,0,0,0.6);
-            max-height: 260px;
-            overflow-y: auto;
-            z-index: 10000;
-            display: none;
-            min-width: 280px;
-            font-family: 'Consolas', monospace;
-            font-size: 12.5px;
-        }
-        .suggest-box::-webkit-scrollbar { width: 8px; }
-        .suggest-box::-webkit-scrollbar-thumb { background: #424242; }
-
-        .suggest-item {
-            padding: 5px 12px;
-            cursor: pointer;
-            color: #d4d4d4;
-            display: flex;
-            justify-content: space-between;
-            gap: 12px;
-            align-items: center;
-            border-bottom: 1px solid #2a2a2a;
-        }
-        .suggest-item:last-child { border-bottom: none; }
-        .suggest-item:hover, .suggest-item.active {
-            background: #094771;
-            color: #fff;
-        }
-        .suggest-item .tag {
-            font-size: 9.5px;
-            padding: 1px 7px;
-            border-radius: 8px;
-            font-weight: 700;
-            letter-spacing: 0.4px;
-            white-space: nowrap;
-        }
-        .tag-KEYWORD { background: #3a2d52; color: #c586c0; }
-        .tag-SCHEMA  { background: #1e3a5f; color: #4fc1ff; }
-        .tag-TABLE   { background: #1e4d3a; color: #4ec9b0; }
-        .tag-COLUMN  { background: #4d3a1e; color: #dcb67a; }
-
-        /* ============ RESULT ============ */
-        .result-panel {
+        /* Results */
+        .results {
             flex: 1;
-            overflow: hidden;
             display: flex;
             flex-direction: column;
-            border-top: 1px solid #3e3e42;
-            background: #1e1e1e;
+            overflow: hidden;
+            border-top: 1px solid #2f333d;
+            background: #14161a;
             min-height: 0;
         }
-        .result-header {
-            padding: 6px 14px;
-            background: #252526;
-            border-bottom: 1px solid #3e3e42;
+        .res-bar {
+            padding: 8px 16px;
+            background: #23262e;
+            border-bottom: 1px solid #2f333d;
             display: flex;
             align-items: center;
-            gap: 14px;
-            font-size: 12px;
+            gap: 18px;
+            font-size: 12.5px;
             flex-wrap: wrap;
         }
-        .result-header .rh-title {
+        .res-bar .label {
+            font-size: 11.5px;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            color: #6b7280;
             font-weight: 700;
-            color: #4ec9b0;
+            margin-right: 4px;
         }
-        .rh-meta {
-            display: flex;
-            gap: 14px;
-            color: #858585;
-        }
-        .rh-meta b { color: #d4d4d4; }
-        .rh-time-ok { color: #4ec9b0 !important; }
-        .rh-time-warn { color: #dcb67a !important; }
-        .rh-time-slow { color: #f48771 !important; }
+        .res-stat { color: #a8adb8; }
+        .res-stat b { color: #e4e6eb; font-weight: 600; }
+        .res-time.ok   { color: #4ade80; font-weight: 700; }
+        .res-time.warn { color: #fbbf24; font-weight: 700; }
+        .res-time.slow { color: #f87171; font-weight: 700; }
 
-        .result-body {
+        .res-body {
             flex: 1;
             overflow: auto;
             position: relative;
         }
-        .result-body::-webkit-scrollbar { width: 12px; height: 12px; }
-        .result-body::-webkit-scrollbar-track { background: #1e1e1e; }
-        .result-body::-webkit-scrollbar-thumb {
-            background: #424242;
-            border: 3px solid #1e1e1e;
+        .res-body::-webkit-scrollbar { width: 12px; height: 12px; }
+        .res-body::-webkit-scrollbar-track { background: #14161a; }
+        .res-body::-webkit-scrollbar-thumb {
+            background: #3a3f4b;
             border-radius: 6px;
+            border: 3px solid #14161a;
         }
+        .res-body::-webkit-scrollbar-thumb:hover { background: #4a505c; }
 
-        .data-table {
+        table.data {
             width: 100%;
             border-collapse: collapse;
-            font-size: 12.5px;
-            font-family: 'Consolas', monospace;
+            font-size: 13px;
+            font-family: 'JetBrains Mono', 'Consolas', monospace;
         }
-        .data-table th {
-            background: #252526;
-            color: #4ec9b0;
-            padding: 8px 12px;
+        table.data th {
+            background: #1f2229;
+            color: #93c5fd;
+            padding: 10px 14px;
             text-align: left;
             position: sticky;
             top: 0;
             z-index: 2;
             font-weight: 700;
-            font-size: 12px;
+            font-size: 12.5px;
             white-space: nowrap;
-            border-bottom: 1px solid #3e3e42;
-            border-right: 1px solid #2d2d30;
+            border-bottom: 2px solid #2f333d;
+            border-right: 1px solid #262a33;
+            letter-spacing: 0.3px;
         }
-        .data-table td {
-            padding: 6px 12px;
-            border-bottom: 1px solid #2a2a2a;
-            border-right: 1px solid #2a2a2a;
-            color: #d4d4d4;
-            max-width: 400px;
+        table.data td {
+            padding: 8px 14px;
+            border-bottom: 1px solid #1f2229;
+            border-right: 1px solid #1f2229;
+            color: #d1d5db;
+            max-width: 450px;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
         }
-        .data-table tr:nth-child(even) td { background: #232323; }
-        .data-table tr:hover td { background: #2a2d2e; }
-        .data-table td.idx {
-            color: #585858;
-            background: #1e1e1e !important;
-            width: 52px;
+        table.data tr:nth-child(even) td { background: #171a1f; }
+        table.data tr:hover td { background: #1e293b; }
+        table.data td.row-no {
+            color: #6b7280;
+            background: #14161a !important;
+            width: 60px;
             text-align: right;
-            font-size: 11.5px;
-        }
-        .null-val { color: #6a6a6a; font-style: italic; }
-
-        .alert {
-            padding: 10px 14px;
-            margin: 10px 14px;
-            border-radius: 3px;
-            font-size: 12.5px;
-        }
-        .alert-success {
-            background: #1e2d22;
-            border-left: 3px solid #4ec9b0;
-            color: #a8e6d3;
-        }
-        .alert-error {
-            background: #2d1e1e;
-            border-left: 3px solid #f48771;
-            color: #ffb3a3;
-            font-family: 'Consolas', monospace;
-            white-space: pre-wrap;
             font-size: 12px;
         }
+        .null-cell { color: #4b5159; font-style: italic; }
 
-        .empty-state {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
+        .alert {
+            padding: 14px 20px;
+            margin: 14px 20px;
+            border-radius: 6px;
+            font-size: 13.5px;
+        }
+        .alert-ok {
+            background: #142a1e;
+            border-left: 4px solid #16a34a;
+            color: #86efac;
+        }
+        .alert-err {
+            background: #2a1414;
+            border-left: 4px solid #ef4444;
+            color: #fca5a5;
+            font-family: 'JetBrains Mono', monospace;
+            white-space: pre-wrap;
+            font-size: 12.5px;
+        }
+
+        .placeholder {
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
             height: 100%;
-            color: #585858;
-            gap: 10px;
-            font-size: 13px;
+            color: #4b5159;
+            gap: 12px;
             padding: 40px;
             text-align: center;
         }
-        .empty-state .icon {
-            font-size: 40px;
-            opacity: 0.4;
+        .placeholder .ph-icon { font-size: 42px; opacity: 0.5; }
+        .placeholder .ph-title { font-size: 15px; color: #6b7280; }
+        .placeholder .ph-sub { font-size: 13px; color: #4b5159; }
+
+        /* Status bar */
+        .status {
+            grid-area: status;
+            background: #23262e;
+            color: #8b909a;
+            display: flex;
+            align-items: center;
+            font-size: 12.5px;
+            padding: 0 18px;
+            gap: 22px;
+            border-top: 1px solid #2f333d;
+        }
+        .status .st-item { display: flex; align-items: center; gap: 7px; }
+        .status .st-item b { color: #e4e6eb; font-weight: 600; }
+        .status .right { margin-left: auto; display: flex; gap: 22px; }
+        .st-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: #4ade80;
         }
 
-        /* ============ STATUS BAR ============ */
-        .statusbar {
-            grid-area: statusbar;
-            background: #0e639c;
+        /* Autocomplete */
+        .ac-box {
+            position: fixed;
+            background: #23262e;
+            border: 1px solid #3a3f4b;
+            border-radius: 6px;
+            box-shadow: 0 12px 36px rgba(0,0,0,0.7);
+            max-height: 300px;
+            overflow-y: auto;
+            z-index: 9999;
+            display: none;
+            min-width: 320px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+        }
+        .ac-box::-webkit-scrollbar { width: 8px; }
+        .ac-box::-webkit-scrollbar-thumb { background: #3a3f4b; border-radius: 4px; }
+
+        .ac-item {
+            padding: 7px 14px;
+            cursor: pointer;
+            color: #d1d5db;
+            display: flex;
+            justify-content: space-between;
+            gap: 14px;
+            align-items: center;
+            border-bottom: 1px solid #1f2229;
+        }
+        .ac-item:last-child { border-bottom: none; }
+        .ac-item:hover, .ac-item.active {
+            background: #1e3a5f;
             color: #fff;
-            display: flex;
-            align-items: center;
-            font-size: 11.5px;
-            padding: 0 12px;
-            gap: 16px;
-            user-select: none;
         }
-        .statusbar .sb-item {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            padding: 0 8px;
-            height: 100%;
+        .ac-tag {
+            font-size: 10px;
+            padding: 2px 8px;
+            border-radius: 8px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
         }
-        .statusbar .sb-right { margin-left: auto; display: flex; gap: 16px; }
+        .tag-KEYWORD { background: #3b2f4a; color: #c084fc; }
+        .tag-SCHEMA  { background: #1e3a5f; color: #60a5fa; }
+        .tag-TABLE   { background: #1e3a2a; color: #4ade80; }
+        .tag-COLUMN  { background: #3a3020; color: #fbbf24; }
 
-        .spinner {
-            display: inline-block;
-            width: 12px; height: 12px;
-            border: 2px solid #dcb67a;
-            border-top-color: transparent;
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-            vertical-align: middle;
-        }
-        @keyframes spin { to { transform: rotate(360deg); } }
-
+        /* Toast */
         .toast {
             position: fixed;
-            bottom: 40px; right: 20px;
-            background: #252526;
-            border-left: 4px solid #4ec9b0;
-            color: #d4d4d4;
-            padding: 12px 18px;
-            border-radius: 4px;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
-            font-size: 12.5px;
+            bottom: 44px; right: 24px;
+            background: #23262e;
+            border-left: 4px solid #16a34a;
+            color: #e4e6eb;
+            padding: 14px 20px;
+            border-radius: 6px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+            font-size: 13.5px;
             z-index: 10001;
-            animation: slideIn 0.25s ease;
-            max-width: 340px;
+            animation: slideIn 0.22s ease;
+            max-width: 380px;
+            font-weight: 500;
         }
-        .toast.error { border-left-color: #f48771; }
+        .toast.err { border-left-color: #ef4444; }
         @keyframes slideIn {
             from { opacity: 0; transform: translateX(30px); }
             to   { opacity: 1; transform: translateX(0); }
@@ -1001,38 +989,35 @@ public class QueryRunner {
 
 <div class="app">
 
-    <!-- HEADER -->
+    <!-- ========== HEADER ========== -->
     <div class="header">
-        <div class="logo">
-            <div class="logo-mark">Q</div>
+        <div class="brand">
+            <div class="brand-mark">Q</div>
             Query Runner
+            <span class="brand-tag">v2.0</span>
         </div>
-        <div class="menubar">
-            <div class="menu-item">File</div>
-            <div class="menu-item">Edit</div>
-            <div class="menu-item">Run</div>
-            <div class="menu-item">View</div>
-            <div class="menu-item">Help</div>
+        <div class="header-spacer"></div>
+        <div class="conn-status">
+            <span class="conn-dot"></span>
+            CONNECTED
         </div>
-        <div class="header-right">
-            <span class="env-badge" id="envBadge">● CONNECTED</span>
-            <button class="btn-new-tab" onclick="newTab()">+ New Tab</button>
-        </div>
+        <button class="btn-primary" onclick="newTab()">+ New Tab</button>
     </div>
 
-    <!-- SIDEBAR -->
+    <!-- ========== SIDEBAR ========== -->
     <div class="sidebar">
-        <div class="sidebar-header">Saved Queries</div>
-        <input type="text" class="search-box" id="qSearch" placeholder="Search queries...">
+        <div class="sidebar-title">Saved Queries</div>
+        <div class="search-wrap">
+            <input type="text" class="search-input" id="qSearch" placeholder="Search queries...">
+        </div>
+        <div class="tree" id="tree">
 
-        <div id="queryList">
-
-            <div class="query-group">
-                <div class="group-header" onclick="toggleGroup(this)">
-                    <span class="group-arrow">▶</span> Gen 5 — Error Summary
+            <div class="tgroup">
+                <div class="tgroup-head" onclick="toggleGroup(this)">
+                    <span class="tg-arrow">▶</span> Gen 5 — Error Summary
                 </div>
-                <div class="group-body">
-                    <div class="q-item" onclick="loadQuery(this)">
+                <div class="tgroup-body">
+                    <div class="qitem" onclick="loadQuery(this)">
                         Broker-wise error count (last 5 min)
                         <script type="text/plain" class="q-sql">SELECT broker_eg, broker_name, ERROR_CODE, ERROR_DESCRIPTION, url, api_name,
 COUNT(*) AS CNT FROM EISAPP.API_LOG WHERE Request_date_time>=SYSDATE - INTERVAL '05' MINUTE and
@@ -1044,31 +1029,27 @@ ORDER BY CNT DESC;</script>
                 </div>
             </div>
 
-            <div class="query-group">
-                <div class="group-header" onclick="toggleGroup(this)">
-                    <span class="group-arrow">▶</span> Daily Use (Last 10 min)
+            <div class="tgroup">
+                <div class="tgroup-head" onclick="toggleGroup(this)">
+                    <span class="tg-arrow">▶</span> Daily Use (Last 10 min)
                 </div>
-                <div class="group-body">
-                    <div class="q-item" onclick="loadQuery(this)">
-                        api_log — recent
+                <div class="tgroup-body">
+                    <div class="qitem" onclick="loadQuery(this)">api_log — recent
                         <script type="text/plain" class="q-sql">select * from eisapp.api_log where
 request_date_time >= sysdate - interval '10' minute
 order by request_date_time desc;</script>
                     </div>
-                    <div class="q-item" onclick="loadQuery(this)">
-                        api_log — error summary
+                    <div class="qitem" onclick="loadQuery(this)">api_log — error summary
                         <script type="text/plain" class="q-sql">select error_code, error_description, count(1) from eisapp.api_log where
 request_date_time >= sysdate - interval '10' minute
 GROUP by error_code, error_description;</script>
                     </div>
-                    <div class="q-item" onclick="loadQuery(this)">
-                        backend_log — recent
+                    <div class="qitem" onclick="loadQuery(this)">backend_log — recent
                         <script type="text/plain" class="q-sql">select * from eisapp.BACKEND_log where
 request_date_time >= sysdate - interval '10' minute
 order by request_date_time desc;</script>
                     </div>
-                    <div class="q-item" onclick="loadQuery(this)">
-                        backend_log — error summary
+                    <div class="qitem" onclick="loadQuery(this)">backend_log — error summary
                         <script type="text/plain" class="q-sql">select error_code, error_description, count(1) from eisapp.BACKEND_log where
 request_date_time >= sysdate - interval '10' minute
 GROUP by error_code, error_description;</script>
@@ -1076,61 +1057,61 @@ GROUP by error_code, error_description;</script>
                 </div>
             </div>
 
-            <div class="query-group">
-                <div class="group-header" onclick="toggleGroup(this)">
-                    <span class="group-arrow">▶</span> URN Search
+            <div class="tgroup">
+                <div class="tgroup-head" onclick="toggleGroup(this)">
+                    <span class="tg-arrow">▶</span> URN Search
                 </div>
-                <div class="group-body">
-                    <div class="q-item" onclick="loadQuery(this)">api_log by URN
+                <div class="tgroup-body">
+                    <div class="qitem" onclick="loadQuery(this)">api_log by URN
                         <script type="text/plain" class="q-sql">select * from eisapp.api_log where URN in ('');</script>
                     </div>
-                    <div class="q-item" onclick="loadQuery(this)">api_details by URN
+                    <div class="qitem" onclick="loadQuery(this)">api_details by URN
                         <script type="text/plain" class="q-sql">select * from eisapp.api_details where URN in('');</script>
                     </div>
-                    <div class="q-item" onclick="loadQuery(this)">orch_api_log by URN
+                    <div class="qitem" onclick="loadQuery(this)">orch_api_log by URN
                         <script type="text/plain" class="q-sql">select * from eisapp.orch_api_log where URN in ('');</script>
                     </div>
-                    <div class="q-item" onclick="loadQuery(this)">orch_api_details by URN
+                    <div class="qitem" onclick="loadQuery(this)">orch_api_details by URN
                         <script type="text/plain" class="q-sql">select * from eisapp.orch_api_details where URN in ('');</script>
                     </div>
-                    <div class="q-item" onclick="loadQuery(this)">backend_log by URN
+                    <div class="qitem" onclick="loadQuery(this)">backend_log by URN
                         <script type="text/plain" class="q-sql">select * from eisapp.backend_log where URN in ('');</script>
                     </div>
-                    <div class="q-item" onclick="loadQuery(this)">backend_details by URN
+                    <div class="qitem" onclick="loadQuery(this)">backend_details by URN
                         <script type="text/plain" class="q-sql">select * from eisapp.backend_details where URN in ('');</script>
                     </div>
                 </div>
             </div>
 
-            <div class="query-group">
-                <div class="group-header" onclick="toggleGroup(this)">
-                    <span class="group-arrow">▶</span> URL / Mappers
+            <div class="tgroup">
+                <div class="tgroup-head" onclick="toggleGroup(this)">
+                    <span class="tg-arrow">▶</span> URL / Mappers
                 </div>
-                <div class="group-body">
-                    <div class="q-item" onclick="loadQuery(this)">source_mapper
+                <div class="tgroup-body">
+                    <div class="qitem" onclick="loadQuery(this)">source_mapper
                         <script type="text/plain" class="q-sql">select * from EISAPP.source_mapper;</script>
                     </div>
-                    <div class="q-item" onclick="loadQuery(this)">url_mapper
+                    <div class="qitem" onclick="loadQuery(this)">url_mapper
                         <script type="text/plain" class="q-sql">select * from EISAPP.url_mapper;</script>
                     </div>
-                    <div class="q-item" onclick="loadQuery(this)">urn_details
+                    <div class="qitem" onclick="loadQuery(this)">urn_details
                         <script type="text/plain" class="q-sql">select * from EISAPP.urn_details;</script>
                     </div>
-                    <div class="q-item" onclick="loadQuery(this)">cache_details
+                    <div class="qitem" onclick="loadQuery(this)">cache_details
                         <script type="text/plain" class="q-sql">SELECT * FROM EISAPP.cache_details;</script>
                     </div>
-                    <div class="q-item" onclick="loadQuery(this)">Find API by name (NOMINEE)
+                    <div class="qitem" onclick="loadQuery(this)">Find API (NOMINEE)
                         <script type="text/plain" class="q-sql">select distinct api_name from eisapp.api_log where UPPER(api_name) like '%NOMINEE%';</script>
                     </div>
                 </div>
             </div>
 
-            <div class="query-group">
-                <div class="group-header" onclick="toggleGroup(this)">
-                    <span class="group-arrow">▶</span> API Log — TD/BD Summary
+            <div class="tgroup">
+                <div class="tgroup-head" onclick="toggleGroup(this)">
+                    <span class="tg-arrow">▶</span> API Log — TD/BD Summary
                 </div>
-                <div class="group-body">
-                    <div class="q-item" onclick="loadQuery(this)">API-wise TD/BD (last 60 min)
+                <div class="tgroup-body">
+                    <div class="qitem" onclick="loadQuery(this)">API-wise TD/BD (last 60 min)
                         <script type="text/plain" class="q-sql">select trim(API_NAME),
 COUNT(1) "TOTAL_HITS",
 SUM(CASE WHEN RESPONSE_STATUS in ('0','SUCCESS') THEN 1 ELSE 0 END) AS SUCCESS,
@@ -1148,7 +1129,7 @@ request_date_time>=SYSDATE - INTERVAL '60' minute
 GROUP BY trim(API_NAME)
 ORDER BY TD_PERCENT DESC;</script>
                     </div>
-                    <div class="q-item" onclick="loadQuery(this)">Backend-wise TD/BD (last 60 min)
+                    <div class="qitem" onclick="loadQuery(this)">Backend-wise TD/BD (last 60 min)
                         <script type="text/plain" class="q-sql">select TRIM(api_name),
 COUNT(1) "TOTAL_HITS",
 SUM(CASE WHEN error_code is null THEN 1 ELSE 0 END) AS SUCCESS,
@@ -1167,41 +1148,18 @@ ORDER BY TD_PERCENT DESC;</script>
                 </div>
             </div>
 
-            <div class="query-group">
-                <div class="group-header" onclick="toggleGroup(this)">
-                    <span class="group-arrow">▶</span> Third Party
+            <div class="tgroup">
+                <div class="tgroup-head" onclick="toggleGroup(this)">
+                    <span class="tg-arrow">▶</span> SI Monitoring (SBISI)
                 </div>
-                <div class="group-body">
-                    <div class="q-item" onclick="loadQuery(this)">Third Party — TD/BD by SUP_URL (last 60 min)
-                        <script type="text/plain" class="q-sql">select SUP_URL,ORIGINAL_URN,TRANSACTION_URN,source_id,
-COUNT(1) "TOTAL_HITS",
-SUM(CASE WHEN RESPONSE_STATUS in ('0','SUCCESS') THEN 1 ELSE 0 END) AS SUCCESS,
-SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') or error_code in('SI001','SI007','SI017','SI569','SI570','SI051','SI111')) and error_code<>'00014' THEN 1 ELSE 0 END) AS TD,
-ROUND((SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') or error_code in('SI001','SI007','SI017','SI569','SI570','SI051','SI111')) and error_code<>'00014' THEN 1 ELSE 0 END)*100)/COUNT(1)) AS TD_PERCENT,
-SUM(CASE WHEN ERROR_CODE='SI001'  THEN 1 ELSE 0 END) AS SI001,
-SUM(CASE WHEN ERROR_CODE='SI007'  THEN 1 ELSE 0 END) AS SI007,
-SUM(CASE WHEN ERROR_CODE='SI051'  THEN 1 ELSE 0 END) AS SI051
-from eisapp.api_LOG where
-creation_date_time>=SYSDATE - INTERVAL '60' minute
-GROUP BY SUP_URL,ORIGINAL_URN,TRANSACTION_URN,source_id
-HAVING (SUM(CASE WHEN (RESPONSE_STATUS  not in ('0','SUCCESS') and error_code is not null) THEN 1 ELSE 0 END)*100)/COUNT(1)=100
-order by TD_PERCENT desc;</script>
-                    </div>
-                </div>
-            </div>
-
-            <div class="query-group">
-                <div class="group-header" onclick="toggleGroup(this)">
-                    <span class="group-arrow">▶</span> SI Monitoring (SBISI)
-                </div>
-                <div class="group-body">
-                    <div class="q-item" onclick="loadQuery(this)">SI_TRANS_DB — error summary (last 10 min)
+                <div class="tgroup-body">
+                    <div class="qitem" onclick="loadQuery(this)">SI_TRANS_DB — error summary (last 10 min)
                         <script type="text/plain" class="q-sql">SELECT function_name,ERROR_CODE, ERROR_DESC, COUNT(*) AS CNT FROM SBISI.SI_TRANS_DB
 WHERE SUBSTR(error_code,1,2) = 'SI'
 and req_time>=SYSDATE - INTERVAL '10' MINUTE
 GROUP BY ERROR_CODE,ERROR_DESC,function_name ORDER BY CNT DESC;</script>
                     </div>
-                    <div class="q-item" onclick="loadQuery(this)">EKYC_log — TD% (SI207, SI392)
+                    <div class="qitem" onclick="loadQuery(this)">EKYC_log — TD% (SI207, SI392)
                         <script type="text/plain" class="q-sql">select COUNT(1) as TOTAL_HITS,
 SUM(CASE WHEN ERROR_CODE IS NULL THEN 1 ELSE 0 END) AS SUCCESS,
 SUM(CASE WHEN ERROR_CODE IS NOT NULL AND error_code NOT IN ('SI392','SI207') THEN 1 ELSE 0 END) "BD",
@@ -1211,7 +1169,7 @@ SUM(CASE WHEN ERROR_CODE='SI207' THEN 1 ELSE 0 END) "SI207",
 ROUND((SUM(CASE WHEN error_code IN ('SI392','SI207') THEN 1 ELSE 0 END)/COUNT(1))*100,2) "TD%"
 from SBISI.EKYC_log where resp_date_time >=sysdate - interval '15' minute;</script>
                     </div>
-                    <div class="q-item" onclick="loadQuery(this)">EKYC (SI392) — recent
+                    <div class="qitem" onclick="loadQuery(this)">EKYC (SI392) — recent
                         <script type="text/plain" class="q-sql">select *  from SBISI.ekyc_log where
  error_code = 'SI392'
 and req_date_time>=SYSDATE - INTERVAL '10' MINUTE  order by req_date_time desc;</script>
@@ -1219,12 +1177,12 @@ and req_date_time>=SYSDATE - INTERVAL '10' MINUTE  order by req_date_time desc;<
                 </div>
             </div>
 
-            <div class="query-group">
-                <div class="group-header" onclick="toggleGroup(this)">
-                    <span class="group-arrow">▶</span> Performance / Latency
+            <div class="tgroup">
+                <div class="tgroup-head" onclick="toggleGroup(this)">
+                    <span class="tg-arrow">▶</span> Performance / Latency
                 </div>
-                <div class="group-body">
-                    <div class="q-item" onclick="loadQuery(this)">EXP IP response-time buckets (last 2 min)
+                <div class="tgroup-body">
+                    <div class="qitem" onclick="loadQuery(this)">EXP IP response-time buckets (last 2 min)
                         <script type="text/plain" class="q-sql">SELECT exp_ip,COUNT(1),
 SUM(CASE WHEN RESPONSE_STATUS in ('0','SUCCESS') THEN 1 ELSE 0 END) AS SUCCESS,
 sum(case when TO_NUMBER(SUBSTR(TO_CHAR(RESPONSE_DATE_TIME-dpg_request_date_time),18))< 0.1 then 1 else 0 end ) as BELOW_100MSEC ,
@@ -1234,7 +1192,7 @@ FROM EISAPP.API_LOG WHERE broker_name = 'LOGGING_EXP' and
 request_date_time>=SYSDATE-INTERVAL '02' MINUTE
 group by exp_ip;</script>
                     </div>
-                    <div class="q-item" onclick="loadQuery(this)">SYS latency — backend vs orch (last 2 min)
+                    <div class="qitem" onclick="loadQuery(this)">SYS latency — backend vs orch (last 2 min)
                         <script type="text/plain" class="q-sql">SELECT b.sys_ip,COUNT(1),
 sum(case when TO_NUMBER(SUBSTR(TO_CHAR(b.request_DATE_TIME-a.request_DATE_TIME),18))< 0.1 then 1 else 0 end ) as BELOW_100MSEC ,
 sum(case when TO_NUMBER(SUBSTR(TO_CHAR(b.request_DATE_TIME-a.request_DATE_TIME),18))> 5 then 1 else 0 end ) as ABOVE_FIVE_SEC
@@ -1248,92 +1206,99 @@ group by b.sys_ip;</script>
         </div>
     </div>
 
-    <!-- MAIN -->
+    <!-- ========== MAIN ========== -->
     <div class="main">
         <div class="tabbar" id="tabbar">
             <div class="tab-add" onclick="newTab()" title="New Tab (Ctrl+T)">+</div>
         </div>
-        <div class="tab-content-area" id="tabContentArea"></div>
+        <div class="tab-content" id="tabContent"></div>
     </div>
 
-    <!-- STATUS BAR -->
-    <div class="statusbar">
-        <div class="sb-item" id="sbDb">● IIB DB (EISAPP)</div>
-        <div class="sb-item" id="sbStatus">Ready</div>
-        <div class="sb-right">
-            <div class="sb-item" id="sbLastTime">Last exec: —</div>
-            <div class="sb-item" id="sbTabs">1 tab</div>
+    <!-- ========== STATUS BAR ========== -->
+    <div class="status">
+        <div class="st-item">
+            <span class="st-dot"></span>
+            <b id="stDb">IIB DB (EISAPP)</b>
+        </div>
+        <div class="st-item" id="stTab">Tab: —</div>
+        <div class="right">
+            <div class="st-item" id="stLast">Last exec: —</div>
+            <div class="st-item" id="stCount">1 tab</div>
         </div>
     </div>
 
 </div>
 
-<div id="suggestBox" class="suggest-box"></div>
+<div id="acBox" class="ac-box"></div>
 
 <script>
 /* ============================================================
- * MULTI-TAB QUERY RUNNER
+ * QUERY RUNNER — v2.0
  * ============================================================ */
 
 var DB_META = {
-    "IIB":    { label: "IIB DB (EISAPP)", color: "#4ec9b0", dot: "db-IIB" },
-    "SI":     { label: "SI DB (SBISI)",   color: "#dcb67a", dot: "db-SI" },
-    "REPORT": { label: "Report DB",       color: "#c586c0", dot: "db-REPORT" }
+    "IIB":    { label: "IIB DB (EISAPP)", dot: "db-IIB" },
+    "SI":     { label: "SI DB (SBISI)",   dot: "db-SI" },
+    "REPORT": { label: "Report DB",       dot: "db-REPORT" }
 };
-
 var DEFAULT_DB = "<%= dbType %>";
 
 var SUGGEST = {
-    loaded: false,
-    loading: false,
-    schemas: [],
-    tables: [],
-    keywords: [],
-    columnCache: {},
-    dbFetched: null
+    loaded: false, loading: false,
+    schemas: [], tables: [], keywords: [],
+    columnCache: {}, dbFetched: null
 };
 
 var tabs = [];
 var activeTabId = null;
-var tabCounter = 0;
+var usedNumbers = {};   // track used numbers for reuse
 
-/* ============ TAB CLASS ============ */
-function Tab(id, db) {
-    this.id = id;
+/* ============ TAB ============ */
+function Tab(num, db) {
+    this.num = num;
+    this.id = 'tab_' + num + '_' + Date.now();
     this.db = db || DEFAULT_DB;
+    this.title = "Query " + num;
     this.sql = "";
-    this.title = "Query " + id;
+    this.editorEl = null;
     this.el = null;
     this.paneEl = null;
-    this.editorEl = null;
-    this.activeIdx = -1;
     this.currentItems = [];
+    this.activeIdx = -1;
     this.lastExecMs = null;
-    this.lastSavedSql = "";
+    this.lastResult = null;  // store result for export
 }
 
-/* ============ CREATE TAB ============ */
+/* ============ FIND FREE NUMBER (reuse on close) ============ */
+function nextFreeNum() {
+    var n = 1;
+    while (usedNumbers[n]) n++;
+    usedNumbers[n] = true;
+    return n;
+}
+
+/* ============ NEW TAB ============ */
 function newTab() {
-    tabCounter++;
-    var t = new Tab(tabCounter, DEFAULT_DB);
-    t.title = "Query " + tabCounter;
+    var num = nextFreeNum();
+    var t = new Tab(num, DEFAULT_DB);
     tabs.push(t);
     renderTab(t);
     switchTab(t.id);
-    saveTabsToStorage();
+    saveTabs();
     return t;
 }
 
 function renderTab(t) {
-    var tabEl = document.createElement('div');
-    tabEl.className = 'tab';
-    tabEl.dataset.tabId = t.id;
-    tabEl.innerHTML =
+    // Tab button
+    var el = document.createElement('div');
+    el.className = 'tab';
+    el.dataset.tabId = t.id;
+    el.innerHTML =
         '<span class="tab-dot ' + DB_META[t.db].dot + '"></span>' +
         '<span class="tab-name">' + t.title + '</span>' +
-        '<span class="tab-close" title="Close">×</span>';
+        '<span class="tab-close" title="Close (Ctrl+W)">×</span>';
 
-    tabEl.addEventListener('click', function(e) {
+    el.addEventListener('click', function(e) {
         if (e.target.classList.contains('tab-close')) {
             e.stopPropagation();
             closeTab(t.id);
@@ -1343,93 +1308,93 @@ function renderTab(t) {
     });
 
     var tabAdd = document.querySelector('.tab-add');
-    document.getElementById('tabbar').insertBefore(tabEl, tabAdd);
-    t.el = tabEl;
+    document.getElementById('tabbar').insertBefore(el, tabAdd);
+    t.el = el;
 
+    // Pane
     var pane = document.createElement('div');
-    pane.className = 'tab-pane';
+    pane.className = 'pane';
     pane.dataset.tabId = t.id;
     pane.innerHTML = buildPaneHTML(t);
-    document.getElementById('tabContentArea').appendChild(pane);
+    document.getElementById('tabContent').appendChild(pane);
     t.paneEl = pane;
-    t.editorEl = pane.querySelector('.sql-editor');
+    t.editorEl = pane.querySelector('.sql');
 
-    attachEditorEvents(t);
-    updateTabCount();
+    bindEditorEvents(t);
+    updateCount();
 }
 
 function buildPaneHTML(t) {
     return '' +
-    '<div class="editor-toolbar">' +
-        '<select class="toolbar-select db-sel">' +
+    '<div class="toolbar">' +
+        '<select class="db-sel">' +
             '<option value="IIB"'    + (t.db === "IIB"    ? " selected" : "") + '>IIB DB (eisapp)</option>' +
             '<option value="SI"'     + (t.db === "SI"     ? " selected" : "") + '>SI DB (sbisi)</option>' +
             '<option value="REPORT"' + (t.db === "REPORT" ? " selected" : "") + '>Report DB</option>' +
         '</select>' +
-        '<button type="button" class="tb-btn tb-run"     onclick="runQuery(' + t.id + ')">▶ Run</button>' +
-        '<button type="button" class="tb-btn tb-suggest" onclick="doSuggest(' + t.id + ')">Suggest</button>' +
-        '<button type="button" class="tb-btn tb-clear"   onclick="clearEditor(' + t.id + ')">Clear</button>' +
-        '<button type="button" class="tb-btn tb-close"   onclick="closeTab(' + t.id + ')">Close Tab</button>' +
+        '<button class="tb tb-run"     onclick="runQuery(\'' + t.id + '\')">▶ Run</button>' +
+        '<button class="tb tb-suggest" onclick="doSuggest(\'' + t.id + '\')">💡 Suggest</button>' +
+        '<button class="tb tb-export"  onclick="exportResult(\'' + t.id + '\')" disabled>↓ Export</button>' +
+        '<button class="tb tb-clear"   onclick="clearEditor(\'' + t.id + '\')">Clear</button>' +
+        '<button class="tb tb-close"   onclick="closeTab(\'' + t.id + '\')">Close</button>' +
         '<div class="toolbar-spacer"></div>' +
-        '<span class="status-pill" data-role="status">idle</span>' +
+        '<span class="status-chip" data-role="chip">idle</span>' +
     '</div>' +
     '<div class="editor-wrap">' +
-        '<div class="editor-inner">' +
-            '<textarea class="sql-editor" spellcheck="false" autocomplete="off" ' +
-                'placeholder="-- Pick a saved query, or write your SQL here&#10;-- Ctrl+Space for suggestions, Ctrl+Enter to run">' + escapeHtml(t.sql) + '</textarea>' +
+        '<div class="editor-box">' +
+            '<textarea class="sql" spellcheck="false" autocomplete="off" ' +
+                'placeholder="-- Select a saved query from the sidebar, or write your SQL here&#10;-- Ctrl+Space: suggestions   |   Ctrl+Enter: run   |   Ctrl+T: new tab">' + escapeHtml(t.sql) + '</textarea>' +
         '</div>' +
     '</div>' +
-    '<div class="result-panel">' +
-        '<div class="result-header" style="display:none;" data-role="resultHeader">' +
-            '<span class="rh-title">RESULT</span>' +
-            '<div class="rh-meta">' +
-                '<span>Type: <b data-role="qType">—</b></span>' +
-                '<span>Rows: <b data-role="qRows">—</b></span>' +
-                '<span>Time: <b data-role="qTime">—</b></span>' +
-            '</div>' +
+    '<div class="results">' +
+        '<div class="res-bar" style="display:none;" data-role="resBar">' +
+            '<span class="res-stat"><span class="label">Type</span><b data-role="qType">—</b></span>' +
+            '<span class="res-stat"><span class="label">Rows</span><b data-role="qRows">—</b></span>' +
+            '<span class="res-stat"><span class="label">Time</span><b data-role="qTime">—</b></span>' +
+            '<span class="res-stat"><span class="label">DB</span><b data-role="qDb">—</b></span>' +
         '</div>' +
-        '<div class="result-body" data-role="resultBody">' +
-            '<div class="empty-state">' +
-                '<div class="icon">▶</div>' +
-                '<div>Ready — write or pick a query, then click <b>Run</b>.</div>' +
-                '<div style="font-size:11.5px;color:#4a4a4a;">Tab DB: ' + DB_META[t.db].label + '</div>' +
+        '<div class="res-body" data-role="resBody">' +
+            '<div class="placeholder">' +
+                '<div class="ph-icon">▶</div>' +
+                '<div class="ph-title">Ready</div>' +
+                '<div class="ph-sub">Write a query or pick one from the sidebar, then click <b>Run</b>.</div>' +
             '</div>' +
         '</div>' +
     '</div>';
 }
 
-/* ============ SWITCH TAB ============ */
+/* ============ SWITCH / CLOSE ============ */
 function switchTab(id) {
     activeTabId = id;
     document.querySelectorAll('.tab').forEach(function(el) {
-        el.classList.toggle('active', el.dataset.tabId == id);
+        el.classList.toggle('active', el.dataset.tabId === id);
     });
-    document.querySelectorAll('.tab-pane').forEach(function(el) {
-        el.classList.toggle('active', el.dataset.tabId == id);
+    document.querySelectorAll('.pane').forEach(function(el) {
+        el.classList.toggle('active', el.dataset.tabId === id);
     });
-    updateStatusBar();
     var t = getTab(id);
-    if (t && t.editorEl) {
-        try { t.editorEl.focus(); } catch(e) {}
-    }
-    saveTabsToStorage();
+    if (t && t.editorEl) try { t.editorEl.focus(); } catch(e) {}
+    updateStatus();
+    saveTabs();
 }
 
 function getTab(id) {
-    for (var i = 0; i < tabs.length; i++) if (tabs[i].id == id) return tabs[i];
+    for (var i = 0; i < tabs.length; i++) if (tabs[i].id === id) return tabs[i];
     return null;
 }
 
-/* ============ CLOSE TAB ============ */
 function closeTab(id) {
     var idx = -1;
-    for (var i = 0; i < tabs.length; i++) if (tabs[i].id == id) { idx = i; break; }
+    for (var i = 0; i < tabs.length; i++) if (tabs[i].id === id) { idx = i; break; }
     if (idx === -1) return;
     var t = tabs[idx];
 
-    if (t.sql && t.sql.trim() && t.sql.trim() !== (t.lastSavedSql || "")) {
-        if (!confirm("Close tab \"" + t.title + "\"? Unsaved changes will be lost.")) return;
+    if (t.sql && t.sql.trim()) {
+        if (!confirm('Close "' + t.title + '"? Unsaved query will be lost.')) return;
     }
+
+    // free the number for reuse
+    delete usedNumbers[t.num];
 
     if (t.el) t.el.remove();
     if (t.paneEl) t.paneEl.remove();
@@ -1440,62 +1405,44 @@ function closeTab(id) {
     } else if (activeTabId === id) {
         switchTab(tabs[Math.max(0, idx - 1)].id);
     }
-    updateTabCount();
-    saveTabsToStorage();
+    updateCount();
+    saveTabs();
 }
 
 /* ============ EDITOR EVENTS ============ */
-function attachEditorEvents(t) {
+function bindEditorEvents(t) {
     var ta = t.editorEl;
     var dbSel = t.paneEl.querySelector('.db-sel');
 
     ta.addEventListener('input', function() {
         t.sql = ta.value;
-        clearTimeout(ta._timer);
-        ta._timer = setTimeout(function() {
-            saveTabsToStorage();
-            autoTriggerSuggest(t);
-        }, 120);
+        clearTimeout(ta._tmr);
+        ta._tmr = setTimeout(function() {
+            saveTabs();
+            autoSuggest(t);
+        }, 130);
     });
 
     dbSel.addEventListener('change', function() {
         t.db = dbSel.value;
-        var dot = t.el.querySelector('.tab-dot');
-        dot.className = 'tab-dot ' + DB_META[t.db].dot;
-        updateStatusBar();
+        t.el.querySelector('.tab-dot').className = 'tab-dot ' + DB_META[t.db].dot;
         if (SUGGEST.dbFetched && SUGGEST.dbFetched !== t.db) {
-            SUGGEST.loaded = false;
-            SUGGEST.dbFetched = null;
+            SUGGEST.loaded = false; SUGGEST.dbFetched = null;
         }
-        toast("DB switched to " + DB_META[t.db].label + " for " + t.title);
-        saveTabsToStorage();
+        updateStatus();
+        toast("DB switched to " + DB_META[t.db].label);
+        saveTabs();
     });
 
     ta.addEventListener('keydown', function(e) {
-        var boxVisible = document.getElementById('suggestBox').style.display === 'block';
+        var boxOpen = document.getElementById('acBox').style.display === 'block';
 
-        if (e.key === ' ' && e.ctrlKey) {
-            e.preventDefault();
-            doSuggest(t.id);
-            return;
-        }
-        if (e.key === 'Enter' && e.ctrlKey) {
-            e.preventDefault();
-            runQuery(t.id);
-            return;
-        }
-        if ((e.key === 't' || e.key === 'T') && e.ctrlKey) {
-            e.preventDefault();
-            newTab();
-            return;
-        }
-        if ((e.key === 'w' || e.key === 'W') && e.ctrlKey) {
-            e.preventDefault();
-            closeTab(t.id);
-            return;
-        }
+        if (e.ctrlKey && e.key === ' ') { e.preventDefault(); doSuggest(t.id); return; }
+        if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); runQuery(t.id); return; }
+        if (e.ctrlKey && (e.key === 't' || e.key === 'T')) { e.preventDefault(); newTab(); return; }
+        if (e.ctrlKey && (e.key === 'w' || e.key === 'W')) { e.preventDefault(); closeTab(t.id); return; }
 
-        if (boxVisible && t.currentItems.length > 0) {
+        if (boxOpen && t.currentItems.length > 0) {
             if (e.key === 'ArrowDown') { e.preventDefault(); t.activeIdx = (t.activeIdx + 1) % t.currentItems.length; updateActive(t); return; }
             if (e.key === 'ArrowUp')   { e.preventDefault(); t.activeIdx = (t.activeIdx - 1 + t.currentItems.length) % t.currentItems.length; updateActive(t); return; }
             if (e.key === 'Enter' || e.key === 'Tab') {
@@ -1506,141 +1453,125 @@ function attachEditorEvents(t) {
     });
 }
 
-/* ============ AUTO-TRIGGER SUGGEST ============ */
-function autoTriggerSuggest(t) {
-    var ctx = getContext(t);
+/* ============ AUTO SUGGEST ON TYPING ============ */
+function autoSuggest(t) {
+    var ctx = getCtx(t);
     if ((ctx.word && ctx.word.length >= 1) || ctx.dotBefore) {
-        ensureSuggestLoaded(t, function() { showSuggest(t, false); });
+        ensureSuggest(t, function(){ showSuggest(t, false); });
     } else {
         hideSuggest(t);
     }
 }
 
-/* ============ DO SUGGEST (button) ============ */
-function doSuggest(tabId) {
-    var t = getTab(tabId);
-    if (!t) return;
-    ensureSuggestLoaded(t, function() {
-        showSuggest(t, true);
-    });
+/* ============ BUTTON: SUGGEST ============ */
+function doSuggest(id) {
+    var t = getTab(id); if (!t) return;
+    ensureSuggest(t, function(){ showSuggest(t, true); });
 }
 
-/* ============ LOAD SUGGESTIONS (AJAX) ============ */
-function ensureSuggestLoaded(t, cb) {
+/* ============ ENSURE SUGGESTIONS LOADED ============ */
+function ensureSuggest(t, cb) {
     if (SUGGEST.loaded && SUGGEST.dbFetched === t.db) { cb(); return; }
     if (SUGGEST.loading) {
-        var wait = setInterval(function() {
+        var w = setInterval(function(){
             if (!SUGGEST.loading) {
-                clearInterval(wait);
+                clearInterval(w);
                 if (SUGGEST.dbFetched === t.db) cb();
-                else ensureSuggestLoaded(t, cb);
+                else ensureSuggest(t, cb);
             }
-        }, 100);
+        }, 80);
         return;
     }
     SUGGEST.loading = true;
-    setStatus(t, "loading", "Loading suggestions...");
+    setChip(t, "loading", "loading...");
 
     var xhr = new XMLHttpRequest();
     xhr.open('GET', 'query.jsp?ajax=suggest&db=' + encodeURIComponent(t.db), true);
     xhr.onreadystatechange = function() {
-        if (xhr.readyState === 4) {
-            if (xhr.status === 200) {
-                try {
-                    var data = JSON.parse(xhr.responseText);
-                    SUGGEST.schemas  = data.schemas  || [];
-                    SUGGEST.tables   = data.tables   || [];
-                    SUGGEST.keywords = data.keywords || [];
-                    SUGGEST.loaded = true;
-                    SUGGEST.dbFetched = t.db;
-                    setStatus(t, "ok", "Suggestions ready");
-                    setTimeout(function(){ setStatus(t, null, "idle"); }, 2000);
-                } catch(e) {
-                    setStatus(t, null, "Suggest load failed");
-                    console.error(e);
-                }
-            } else {
-                setStatus(t, null, "Suggest load failed (HTTP " + xhr.status + ")");
+        if (xhr.readyState !== 4) return;
+        if (xhr.status === 200) {
+            try {
+                var d = JSON.parse(xhr.responseText);
+                SUGGEST.schemas = d.schemas || [];
+                SUGGEST.tables  = d.tables  || [];
+                SUGGEST.keywords = d.keywords || [];
+                SUGGEST.loaded = true;
+                SUGGEST.dbFetched = t.db;
+                setChip(t, "ok", "ready");
+                setTimeout(function(){ setChip(t, null, "idle"); }, 2000);
+                if (d.error) console.warn("Suggest warn: " + d.error);
+            } catch(e) {
+                console.error("Suggest parse error", e);
+                setChip(t, "err", "suggest failed");
             }
-            SUGGEST.loading = false;
-            cb();
+        } else {
+            setChip(t, "err", "suggest failed " + xhr.status);
         }
+        SUGGEST.loading = false;
+        cb();
     };
     xhr.send();
 }
 
 /* ============ CONTEXT ============ */
-function getContext(t) {
+function getCtx(t) {
     var ta = t.editorEl;
     var pos = ta.selectionStart;
     var val = ta.value;
-    var start = pos;
-    while (start > 0 && /[A-Za-z0-9_$#]/.test(val.charAt(start - 1))) start--;
-    var end = pos;
-    while (end < val.length && /[A-Za-z0-9_$#]/.test(val.charAt(end))) end++;
-    var word = val.substring(start, pos);
-
+    var s = pos;
+    while (s > 0 && /[A-Za-z0-9_$#]/.test(val.charAt(s - 1))) s--;
+    var e = pos;
+    while (e < val.length && /[A-Za-z0-9_$#]/.test(val.charAt(e))) e++;
+    var word = val.substring(s, pos);
     var prefix = "";
     var dotBefore = false;
-    if (start > 0 && val.charAt(start - 1) === '.') {
+    if (s > 0 && val.charAt(s - 1) === '.') {
         dotBefore = true;
-        var p = start - 2;
+        var p = s - 2;
         while (p >= 0 && /[A-Za-z0-9_$#]/.test(val.charAt(p))) p--;
-        prefix = val.substring(p + 1, start - 1);
+        prefix = val.substring(p + 1, s - 1);
     }
-    return { word: word, start: start, end: end, dotBefore: dotBefore, prefix: prefix };
+    return { word: word, start: s, end: e, dotBefore: dotBefore, prefix: prefix };
 }
 
-/* ============ CARET PIXEL POSITION ============ */
-function getCaretPixel(ta) {
-    var div = document.createElement('div');
-    var style = window.getComputedStyle(ta);
-    var props = ['fontFamily','fontSize','fontWeight','lineHeight','letterSpacing',
-                 'paddingTop','paddingLeft','paddingRight','paddingBottom',
-                 'borderTopWidth','borderLeftWidth','whiteSpace','wordWrap','wordBreak'];
-    props.forEach(function(p){ div.style[p] = style[p]; });
-    div.style.position = 'fixed';
-    div.style.visibility = 'hidden';
-    div.style.whiteSpace = 'pre-wrap';
-    div.style.wordWrap = 'break-word';
-    div.style.width = (ta.clientWidth - parseInt(style.paddingLeft) - parseInt(style.paddingRight)) + 'px';
-    div.style.top = '-9999px';
-    div.style.left = '0';
-
-    var value = ta.value.substring(0, ta.selectionStart);
-    div.textContent = value;
+/* ============ CARET POSITION ============ */
+function caretXY(ta) {
+    var d = document.createElement('div');
+    var st = window.getComputedStyle(ta);
+    var ps = ['fontFamily','fontSize','fontWeight','lineHeight','letterSpacing',
+              'paddingTop','paddingLeft','paddingRight','paddingBottom',
+              'borderTopWidth','borderLeftWidth','whiteSpace','wordWrap','wordBreak'];
+    ps.forEach(function(p){ d.style[p] = st[p]; });
+    d.style.position = 'fixed';
+    d.style.visibility = 'hidden';
+    d.style.whiteSpace = 'pre-wrap';
+    d.style.wordWrap = 'break-word';
+    d.style.width = (ta.clientWidth - parseInt(st.paddingLeft) - parseInt(st.paddingRight)) + 'px';
+    d.style.top = '-9999px';
+    d.textContent = ta.value.substring(0, ta.selectionStart);
     var span = document.createElement('span');
     span.textContent = ta.value.substring(ta.selectionStart) || '.';
-    div.appendChild(span);
-    document.body.appendChild(div);
-
-    var spanRect = span.getBoundingClientRect();
-    var lineH = parseInt(style.lineHeight) || 20;
-    var pos = {
-        left: spanRect.left,
-        top:  spanRect.bottom + 2,
-        lineHeight: lineH
-    };
-
-    document.body.removeChild(div);
+    d.appendChild(span);
+    document.body.appendChild(d);
+    var sr = span.getBoundingClientRect();
+    var lineH = parseInt(st.lineHeight) || 22;
+    var pos = { left: sr.left, top: sr.bottom + 2, lineHeight: lineH };
+    document.body.removeChild(d);
     return pos;
 }
 
-/* ============ SHOW SUGGESTIONS ============ */
+/* ============ SHOW SUGGEST ============ */
 function showSuggest(t, forceAll) {
-    var box = document.getElementById('suggestBox');
-    var ctx = getContext(t);
+    var ctx = getCtx(t);
     var items;
 
     if (ctx.dotBefore) {
-        var prefixUpper = ctx.prefix.toUpperCase();
-        var isSchema = SUGGEST.schemas.some(function(s) {
-            return s.label.toUpperCase() === prefixUpper;
-        });
+        var prefUp = ctx.prefix.toUpperCase();
+        var isSchema = SUGGEST.schemas.some(function(s){ return s.label.toUpperCase() === prefUp; });
         if (isSchema) {
-            items = SUGGEST.tables.filter(function(tb) {
-                return tb.label.toUpperCase().startsWith(prefixUpper + ".");
-            }).map(function(tb) {
+            items = SUGGEST.tables.filter(function(tb){
+                return tb.label.toUpperCase().startsWith(prefUp + ".");
+            }).map(function(tb){
                 var shortName = tb.label.substring(tb.label.indexOf('.') + 1);
                 return { label: shortName, insert: shortName, type: "TABLE" };
             });
@@ -1650,10 +1581,9 @@ function showSuggest(t, forceAll) {
             }
             renderSuggest(t, items);
         } else {
-            fetchColumns(t, null, ctx.prefix, function(cols) {
+            fetchCols(t, ctx.prefix, function(cols){
                 var w = (ctx.word || '').toLowerCase();
-                var filtered = cols;
-                if (w) filtered = cols.filter(function(c){ return c.label.toLowerCase().indexOf(w) !== -1; });
+                var filtered = w ? cols.filter(function(c){ return c.label.toLowerCase().indexOf(w) !== -1; }) : cols;
                 renderSuggest(t, filtered);
             });
         }
@@ -1664,10 +1594,10 @@ function showSuggest(t, forceAll) {
     var w = (ctx.word || '').toLowerCase();
     if (!forceAll && w) {
         var starts = [], contains = [];
-        items.forEach(function(it) {
-            var lbl = it.label.toLowerCase();
-            if (lbl.startsWith(w)) starts.push(it);
-            else if (lbl.indexOf(w) !== -1) contains.push(it);
+        items.forEach(function(it){
+            var l = it.label.toLowerCase();
+            if (l.startsWith(w)) starts.push(it);
+            else if (l.indexOf(w) !== -1) contains.push(it);
         });
         items = starts.concat(contains);
     }
@@ -1675,72 +1605,65 @@ function showSuggest(t, forceAll) {
 }
 
 function renderSuggest(t, items) {
-    var box = document.getElementById('suggestBox');
+    var box = document.getElementById('acBox');
     if (!items || items.length === 0) { hideSuggest(t); return; }
-    items = items.slice(0, 40);
+    items = items.slice(0, 50);
     t.currentItems = items;
     t.activeIdx = 0;
     var html = '';
     items.forEach(function(it, i) {
-        var cls = 'suggest-item' + (i === 0 ? ' active' : '');
+        var cls = 'ac-item' + (i === 0 ? ' active' : '');
         var tag = it.type.split(':')[0];
-        var tagText = tag === 'COLUMN' ? 'COL' : tag;
-        html += '<div class="' + cls + '" data-i="' + i + '" onmousedown="event.preventDefault();" onclick="pickSuggestionById(' + t.id + ',' + i + ')">' +
+        var tagTxt = tag === 'COLUMN' ? 'COL' : tag;
+        html += '<div class="' + cls + '" data-i="' + i + '" onmousedown="event.preventDefault();" onclick="pickById(\'' + t.id + '\',' + i + ')">' +
                     '<span>' + escapeHtml(it.label) + '</span>' +
-                    '<span class="tag tag-' + tag + '">' + tagText + '</span>' +
+                    '<span class="ac-tag tag-' + tag + '">' + tagTxt + '</span>' +
                 '</div>';
     });
     box.innerHTML = html;
     box.style.display = 'block';
 
-    var pos = getCaretPixel(t.editorEl);
-    var boxH = Math.min(260, items.length * 26 + 4);
-    var winH = window.innerHeight;
-    var top = pos.top;
-    if (top + boxH > winH - 40) top = pos.top - boxH - pos.lineHeight - 6;
-    box.style.left = Math.max(4, Math.min(pos.left, window.innerWidth - 300)) + 'px';
+    var p = caretXY(t.editorEl);
+    var h = Math.min(300, items.length * 30 + 8);
+    var top = p.top;
+    if (top + h > window.innerHeight - 50) top = p.top - h - p.lineHeight - 6;
+    box.style.left = Math.max(6, Math.min(p.left, window.innerWidth - 340)) + 'px';
     box.style.top  = top + 'px';
 }
 
 function hideSuggest(t) {
-    document.getElementById('suggestBox').style.display = 'none';
-    if (t) {
-        t.currentItems = [];
-        t.activeIdx = -1;
-    }
+    document.getElementById('acBox').style.display = 'none';
+    if (t) { t.currentItems = []; t.activeIdx = -1; }
 }
 
 function updateActive(t) {
-    var items = document.querySelectorAll('#suggestBox .suggest-item');
-    items.forEach(function(el, i) {
+    document.querySelectorAll('#acBox .ac-item').forEach(function(el, i){
         if (i === t.activeIdx) { el.classList.add('active'); el.scrollIntoView({block:'nearest'}); }
         else el.classList.remove('active');
     });
 }
 
-function pickSuggestionById(tabId, idx) {
-    var t = getTab(tabId);
-    if (!t) return;
+function pickById(tabId, idx) {
+    var t = getTab(tabId); if (!t) return;
     pickSuggestion(t, idx);
 }
 
 function pickSuggestion(t, idx) {
     if (idx < 0 || idx >= t.currentItems.length) return;
-    var item = t.currentItems[idx];
-    var ctx = getContext(t);
+    var it = t.currentItems[idx];
+    var ctx = getCtx(t);
     var val = t.editorEl.value;
     var before = val.substring(0, ctx.start);
-    var after  = val.substring(ctx.end);
-    t.editorEl.value = before + item.insert + after;
-    var newPos = before.length + item.insert.length;
-    t.editorEl.selectionStart = t.editorEl.selectionEnd = newPos;
+    var after = val.substring(ctx.end);
+    t.editorEl.value = before + it.insert + after;
+    var np = before.length + it.insert.length;
+    t.editorEl.selectionStart = t.editorEl.selectionEnd = np;
     t.sql = t.editorEl.value;
     hideSuggest(t);
     t.editorEl.focus();
 }
 
-/* ============ FETCH COLUMNS ============ */
-function fetchColumns(t, schema, table, cb) {
+function fetchCols(t, schema, table, cb) {
     var key = (schema || '').toUpperCase() + '.' + table.toUpperCase();
     if (SUGGEST.columnCache[key]) { cb(SUGGEST.columnCache[key]); return; }
     var url = 'query.jsp?ajax=cols&db=' + encodeURIComponent(t.db) +
@@ -1751,10 +1674,10 @@ function fetchColumns(t, schema, table, cb) {
     xhr.onreadystatechange = function() {
         if (xhr.readyState === 4 && xhr.status === 200) {
             try {
-                var data = JSON.parse(xhr.responseText);
-                SUGGEST.columnCache[key] = data;
-                cb(data);
-            } catch(e) { cb([]); }
+                var d = JSON.parse(xhr.responseText);
+                SUGGEST.columnCache[key] = d;
+                cb(d);
+            } catch(e){ cb([]); }
         }
     };
     xhr.send();
@@ -1762,22 +1685,19 @@ function fetchColumns(t, schema, table, cb) {
 
 /* ============ RUN QUERY ============ */
 function runQuery(tabId) {
-    var t = getTab(tabId);
-    if (!t) return;
+    var t = getTab(tabId); if (!t) return;
     var sql = t.editorEl.value.trim();
     if (!sql) { toast("Query is empty.", true); return; }
 
     t.sql = t.editorEl.value;
-    saveTabsToStorage();
-
-    setStatus(t, "loading", "Executing...");
+    saveTabs();
+    setChip(t, "loading", "running...");
     hideSuggest(t);
 
-    var body = t.paneEl.querySelector('[data-role="resultBody"]');
-    var header = t.paneEl.querySelector('[data-role="resultHeader"]');
-    body.innerHTML = '<div class="empty-state"><div class="spinner"></div><div>Executing query on ' + DB_META[t.db].label + '...</div></div>';
+    var resBody = t.paneEl.querySelector('[data-role="resBody"]');
+    var resBar = t.paneEl.querySelector('[data-role="resBar"]');
+    resBody.innerHTML = '<div class="placeholder"><div class="ph-icon" style="animation: spin 1s linear infinite; display:inline-block;">◌</div><div class="ph-title">Executing...</div><div class="ph-sub">Running on ' + DB_META[t.db].label + '</div></div>';
 
-    var t0 = Date.now();
     var xhr = new XMLHttpRequest();
     xhr.open('POST', 'query.jsp?ajax=run', true);
     xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded; charset=UTF-8');
@@ -1785,115 +1705,141 @@ function runQuery(tabId) {
 
     xhr.onreadystatechange = function() {
         if (xhr.readyState !== 4) return;
-
         if (xhr.status !== 200) {
-            body.innerHTML = '<div class="alert alert-error">HTTP ' + xhr.status + ' — failed to execute.</div>';
-            setStatus(t, null, "Error");
-            toast("HTTP " + xhr.status, true);
+            resBody.innerHTML = '<div class="alert alert-err">HTTP ' + xhr.status + ' — execution failed.</div>';
+            setChip(t, "err", "error");
             return;
         }
-
         try {
             var res = JSON.parse(xhr.responseText);
-            var roundTrip = Date.now() - t0;
             t.lastExecMs = res.executionTimeMs;
+            t.lastResult = res;
 
-            header.style.display = 'flex';
-            header.querySelector('[data-role="qType"]').textContent = res.queryType || '—';
-            header.querySelector('[data-role="qRows"]').textContent = (res.rows ? res.rows.length : 0);
-            var timeEl = header.querySelector('[data-role="qTime"]');
-            timeEl.textContent = res.executionTimeMs + ' ms';
-            timeEl.className = '';
-            if (res.executionTimeMs < 500) timeEl.classList.add('rh-time-ok');
-            else if (res.executionTimeMs < 3000) timeEl.classList.add('rh-time-warn');
-            else timeEl.classList.add('rh-time-slow');
+            resBar.style.display = 'flex';
+            resBar.querySelector('[data-role="qType"]').textContent = res.queryType || '—';
+            resBar.querySelector('[data-role="qRows"]').textContent = (res.rows ? res.rows.length : 0);
+            resBar.querySelector('[data-role="qDb"]').textContent = DB_META[t.db].label;
 
-            body.innerHTML = renderResult(res);
-            setStatus(t, res.success ? "ok" : null, res.success ? "Success" : "Error");
-            updateStatusBar();
+            var tEl = resBar.querySelector('[data-role="qTime"]');
+            tEl.textContent = res.executionTimeMs + ' ms';
+            tEl.className = 'res-time ' + (res.executionTimeMs < 500 ? 'ok' : res.executionTimeMs < 3000 ? 'warn' : 'slow');
 
-            if (res.success) {
-                toast("Query ran in " + res.executionTimeMs + " ms");
-            } else {
-                toast("Query failed", true);
-            }
+            resBody.innerHTML = renderResult(res);
+            setChip(t, res.success ? "ok" : "err", res.success ? "success" : "error");
+
+            var expBtn = t.paneEl.querySelector('.tb-export');
+            if (expBtn) expBtn.disabled = !(res.success && res.rows && res.rows.length > 0);
+
+            updateStatus();
+            toast(res.success ? "Query ran in " + res.executionTimeMs + " ms" : "Query failed", !res.success);
         } catch(e) {
-            body.innerHTML = '<div class="alert alert-error">Parse error: ' + escapeHtml(e.message) + '</div>';
-            setStatus(t, null, "Parse error");
+            resBody.innerHTML = '<div class="alert alert-err">Parse error: ' + escapeHtml(e.message) + '</div>';
+            setChip(t, "err", "parse error");
         }
     };
     xhr.send(payload);
 }
 
-/* ============ RENDER RESULT ============ */
 function renderResult(res) {
-    if (!res.success) {
-        return '<div class="alert alert-error">' + escapeHtml(res.message) + '</div>';
-    }
-    var html = '<div class="alert alert-success">' + escapeHtml(res.message) + '</div>';
+    if (!res.success) return '<div class="alert alert-err">' + escapeHtml(res.message) + '</div>';
+    var html = '<div class="alert alert-ok">' + escapeHtml(res.message) + '</div>';
     if (res.columns && res.columns.length > 0 && res.rows && res.rows.length > 0) {
-        html += '<table class="data-table"><thead><tr><th>#</th>';
-        res.columns.forEach(function(c) { html += '<th>' + escapeHtml(c) + '</th>'; });
+        html += '<table class="data"><thead><tr><th>#</th>';
+        res.columns.forEach(function(c){ html += '<th>' + escapeHtml(c) + '</th>'; });
         html += '</tr></thead><tbody>';
         res.rows.forEach(function(row, i) {
-            html += '<tr><td class="idx">' + (i + 1) + '</td>';
-            res.columns.forEach(function(c) {
+            html += '<tr><td class="row-no">' + (i+1) + '</td>';
+            res.columns.forEach(function(c){
                 var v = row[c];
-                if (v === null || v === undefined) {
-                    html += '<td><span class="null-val">NULL</span></td>';
-                } else {
-                    var s = String(v);
-                    html += '<td title="' + escapeHtml(s) + '">' + escapeHtml(s) + '</td>';
-                }
+                if (v === null || v === undefined) html += '<td><span class="null-cell">NULL</span></td>';
+                else html += '<td title="' + escapeHtml(String(v)) + '">' + escapeHtml(String(v)) + '</td>';
             });
             html += '</tr>';
         });
         html += '</tbody></table>';
     } else if (res.updateCount >= 0) {
-        html += '<div class="alert alert-success">Rows affected: ' + res.updateCount + '</div>';
+        html += '<div class="alert alert-ok">Rows affected: ' + res.updateCount + '</div>';
     } else {
-        html += '<div class="empty-state"><div>Query returned 0 rows.</div></div>';
+        html += '<div class="placeholder"><div class="ph-title">0 rows</div><div class="ph-sub">Query executed successfully.</div></div>';
     }
     return html;
 }
 
-/* ============ STATUS ============ */
-function setStatus(t, type, text) {
-    var el = t.paneEl.querySelector('[data-role="status"]');
+/* ============ EXPORT TO EXCEL (CSV that Excel opens natively) ============ */
+function exportResult(tabId) {
+    var t = getTab(tabId); if (!t) return;
+    var res = t.lastResult;
+    if (!res || !res.success || !res.rows || res.rows.length === 0) {
+        toast("Nothing to export.", true);
+        return;
+    }
+
+    // Build CSV with UTF-8 BOM so Excel reads it correctly
+    var BOM = '\uFEFF';
+    var sep = ',';
+    var lines = [];
+
+    // Header
+    lines.push(res.columns.map(csvCell).join(sep));
+    // Rows
+    res.rows.forEach(function(row) {
+        lines.push(res.columns.map(function(c){ return csvCell(row[c]); }).join(sep));
+    });
+
+    var csv = BOM + lines.join('\r\n');
+    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+
+    var stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    var fname = 'query_' + t.num + '_' + t.db + '_' + stamp + '.csv';
+
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = fname;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast("Exported " + res.rows.length + " rows → " + fname);
+}
+
+function csvCell(v) {
+    if (v === null || v === undefined) return '';
+    var s = String(v);
+    if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+    return s;
+}
+
+/* ============ HELPERS ============ */
+function setChip(t, type, text) {
+    var el = t.paneEl.querySelector('[data-role="chip"]');
     if (!el) return;
     el.textContent = text || "idle";
-    el.className = 'status-pill';
+    el.className = 'status-chip';
     if (type === 'ok') el.classList.add('ok');
     if (type === 'loading') el.classList.add('loading');
+    if (type === 'err') el.classList.add('err');
 }
 
-function updateStatusBar() {
+function updateStatus() {
     var t = getTab(activeTabId);
-    var sbDb = document.getElementById('sbDb');
-    var sbSt = document.getElementById('sbStatus');
-    var sbTime = document.getElementById('sbLastTime');
     if (t) {
-        sbDb.textContent = '● ' + DB_META[t.db].label;
-        sbSt.textContent = 'Tab: ' + t.title;
-        sbTime.textContent = 'Last exec: ' + (t.lastExecMs != null ? t.lastExecMs + ' ms' : '—');
+        document.getElementById('stDb').textContent = DB_META[t.db].label;
+        document.getElementById('stTab').innerHTML = 'Tab: <b>' + escapeHtml(t.title) + '</b>';
+        document.getElementById('stLast').innerHTML = 'Last exec: <b>' + (t.lastExecMs != null ? t.lastExecMs + ' ms' : '—') + '</b>';
     }
-    var sbTabs = document.getElementById('sbTabs');
-    sbTabs.textContent = tabs.length + (tabs.length === 1 ? ' tab' : ' tabs');
+    document.getElementById('stCount').textContent = tabs.length + (tabs.length === 1 ? ' tab' : ' tabs');
 }
 
-function updateTabCount() {
-    updateStatusBar();
-}
+function updateCount() { updateStatus(); }
 
-/* ============ CLEAR EDITOR ============ */
-function clearEditor(tabId) {
-    var t = getTab(tabId);
-    if (!t) return;
+function clearEditor(id) {
+    var t = getTab(id); if (!t) return;
     t.editorEl.value = '';
     t.sql = '';
     t.editorEl.focus();
     hideSuggest(t);
-    saveTabsToStorage();
+    saveTabs();
 }
 
 /* ============ SIDEBAR ============ */
@@ -1907,113 +1853,104 @@ function loadQuery(el) {
     var sqlEl = el.querySelector('.q-sql');
     if (!sqlEl) return;
     var text = (sqlEl.textContent || sqlEl.innerText).replace(/^\s*\n+/, '').replace(/\s+$/, '');
-
     var t = getTab(activeTabId);
     if (!t) return;
     t.editorEl.value = text;
     t.sql = text;
     t.editorEl.focus();
     t.editorEl.selectionStart = t.editorEl.selectionEnd = text.length;
-
-    document.querySelectorAll('.q-item').forEach(function(i){ i.classList.remove('selected'); });
-    el.classList.add('selected');
-    saveTabsToStorage();
-    toast("Query loaded into " + t.title);
+    document.querySelectorAll('.qitem').forEach(function(i){ i.classList.remove('active'); });
+    el.classList.add('active');
+    saveTabs();
+    toast("Loaded into " + t.title);
 }
 
-/* Search */
 document.getElementById('qSearch').addEventListener('input', function(e) {
     var q = e.target.value.toLowerCase().trim();
-    document.querySelectorAll('.query-group').forEach(function(g) {
-        var items = g.querySelectorAll('.q-item');
+    document.querySelectorAll('.tgroup').forEach(function(g){
+        var items = g.querySelectorAll('.qitem');
         var any = false;
-        items.forEach(function(it) {
+        items.forEach(function(it){
             var txt = it.textContent.toLowerCase();
             if (!q || txt.indexOf(q) !== -1) { it.style.display = ''; any = true; }
             else it.style.display = 'none';
         });
         g.style.display = (any || !q) ? '' : 'none';
         if (q && any) {
-            g.querySelector('.group-body').classList.add('open');
-            g.querySelector('.group-header').classList.add('open');
+            g.querySelector('.tgroup-body').classList.add('open');
+            g.querySelector('.tgroup-head').classList.add('open');
         }
     });
 });
 
-/* ============ HELPERS ============ */
+/* ============ UTILS ============ */
 function escapeHtml(s) {
-    if (s == null) return "";
+    if (s == null) return '';
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
             .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
-function toast(msg, isError) {
+function toast(msg, isErr) {
     var el = document.createElement('div');
-    el.className = 'toast' + (isError ? ' error' : '');
+    el.className = 'toast' + (isErr ? ' err' : '');
     el.textContent = msg;
     document.body.appendChild(el);
-    setTimeout(function() {
-        el.style.transition = 'opacity 0.3s, transform 0.3s';
+    setTimeout(function(){
+        el.style.transition = 'opacity .3s, transform .3s';
         el.style.opacity = '0';
         el.style.transform = 'translateX(30px)';
         setTimeout(function(){ el.remove(); }, 320);
-    }, 2200);
+    }, 2400);
 }
 
-/* ============ LOCAL STORAGE ============ */
-function saveTabsToStorage() {
+/* ============ PERSIST TABS ============ */
+function saveTabs() {
     try {
-        var data = tabs.map(function(t) {
-            return { id: t.id, db: t.db, sql: t.sql, title: t.title };
-        });
-        localStorage.setItem('qr_tabs', JSON.stringify({
-            tabs: data, activeId: activeTabId, counter: tabCounter
+        localStorage.setItem('qr_v2', JSON.stringify({
+            tabs: tabs.map(function(t){ return { num: t.num, db: t.db, sql: t.sql }; }),
+            active: activeTabId,
+            usedNumbers: usedNumbers
         }));
-    } catch(e) {}
+    } catch(e){}
 }
 
 function restoreTabs() {
     try {
-        var raw = localStorage.getItem('qr_tabs');
+        var raw = localStorage.getItem('qr_v2');
         if (!raw) return false;
-        var data = JSON.parse(raw);
-        if (!data || !data.tabs || !data.tabs.length) return false;
-        tabCounter = data.counter || 0;
-        data.tabs.forEach(function(td) {
-            tabCounter++;
-            var t = new Tab(tabCounter, td.db || DEFAULT_DB);
-            t.sql = td.sql || "";
-            t.title = td.title || ("Query " + tabCounter);
-            t.lastSavedSql = t.sql;
+        var d = JSON.parse(raw);
+        if (!d || !d.tabs || !d.tabs.length) return false;
+        usedNumbers = d.usedNumbers || {};
+        d.tabs.forEach(function(td){
+            var t = new Tab(td.num || nextFreeNum(), td.db || DEFAULT_DB);
+            t.sql = td.sql || '';
             tabs.push(t);
             renderTab(t);
             t.editorEl.value = t.sql;
         });
-        switchTab(data.activeId || tabs[0].id);
+        switchTab(d.active || tabs[0].id);
         return true;
-    } catch(e) { return false; }
+    } catch(e){ return false; }
 }
-
-/* ============ CLICK OUTSIDE ============ */
-document.addEventListener('mousedown', function(e) {
-    if (!e.target.closest('#suggestBox')) {
-        var active = getTab(activeTabId);
-        if (active) hideSuggest(active);
-    }
-});
 
 /* ============ INIT ============ */
 window.addEventListener('load', function() {
-    if (!restoreTabs()) {
-        newTab();
-    }
-    var firstBody = document.querySelector('.group-body');
-    var firstHead = document.querySelector('.group-header');
+    if (!restoreTabs()) newTab();
+    var firstBody = document.querySelector('.tgroup-body');
+    var firstHead = document.querySelector('.tgroup-head');
     if (firstBody && firstHead) {
         firstBody.classList.add('open');
         firstHead.classList.add('open');
     }
-    updateTabCount();
+    updateCount();
+});
+
+/* ============ OUTSIDE CLICK ============ */
+document.addEventListener('mousedown', function(e) {
+    if (!e.target.closest('#acBox')) {
+        var t = getTab(activeTabId);
+        if (t) hideSuggest(t);
+    }
 });
 </script>
 </body>
