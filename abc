@@ -1,84 +1,2331 @@
-Sept 15, 2026 3:24:48 PM org.apache.catalina.core.StandardWrapperValve invoke
-SEVERE: Servlet.service() for servlet [jsp] in context with path [/EISPortalVer1] threw exception [org.apache.jasper.JasperException: javax.el.ELException: Failed to parse the expression [${}]] with root cause
-org.apache.el.parser.ParseException: Encountered " "}" "} "" at line 1, column 3.
-Was expecting one of:
-    "{" ...
-    <INTEGER_LITERAL> ...
-    <FLOATING_POINT_LITERAL> ...
-    <STRING_LITERAL> ...
-    "true" ...
-    "false" ...
-    "null" ...
-    "(" ...
-    "[" ...
-    "!" ...
-    "not" ...
-    "empty" ...
-    "-" ...
-    <IDENTIFIER> ...
-    <IDENTIFIER> ...
-    "(" ...
-    
-	at org.apache.el.parser.ELParser.generateParseException(ELParser.java:4204)
-	at org.apache.el.parser.ELParser.jj_consume_token(ELParser.java:4048)
-	at org.apache.el.parser.ELParser.Assignment(ELParser.java:343)
-	at org.apache.el.parser.ELParser.Semicolon(ELParser.java:221)
-	at org.apache.el.parser.ELParser.Expression(ELParser.java:214)
-	at org.apache.el.parser.ELParser.DynamicExpression(ELParser.java:175)
-	at org.apache.el.parser.ELParser.CompositeExpression(ELParser.java:47)
-	at org.apache.el.lang.ExpressionBuilder.createNodeInternal(ExpressionBuilder.java:109)
-	at org.apache.el.lang.ExpressionBuilder.build(ExpressionBuilder.java:168)
-	at org.apache.el.lang.ExpressionBuilder.createValueExpression(ExpressionBuilder.java:221)
-	at org.apache.el.ExpressionFactoryImpl.createValueExpression(ExpressionFactoryImpl.java:62)
-	at org.apache.jasper.compiler.Validator$ValidateVisitor.prepareExpression(Validator.java:1642)
-	at org.apache.jasper.compiler.Validator$ValidateVisitor.visit(Validator.java:771)
-	at org.apache.jasper.compiler.Node$ELExpression.accept(Node.java:955)
-	at org.apache.jasper.compiler.Node$Nodes.visit(Node.java:2381)
-	at org.apache.jasper.compiler.Node$Visitor.visitBody(Node.java:2437)
-	at org.apache.jasper.compiler.Node$Visitor.visit(Node.java:2443)
-	at org.apache.jasper.compiler.Node$Root.accept(Node.java:467)
-	at org.apache.jasper.compiler.Node$Nodes.visit(Node.java:2381)
-	at org.apache.jasper.compiler.Validator.validateExDirectives(Validator.java:1869)
-	at org.apache.jasper.compiler.Compiler.generateJava(Compiler.java:209)
-	at org.apache.jasper.compiler.Compiler.compile(Compiler.java:365)
-	at org.apache.jasper.compiler.Compiler.compile(Compiler.java:343)
-	at org.apache.jasper.compiler.Compiler.compile(Compiler.java:329)
-	at org.apache.jasper.JspCompilationContext.compile(JspCompilationContext.java:603)
-	at org.apache.jasper.servlet.JspServletWrapper.service(JspServletWrapper.java:399)
-	at org.apache.jasper.servlet.JspServlet.serviceJspFile(JspServlet.java:376)
-	at org.apache.jasper.servlet.JspServlet.service(JspServlet.java:324)
-	at javax.servlet.http.HttpServlet.service(HttpServlet.java:623)
-	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:199)
-	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:144)
-	at org.apache.tomcat.websocket.server.WsFilter.doFilter(WsFilter.java:51)
-	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:168)
-	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:144)
-	at com.action.CORSFilter.doFilter(CORSFilter.java:17)
-	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:168)
-	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:144)
-	at com.action.CORSFilter.doFilter(CORSFilter.java:17)
-	at org.apache.catalina.core.ApplicationFilterChain.internalDoFilter(ApplicationFilterChain.java:168)
-	at org.apache.catalina.core.ApplicationFilterChain.doFilter(ApplicationFilterChain.java:144)
-	at org.apache.catalina.core.StandardWrapperValve.invoke(StandardWrapperValve.java:168)
-	at org.apache.catalina.core.StandardContextValve.invoke(StandardContextValve.java:90)
-	at org.apache.catalina.authenticator.AuthenticatorBase.invoke(AuthenticatorBase.java:482)
-	at org.apache.catalina.core.StandardHostValve.invoke(StandardHostValve.java:130)
-	at org.apache.catalina.valves.ErrorReportValve.invoke(ErrorReportValve.java:93)
-	at org.apache.catalina.valves.AbstractAccessLogValve.invoke(AbstractAccessLogValve.java:660)
-	at org.apache.catalina.core.StandardEngineValve.invoke(StandardEngineValve.java:74)
-	at org.apache.catalina.connector.CoyoteAdapter.service(CoyoteAdapter.java:346)
-	at org.apache.coyote.http11.Http11Processor.service(Http11Processor.java:396)
-	at org.apache.coyote.AbstractProcessorLight.process(AbstractProcessorLight.java:63)
-	at org.apache.coyote.AbstractProtocol$ConnectionHandler.process(AbstractProtocol.java:937)
-	at org.apache.tomcat.util.net.NioEndpoint$SocketProcessor.doRun(NioEndpoint.java:1791)
-	at org.apache.tomcat.util.net.SocketProcessorBase.run(SocketProcessorBase.java:52)
-	at org.apache.tomcat.util.threads.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1190)
-	at org.apache.tomcat.util.threads.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:659)
-	at org.apache.tomcat.util.threads.TaskThread$WrappingRunnable.run(TaskThread.java:63)
-	at java.base/java.lang.Thread.run(Thread.java:1583)
+<%@ page language="java" contentType="text/html; charset=UTF-8" pageEncoding="UTF-8" isELIgnored="true"%>
+<%@ page import="com.jdbc.QueryRunner" %>
+<%@ page import="com.jdbc.QueryRunner.QueryResult" %>
+<%@ page import="com.jdbc.QueryRunner.Suggestion" %>
+<%@ page import="java.util.*" %>
+<%
+    String ajax = request.getParameter("ajax");
 
---------------------------------------------
+    if ("run".equals(ajax)) {
+        String runSql = request.getParameter("sql");
+        String runDb  = request.getParameter("dbType");
+        if (runDb == null) runDb = "IIB";
+        QueryResult qr = QueryRunner.execute(runSql, runDb);
+        StringBuilder sb = new StringBuilder("{");
+        sb.append("\"success\":").append(qr.success).append(",");
+        sb.append("\"message\":\"").append(QueryRunner.esc(qr.message)).append("\",");
+        sb.append("\"queryType\":\"").append(qr.queryType == null ? "" : QueryRunner.esc(qr.queryType)).append("\",");
+        sb.append("\"executionTimeMs\":").append(qr.executionTimeMs).append(",");
+        sb.append("\"updateCount\":").append(qr.updateCount).append(",");
+        sb.append("\"columns\":[");
+        for (int i = 0; i < qr.columns.size(); i++) {
+            if (i > 0) sb.append(",");
+            sb.append("\"").append(QueryRunner.esc(qr.columns.get(i))).append("\"");
+        }
+        sb.append("],\"rows\":[");
+        for (int r = 0; r < qr.rows.size(); r++) {
+            if (r > 0) sb.append(",");
+            sb.append("{");
+            Map<String, Object> row = qr.rows.get(r);
+            int c = 0;
+            for (String col : qr.columns) {
+                if (c++ > 0) sb.append(",");
+                Object v = row.get(col);
+                sb.append("\"").append(QueryRunner.esc(col)).append("\":");
+                if (v == null) sb.append("null");
+                else sb.append("\"").append(QueryRunner.esc(v.toString())).append("\"");
+            }
+            sb.append("}");
+        }
+        sb.append("]}");
+        response.setContentType("application/json");
+        response.setCharacterEncoding("UTF-8");
+        out.print(sb.toString()); out.flush();
+        return;
+    }
 
-<a
-						href="<%=request.getContextPath() + "/jsp/Centralized query storage User.jsp"%>">Centralized query storage User <br> Dashboard
-					</a>
+    if ("suggest".equals(ajax)) {
+        String ajaxDb = request.getParameter("db");
+        if (ajaxDb == null) ajaxDb = "IIB";
+        List<Suggestion> schemas = new ArrayList<>();
+        List<Suggestion> tables  = new ArrayList<>();
+        String err = null;
+        try { schemas = QueryRunner.getSchemaSuggestions(ajaxDb); }
+        catch (Throwable t) { err = "schemas: " + t.getMessage(); }
+        try { tables = QueryRunner.getTableSuggestions(ajaxDb); }
+        catch (Throwable t) { err = (err == null ? "" : err + "; ") + "tables: " + t.getMessage(); }
+        List<Suggestion> keywords = QueryRunner.getKeywordSuggestions();
+        StringBuilder sb = new StringBuilder("{");
+        if (err != null) sb.append("\"error\":\"").append(QueryRunner.esc(err)).append("\",");
+        sb.append("\"schemas\":[");
+        for (int i = 0; i < schemas.size(); i++) {
+            Suggestion s = schemas.get(i);
+            if (i > 0) sb.append(",");
+            sb.append("{\"label\":\"").append(QueryRunner.esc(s.label))
+              .append("\",\"insert\":\"").append(QueryRunner.esc(s.insert))
+              .append("\",\"type\":\"SCHEMA\"}");
+        }
+        sb.append("],\"tables\":[");
+        for (int i = 0; i < tables.size(); i++) {
+            Suggestion s = tables.get(i);
+            if (i > 0) sb.append(",");
+            sb.append("{\"label\":\"").append(QueryRunner.esc(s.label))
+              .append("\",\"insert\":\"").append(QueryRunner.esc(s.insert))
+              .append("\",\"type\":\"TABLE\"}");
+        }
+        sb.append("],\"keywords\":[");
+        for (int i = 0; i < keywords.size(); i++) {
+            Suggestion s = keywords.get(i);
+            if (i > 0) sb.append(",");
+            sb.append("{\"label\":\"").append(QueryRunner.esc(s.label))
+              .append("\",\"insert\":\"").append(QueryRunner.esc(s.insert))
+              .append("\",\"type\":\"KEYWORD\"}");
+        }
+        sb.append("]}");
+        response.setContentType("application/json");
+        response.setCharacterEncoding("UTF-8");
+        out.print(sb.toString()); out.flush();
+        return;
+    }
+
+    if ("cols".equals(ajax)) {
+        String ajaxDb     = request.getParameter("db");
+        String ajaxSchema = request.getParameter("schema");
+        String ajaxTable  = request.getParameter("table");
+        if (ajaxDb == null) ajaxDb = "IIB";
+        if (ajaxTable == null) ajaxTable = "";
+        List<Suggestion> cols = QueryRunner.getColumnSuggestions(ajaxDb, ajaxSchema, ajaxTable);
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < cols.size(); i++) {
+            Suggestion s = cols.get(i);
+            if (i > 0) sb.append(",");
+            sb.append("{\"label\":\"").append(QueryRunner.esc(s.label))
+              .append("\",\"insert\":\"").append(QueryRunner.esc(s.insert))
+              .append("\",\"type\":\"").append(QueryRunner.esc(s.type)).append("\"}");
+        }
+        sb.append("]");
+        response.setContentType("application/json");
+        response.setCharacterEncoding("UTF-8");
+        out.print(sb.toString()); out.flush();
+        return;
+    }
+
+    String dbType = request.getParameter("dbType");
+    if (dbType == null || dbType.trim().isEmpty()) dbType = "IIB";
+    String dashboardUrl = request.getContextPath() + "/jsp/Centralized query storage User.jsp";
+%>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>EIS Query Console</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        /* ============================================================
+         * THEME VARIABLES
+         * ============================================================ */
+        :root {
+            /* DARK (default) */
+            --bg-0: #0f1115;
+            --bg-1: #14171d;
+            --bg-2: #1a1e26;
+            --bg-3: #0a0c10;
+            --bg-hover: #1a1e26;
+            --bg-hover-2: #242932;
+
+            --border-1: #242932;
+            --border-2: #2a3038;
+            --border-3: #2f3742;
+
+            --text-0: #ffffff;
+            --text-1: #e2e4e9;
+            --text-2: #c7cad1;
+            --text-3: #a8adb8;
+            --text-4: #8b909a;
+            --text-5: #6b7280;
+            --text-6: #4b5563;
+
+            --accent: #3b82f6;
+            --accent-hover: #60a5fa;
+            --accent-dim: rgba(59,130,246,0.12);
+
+            --green: #16a34a;
+            --green-light: #4ade80;
+            --green-dim: rgba(74,222,128,0.12);
+
+            --amber: #fbbf24;
+            --red: #ef4444;
+            --red-light: #f87171;
+            --red-dim: rgba(248,113,113,0.12);
+            --purple: #8b5cf6;
+
+            --table-th-bg: #14171d;
+            --table-th-color: #93c5fd;
+            --table-td-border: #14171d;
+            --table-row-even: #0d1014;
+            --table-row-hover: #1a2332;
+
+            --shadow-lg: 0 16px 44px rgba(0,0,0,0.75);
+            --shadow-md: 0 6px 18px rgba(0,0,0,0.4);
+        }
+
+        [data-theme="light"] {
+            --bg-0: #f5f7fa;
+            --bg-1: #ffffff;
+            --bg-2: #f0f3f8;
+            --bg-3: #fafbfd;
+            --bg-hover: #e8eef8;
+            --bg-hover-2: #dce6f5;
+
+            --border-1: #d5dbe6;
+            --border-2: #c8d0dd;
+            --border-3: #b8c2d4;
+
+            --text-0: #0a0c10;
+            --text-1: #1a1e26;
+            --text-2: #2d333d;
+            --text-3: #4b5563;
+            --text-4: #6b7280;
+            --text-5: #8891a3;
+            --text-6: #a8b0c0;
+
+            --accent: #2563eb;
+            --accent-hover: #1d4ed8;
+            --accent-dim: rgba(37,99,235,0.1);
+
+            --green: #16a34a;
+            --green-light: #15803d;
+            --green-dim: rgba(22,163,74,0.12);
+
+            --amber: #d97706;
+            --red: #dc2626;
+            --red-light: #b91c1c;
+            --red-dim: rgba(220,38,38,0.1);
+            --purple: #7c3aed;
+
+            --table-th-bg: #eff3f9;
+            --table-th-color: #1e40af;
+            --table-td-border: #e5eaf1;
+            --table-row-even: #f8fafd;
+            --table-row-hover: #e8eef8;
+
+            --shadow-lg: 0 16px 44px rgba(0,0,0,0.15);
+            --shadow-md: 0 6px 18px rgba(0,0,0,0.08);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            height: 100%; width: 100%;
+            font-family: 'Inter', 'Segoe UI', -apple-system, Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: var(--bg-0);
+            color: var(--text-1);
+            font-size: 15px;
+            overflow: hidden;
+            transition: background 0.25s, color 0.25s;
+        }
+
+        .app {
+            display: grid;
+            grid-template-rows: 56px 1fr 30px;
+            grid-template-columns: 320px 1fr;
+            grid-template-areas: "header header" "sidebar main" "status status";
+            height: 100vh;
+        }
+
+        /* ========== HEADER ========== */
+        .header {
+            grid-area: header;
+            background: linear-gradient(90deg, var(--bg-1) 0%, var(--bg-2) 100%);
+            border-bottom: 1px solid var(--border-1);
+            display: flex; align-items: center;
+            padding: 0 24px;
+            gap: 12px;
+            box-shadow: var(--shadow-md);
+        }
+        .brand {
+            display: flex; align-items: center; gap: 12px;
+            font-weight: 800; font-size: 17px;
+            color: var(--text-0);
+            letter-spacing: -0.2px;
+        }
+        .brand-mark {
+            width: 30px; height: 30px;
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            color: #fff; font-size: 12px; font-weight: 900;
+            box-shadow: 0 4px 12px rgba(59,130,246,0.35);
+        }
+        .brand-sub {
+            font-size: 11.5px; font-weight: 500;
+            color: var(--text-5);
+            margin-left: 4px;
+            padding: 3px 10px;
+            background: var(--bg-2);
+            border-radius: 10px;
+        }
+        .header-spacer { flex: 1; }
+        .conn-pill {
+            display: flex; align-items: center; gap: 9px;
+            padding: 7px 16px;
+            background: var(--green-dim);
+            border: 1px solid rgba(74,222,128,0.25);
+            border-radius: 8px;
+            font-size: 12.5px;
+            font-weight: 700;
+            color: var(--green-light);
+            letter-spacing: 0.5px;
+        }
+        .conn-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--green-light);
+            box-shadow: 0 0 10px rgba(74,222,128,0.7);
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.35;} }
+
+        /* Theme toggle */
+        .theme-toggle {
+            width: 52px; height: 28px;
+            border-radius: 14px;
+            background: var(--bg-2);
+            border: 1px solid var(--border-2);
+            position: relative;
+            cursor: pointer;
+            transition: 0.25s;
+            display: flex; align-items: center;
+            padding: 0 4px;
+            font-size: 13px;
+            user-select: none;
+        }
+        .theme-toggle:hover { border-color: var(--accent); }
+        .theme-toggle .tt-icon {
+            position: absolute;
+            transition: 0.25s;
+            font-size: 13px;
+        }
+        .theme-toggle .tt-sun { left: 6px; opacity: 0; }
+        .theme-toggle .tt-moon { right: 6px; opacity: 1; }
+        [data-theme="light"] .theme-toggle .tt-sun { opacity: 1; left: 6px; }
+        [data-theme="light"] .theme-toggle .tt-moon { opacity: 0; }
+
+        .theme-toggle .tt-knob {
+            position: absolute;
+            top: 3px; left: 3px;
+            width: 20px; height: 20px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+            transition: 0.25s cubic-bezier(0.4,0,0.2,1);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        }
+        [data-theme="light"] .theme-toggle .tt-knob {
+            left: 27px;
+            background: linear-gradient(135deg, #fbbf24, #f59e0b);
+        }
+
+        .btn-dashboard {
+            padding: 9px 18px;
+            background: linear-gradient(135deg, var(--purple), #6d28d9);
+            color: #fff !important;
+            border: none;
+            border-radius: 8px;
+            font-size: 13.5px;
+            font-weight: 700;
+            cursor: pointer;
+            display: inline-flex; align-items: center; gap: 8px;
+            transition: 0.18s;
+            box-shadow: 0 4px 12px rgba(139,92,246,0.3);
+            text-decoration: none;
+            font-family: inherit;
+        }
+        .btn-dashboard:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 18px rgba(139,92,246,0.5);
+        }
+
+        .btn-new {
+            padding: 9px 20px;
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 13.5px;
+            font-weight: 700;
+            cursor: pointer;
+            display: inline-flex; align-items: center; gap: 7px;
+            transition: 0.18s;
+            box-shadow: 0 4px 12px rgba(59,130,246,0.3);
+            font-family: inherit;
+        }
+        .btn-new:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 18px rgba(59,130,246,0.45);
+        }
+
+        /* ========== SIDEBAR ========== */
+        .sidebar {
+            grid-area: sidebar;
+            background: var(--bg-1);
+            border-right: 1px solid var(--border-1);
+            display: flex; flex-direction: column;
+            overflow: hidden;
+            transition: background 0.25s;
+        }
+        .sidebar-head {
+            padding: 16px 20px 12px;
+            font-size: 11.5px;
+            text-transform: uppercase;
+            letter-spacing: 1.3px;
+            color: var(--text-5);
+            font-weight: 800;
+            border-bottom: 1px solid var(--border-1);
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .sidebar-count {
+            font-size: 11px;
+            color: var(--text-6);
+            background: var(--bg-2);
+            padding: 2px 9px;
+            border-radius: 10px;
+            font-weight: 700;
+        }
+        .search-wrap { padding: 12px 16px; border-bottom: 1px solid var(--border-1); }
+        .search-input {
+            width: 100%;
+            padding: 9px 14px;
+            background: var(--bg-2);
+            border: 1px solid var(--border-2);
+            border-radius: 8px;
+            color: var(--text-1);
+            font-size: 13.5px;
+            outline: none;
+            font-family: inherit;
+            transition: 0.15s;
+        }
+        .search-input:focus {
+            border-color: var(--accent);
+            background: var(--bg-2);
+            box-shadow: 0 0 0 3px var(--accent-dim);
+        }
+
+        .tree { flex: 1; overflow-y: auto; padding: 8px 0; }
+        .tree::-webkit-scrollbar { width: 10px; }
+        .tree::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 5px; }
+
+        .tgroup { border-bottom: 1px solid var(--bg-2); }
+        .tgroup-head {
+            padding: 11px 18px;
+            cursor: pointer;
+            font-size: 13.5px;
+            font-weight: 700;
+            color: var(--text-2);
+            display: flex; align-items: center; gap: 9px;
+            user-select: none;
+            transition: background 0.12s;
+        }
+        .tgroup-head:hover { background: var(--bg-hover); }
+        .tg-arrow {
+            font-size: 10px; color: var(--text-5);
+            transition: transform 0.18s;
+            width: 10px; display: inline-block;
+        }
+        .tgroup-head.open .tg-arrow { transform: rotate(90deg); }
+        .tgroup-body { display: none; padding: 4px 0 10px; }
+        .tgroup-body.open { display: block; }
+
+        .qitem {
+            padding: 9px 18px 9px 36px;
+            cursor: pointer;
+            font-size: 13px;
+            color: var(--text-3);
+            line-height: 1.45;
+            transition: 0.1s;
+            border-left: 3px solid transparent;
+        }
+        .qitem:hover {
+            background: var(--bg-hover);
+            color: var(--text-1);
+            border-left-color: var(--accent);
+        }
+        .qitem.active {
+            background: var(--accent-dim);
+            color: var(--text-0);
+            border-left-color: var(--accent);
+        }
+
+        /* ========== MAIN ========== */
+        .main {
+            grid-area: main;
+            display: flex; flex-direction: column;
+            overflow: hidden;
+            background: var(--bg-0);
+        }
+
+        .tabbar {
+            background: var(--bg-1);
+            display: flex;
+            border-bottom: 1px solid var(--border-1);
+            overflow-x: auto;
+            min-height: 44px;
+        }
+        .tabbar::-webkit-scrollbar { height: 4px; }
+        .tabbar::-webkit-scrollbar-thumb { background: var(--border-2); }
+
+        .tab {
+            display: flex; align-items: center; gap: 10px;
+            padding: 0 14px 0 18px;
+            background: var(--bg-1);
+            border-right: 1px solid var(--border-1);
+            cursor: pointer;
+            font-size: 13.5px;
+            color: var(--text-5);
+            white-space: nowrap;
+            min-width: 160px;
+            max-width: 260px;
+            position: relative;
+            user-select: none;
+            transition: 0.14s;
+        }
+        .tab:hover { background: var(--bg-hover); color: var(--text-2); }
+        .tab.active {
+            background: var(--bg-0);
+            color: var(--text-1);
+            font-weight: 600;
+        }
+        .tab.active::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 2px;
+            background: var(--accent);
+        }
+        .tab-dot {
+            width: 9px; height: 9px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .tab-dot.db-IIB    { background: #4ade80; }
+        .tab-dot.db-SI     { background: #fbbf24; }
+        .tab-dot.db-REPORT { background: #c084fc; }
+
+        .tab.running .tab-dot {
+            animation: tabpulse 1s infinite;
+            box-shadow: 0 0 10px currentColor;
+        }
+        @keyframes tabpulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(1.3); }
+        }
+        .tab-running-badge {
+            font-size: 9.5px;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+            color: var(--accent-hover);
+            background: var(--accent-dim);
+            padding: 2px 7px;
+            border-radius: 8px;
+            border: 1px solid rgba(59,130,246,0.3);
+            margin-left: auto;
+        }
+
+        .tab-name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+        .tab-close {
+            width: 20px; height: 20px;
+            border-radius: 4px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 16px;
+            color: var(--text-6);
+            line-height: 1;
+            transition: 0.1s;
+        }
+        .tab-close:hover { background: var(--border-2); color: var(--text-0); }
+
+        .tab-add {
+            display: flex; align-items: center; justify-content: center;
+            padding: 0 18px;
+            cursor: pointer;
+            color: var(--text-5);
+            font-size: 18px;
+        }
+        .tab-add:hover { background: var(--bg-hover); color: var(--text-1); }
+
+        .tab-content {
+            flex: 1;
+            display: flex; flex-direction: column;
+            overflow: hidden;
+            position: relative;
+        }
+        .pane {
+            display: none;
+            flex: 1;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .pane.active { display: flex; }
+
+        /* ========== TOOLBAR ========== */
+        .toolbar {
+            background: var(--bg-1);
+            border-bottom: 1px solid var(--border-1);
+            padding: 12px 18px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .toolbar select {
+            padding: 9px 14px;
+            background: var(--bg-2);
+            color: var(--text-1);
+            border: 1px solid var(--border-2);
+            border-radius: 8px;
+            font-size: 13.5px;
+            font-weight: 600;
+            cursor: pointer;
+            outline: none;
+            font-family: inherit;
+        }
+        .toolbar select:focus { border-color: var(--accent); }
+
+        .tb {
+            padding: 9px 18px;
+            border-radius: 8px;
+            font-size: 13.5px;
+            font-weight: 700;
+            cursor: pointer;
+            display: inline-flex; align-items: center; gap: 7px;
+            transition: 0.15s;
+            border: 1px solid transparent;
+            font-family: inherit;
+            letter-spacing: 0.2px;
+        }
+        .tb:hover { transform: translateY(-1px); }
+        .tb:active { transform: translateY(0); }
+
+        .tb-run { background: var(--green); color: #fff; box-shadow: 0 3px 10px rgba(22,163,74,0.25); }
+        .tb-run:hover { background: #15803d; box-shadow: 0 5px 14px rgba(22,163,74,0.4); }
+
+        .tb-suggest {
+            background: var(--bg-2); color: var(--accent-hover); border-color: var(--border-2);
+        }
+        .tb-suggest:hover { background: var(--bg-hover-2); color: var(--accent); border-color: var(--accent); }
+
+        .tb-format {
+            background: var(--bg-2); color: var(--purple); border-color: var(--border-2);
+        }
+        .tb-format:hover { background: rgba(139,92,246,0.15); border-color: var(--purple); }
+
+        .tb-export {
+            background: var(--bg-2); color: var(--green-light); border-color: var(--border-2);
+        }
+        .tb-export:hover:not(:disabled) { background: var(--green-dim); color: var(--green); border-color: var(--green); }
+        .tb-export:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
+
+        .tb-clear {
+            background: var(--bg-2); color: var(--text-2); border-color: var(--border-2);
+        }
+        .tb-clear:hover { background: var(--bg-hover-2); }
+
+        .tb-close {
+            background: var(--bg-2); color: var(--red-light); border-color: var(--border-2);
+        }
+        .tb-close:hover { background: var(--red-dim); color: var(--red); border-color: var(--red); }
+
+        .toolbar-spacer { flex: 1; }
+        .chip {
+            padding: 6px 14px;
+            border-radius: 14px;
+            font-size: 11.5px;
+            font-weight: 800;
+            background: var(--bg-2);
+            color: var(--text-5);
+            text-transform: uppercase;
+            letter-spacing: 0.7px;
+        }
+        .chip.ok { background: var(--green-dim); color: var(--green-light); }
+        .chip.loading { background: rgba(251,191,36,0.12); color: var(--amber); }
+        .chip.err { background: var(--red-dim); color: var(--red-light); }
+
+        /* ========== EDITOR ========== */
+        .editor-wrap { padding: 14px 18px; background: var(--bg-0); }
+        .editor-box {
+            border: 1px solid var(--border-1);
+            border-radius: 10px;
+            background: var(--bg-3);
+            overflow: hidden;
+            transition: 0.15s;
+        }
+        .editor-box:focus-within {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-dim);
+        }
+        textarea.sql {
+            width: 100%;
+            min-height: 240px;
+            max-height: 480px;
+            padding: 16px 20px;
+            background: var(--bg-3);
+            color: var(--text-1);
+            border: none;
+            outline: none;
+            resize: vertical;
+            font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', 'Monaco', monospace;
+            font-size: 14.5px;
+            line-height: 1.7;
+            caret-color: var(--accent);
+            tab-size: 4;
+            display: block;
+        }
+        textarea.sql::placeholder { color: var(--text-6); }
+
+        /* ========== RESULTS ========== */
+        .results {
+            flex: 1;
+            display: flex; flex-direction: column;
+            overflow: hidden;
+            border-top: 1px solid var(--border-1);
+            background: var(--bg-3);
+            min-height: 0;
+        }
+        .res-bar {
+            padding: 10px 18px;
+            background: var(--bg-1);
+            border-bottom: 1px solid var(--border-1);
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            font-size: 13px;
+            flex-wrap: wrap;
+        }
+        .res-bar .label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.9px;
+            color: var(--text-5);
+            font-weight: 800;
+            margin-right: 6px;
+        }
+        .res-stat { color: var(--text-3); display: flex; align-items: center; }
+        .res-stat b { color: var(--text-1); font-weight: 700; margin-left: 4px; }
+        .res-time.ok   { color: var(--green-light); }
+        .res-time.warn { color: var(--amber); }
+        .res-time.slow { color: var(--red-light); }
+        .res-bar-spacer { flex: 1; }
+
+        .pin-btn {
+            padding: 6px 12px;
+            background: var(--bg-2);
+            border: 1px solid var(--border-2);
+            border-radius: 6px;
+            color: var(--text-3);
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            display: inline-flex; align-items: center; gap: 6px;
+            transition: 0.15s;
+            font-family: inherit;
+        }
+        .pin-btn:hover { background: var(--bg-hover-2); color: var(--purple); border-color: var(--purple); }
+        .pin-btn.pinned { background: rgba(139,92,246,0.15); color: var(--purple); border-color: var(--purple); }
+
+        .res-search-wrap { position: relative; display: flex; align-items: center; }
+        .res-search-icon {
+            position: absolute; left: 10px;
+            color: var(--text-6); font-size: 14px;
+            pointer-events: none;
+        }
+        .res-search {
+            padding: 7px 12px 7px 32px;
+            background: var(--bg-2);
+            border: 1px solid var(--border-2);
+            border-radius: 8px;
+            color: var(--text-1);
+            font-size: 13px;
+            width: 240px;
+            outline: none;
+            font-family: inherit;
+            transition: 0.15s;
+        }
+        .res-search:focus {
+            border-color: var(--accent);
+            width: 300px;
+            box-shadow: 0 0 0 3px var(--accent-dim);
+        }
+
+        .res-body {
+            flex: 1;
+            overflow: auto;
+            position: relative;
+        }
+        .res-body::-webkit-scrollbar { width: 12px; height: 12px; }
+        .res-body::-webkit-scrollbar-track { background: var(--bg-3); }
+        .res-body::-webkit-scrollbar-thumb {
+            background: var(--border-2);
+            border-radius: 6px;
+            border: 3px solid var(--bg-3);
+        }
+        .res-body::-webkit-scrollbar-thumb:hover { background: var(--border-3); }
+
+        table.data {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+            font-family: 'JetBrains Mono', 'Consolas', monospace;
+        }
+        table.data th {
+            background: var(--table-th-bg);
+            color: var(--table-th-color);
+            padding: 11px 14px;
+            text-align: left;
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            font-weight: 800;
+            font-size: 12.5px;
+            white-space: nowrap;
+            border-bottom: 2px solid var(--border-1);
+            border-right: 1px solid var(--border-1);
+            letter-spacing: 0.4px;
+            cursor: pointer;
+            user-select: none;
+            transition: background 0.12s;
+        }
+        table.data th:hover { background: var(--bg-hover-2); }
+        table.data th .sort-icon {
+            display: inline-block;
+            margin-left: 6px;
+            font-size: 10px;
+            color: var(--text-6);
+        }
+        table.data th.sorted-asc .sort-icon { color: var(--green-light); }
+        table.data th.sorted-desc .sort-icon { color: var(--red-light); }
+
+        table.data td {
+            padding: 9px 14px;
+            border-bottom: 1px solid var(--table-td-border);
+            border-right: 1px solid var(--table-td-border);
+            color: var(--text-2);
+            max-width: 450px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        table.data tr:nth-child(even) td { background: var(--table-row-even); }
+        table.data tr:hover td { background: var(--table-row-hover); }
+        table.data td.row-no {
+            color: var(--text-5);
+            background: var(--bg-3) !important;
+            width: 65px;
+            text-align: right;
+            font-size: 12px;
+        }
+        .null-cell { color: var(--text-6); font-style: italic; }
+        .hl-match { background: rgba(251,191,36,0.35); color: var(--text-0); padding: 1px 3px; border-radius: 3px; }
+
+        .alert {
+            padding: 14px 22px;
+            margin: 16px 22px;
+            border-radius: 8px;
+            font-size: 13.5px;
+        }
+        .alert-ok {
+            background: var(--green-dim);
+            border-left: 4px solid var(--green);
+            color: var(--green-light);
+        }
+        .alert-err {
+            background: var(--red-dim);
+            border-left: 4px solid var(--red);
+            color: var(--red-light);
+            font-family: 'JetBrains Mono', monospace;
+            white-space: pre-wrap;
+            font-size: 12.5px;
+        }
+
+        /* ========== BIG LOADER ========== */
+        .loader-overlay {
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            height: 100%;
+            gap: 20px;
+            padding: 40px;
+        }
+        .loader-big {
+            width: 56px; height: 56px;
+            border: 4px solid var(--bg-2);
+            border-top-color: var(--accent);
+            border-right-color: var(--accent-hover);
+            border-radius: 50%;
+            animation: spin 0.9s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loader-text {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text-2);
+            letter-spacing: 0.3px;
+        }
+        .loader-sub { font-size: 12.5px; color: var(--text-5); margin-top: -12px; }
+
+        .placeholder {
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            height: 100%;
+            color: var(--text-6);
+            gap: 14px;
+            padding: 40px;
+            text-align: center;
+        }
+        .placeholder .ph-icon { font-size: 48px; opacity: 0.35; }
+        .placeholder .ph-title { font-size: 17px; color: var(--text-5); font-weight: 600; }
+        .placeholder .ph-sub { font-size: 13.5px; color: var(--text-6); }
+
+        /* ========== PINNED PANEL ========== */
+        .pinned-panel {
+            background: var(--bg-1);
+            border-top: 2px solid var(--purple);
+            display: none;
+            flex-direction: column;
+            max-height: 45vh;
+            min-height: 200px;
+            overflow: hidden;
+        }
+        .pinned-panel.visible { display: flex; }
+        .pinned-head {
+            padding: 10px 18px;
+            background: linear-gradient(90deg, rgba(139,92,246,0.15), transparent);
+            border-bottom: 1px solid var(--border-1);
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            flex-wrap: wrap;
+        }
+        .pinned-title {
+            font-size: 13.5px;
+            font-weight: 800;
+            color: var(--purple);
+            display: flex; align-items: center; gap: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+        }
+        .pinned-meta {
+            display: flex; gap: 14px;
+            font-size: 12.5px;
+            color: var(--text-4);
+        }
+        .pinned-meta b { color: var(--text-1); margin-left: 4px; }
+        .pinned-spacer { flex: 1; }
+        .pinned-close {
+            padding: 6px 14px;
+            background: var(--bg-2);
+            border: 1px solid var(--border-2);
+            border-radius: 6px;
+            color: var(--red-light);
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            font-family: inherit;
+            transition: 0.15s;
+        }
+        .pinned-close:hover { background: var(--red-dim); color: var(--red); border-color: var(--red); }
+
+        .pinned-body {
+            flex: 1;
+            overflow: auto;
+            background: var(--bg-3);
+        }
+        .pinned-body::-webkit-scrollbar { width: 10px; height: 10px; }
+        .pinned-body::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 5px; }
+
+        /* ========== STATUS BAR ========== */
+        .status {
+            grid-area: status;
+            background: var(--bg-1);
+            color: var(--text-4);
+            display: flex;
+            align-items: center;
+            font-size: 12.5px;
+            padding: 0 22px;
+            gap: 24px;
+            border-top: 1px solid var(--border-1);
+        }
+        .status .st-item { display: flex; align-items: center; gap: 8px; }
+        .status .st-item b { color: var(--text-1); font-weight: 700; }
+        .status .right { margin-left: auto; display: flex; gap: 24px; }
+        .st-dot {
+            width: 9px; height: 9px; border-radius: 50%;
+            background: var(--green-light);
+        }
+
+        /* ========== AUTOCOMPLETE ========== */
+        .ac-box {
+            position: fixed;
+            background: var(--bg-2);
+            border: 1px solid var(--border-3);
+            border-radius: 8px;
+            box-shadow: var(--shadow-lg);
+            max-height: 320px;
+            overflow-y: auto;
+            z-index: 9999;
+            display: none;
+            min-width: 340px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+        }
+        .ac-box::-webkit-scrollbar { width: 8px; }
+        .ac-box::-webkit-scrollbar-thumb { background: var(--border-3); border-radius: 4px; }
+
+        .ac-item {
+            padding: 8px 14px;
+            cursor: pointer;
+            color: var(--text-3);
+            display: flex;
+            justify-content: space-between;
+            gap: 14px;
+            align-items: center;
+            border-bottom: 1px solid var(--border-1);
+        }
+        .ac-item:last-child { border-bottom: none; }
+        .ac-item:hover, .ac-item.active {
+            background: var(--accent-dim);
+            color: var(--text-0);
+        }
+        .ac-item.active { background: var(--accent); color: #fff; }
+        .ac-tag {
+            font-size: 10px;
+            padding: 2px 9px;
+            border-radius: 8px;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
+        }
+        .tag-KEYWORD { background: rgba(192,132,252,0.15); color: #c084fc; }
+        .tag-SCHEMA  { background: rgba(96,165,250,0.15); color: #60a5fa; }
+        .tag-TABLE   { background: rgba(74,222,128,0.15); color: #4ade80; }
+        .tag-COLUMN  { background: rgba(251,191,36,0.15); color: #fbbf24; }
+
+        .toast {
+            position: fixed;
+            bottom: 46px; right: 24px;
+            background: var(--bg-2);
+            border-left: 4px solid var(--green);
+            color: var(--text-1);
+            padding: 15px 22px;
+            border-radius: 8px;
+            box-shadow: var(--shadow-lg);
+            font-size: 13.5px;
+            z-index: 10001;
+            animation: slideIn 0.22s ease;
+            max-width: 400px;
+            font-weight: 600;
+        }
+        .toast.err { border-left-color: var(--red); }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(30px); }
+            to   { opacity: 1; transform: translateX(0); }
+        }
+    </style>
+</head>
+<body data-theme="dark">
+
+<div class="app">
+
+    <!-- HEADER -->
+    <div class="header">
+        <div class="brand">
+            <div class="brand-mark">EIS</div>
+            Query Console
+            <span class="brand-sub">Production</span>
+        </div>
+        <div class="header-spacer"></div>
+        <div class="conn-pill">
+            <span class="conn-dot"></span> CONNECTED
+        </div>
+
+        <!-- Theme toggle -->
+        <div class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle dark / light mode">
+            <span class="tt-icon tt-sun">&#9728;</span>
+            <span class="tt-icon tt-moon">&#9789;</span>
+            <div class="tt-knob"></div>
+        </div>
+
+        <a class="btn-dashboard" href="<%= dashboardUrl %>" target="_blank" rel="noopener noreferrer">
+            <span>&#128202;</span> Dashboard
+        </a>
+
+        <button class="btn-new" onclick="newTab()">+ New Query Tab</button>
+    </div>
+
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+        <div class="sidebar-head">
+            SAVED QUERIES
+            <span class="sidebar-count" id="qCount">0</span>
+        </div>
+        <div class="search-wrap">
+            <input type="text" class="search-input" id="qSearch" placeholder="Search queries...">
+        </div>
+        <div class="tree" id="tree">
+
+            <div class="tgroup">
+                <div class="tgroup-head" onclick="toggleGroup(this)">
+                    <span class="tg-arrow">&#9654;</span> Gen 5 — Error Summary
+                </div>
+                <div class="tgroup-body">
+                    <div class="qitem" onclick="loadQuery(this)">Broker-wise error count (last 5 min)
+                        <script type="text/plain" class="q-sql">SELECT broker_eg, broker_name, ERROR_CODE, ERROR_DESCRIPTION, url, api_name, COUNT(*) AS CNT FROM EISAPP.API_LOG WHERE Request_date_time>=SYSDATE - INTERVAL '05' MINUTE and (substr(error_code,3,3) in ('001','002','007','051','014','111','570','569','052','005','077','003','017','015') and error_code<>'00014' OR error_code in ('401','500')) and ERROR_DESCRIPTION is not null and error_description not like '%No active transaction found, please do check GCC machine and retry%' GROUP BY broker_eg,broker_name, ERROR_CODE, error_description,url,api_name ORDER BY CNT DESC;</script>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tgroup">
+                <div class="tgroup-head" onclick="toggleGroup(this)">
+                    <span class="tg-arrow">&#9654;</span> Daily Use (Last 10 min)
+                </div>
+                <div class="tgroup-body">
+                    <div class="qitem" onclick="loadQuery(this)">api_log — recent
+                        <script type="text/plain" class="q-sql">select * from eisapp.api_log where request_date_time >= sysdate - interval '10' minute order by request_date_time desc;</script>
+                    </div>
+                    <div class="qitem" onclick="loadQuery(this)">api_log — error summary
+                        <script type="text/plain" class="q-sql">select error_code, error_description, count(1) from eisapp.api_log where request_date_time >= sysdate - interval '10' minute GROUP by error_code, error_description;</script>
+                    </div>
+                    <div class="qitem" onclick="loadQuery(this)">backend_log — recent
+                        <script type="text/plain" class="q-sql">select * from eisapp.BACKEND_log where request_date_time >= sysdate - interval '10' minute order by request_date_time desc;</script>
+                    </div>
+                    <div class="qitem" onclick="loadQuery(this)">backend_log — error summary
+                        <script type="text/plain" class="q-sql">select error_code, error_description, count(1) from eisapp.BACKEND_log where request_date_time >= sysdate - interval '10' minute GROUP by error_code, error_description;</script>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tgroup">
+                <div class="tgroup-head" onclick="toggleGroup(this)">
+                    <span class="tg-arrow">&#9654;</span> URN Search
+                </div>
+                <div class="tgroup-body">
+                    <div class="qitem" onclick="loadQuery(this)">api_log by URN
+                        <script type="text/plain" class="q-sql">select * from eisapp.api_log where URN in ('');</script>
+                    </div>
+                    <div class="qitem" onclick="loadQuery(this)">api_details by URN
+                        <script type="text/plain" class="q-sql">select * from eisapp.api_details where URN in('');</script>
+                    </div>
+                    <div class="qitem" onclick="loadQuery(this)">orch_api_log by URN
+                        <script type="text/plain" class="q-sql">select * from eisapp.orch_api_log where URN in ('');</script>
+                    </div>
+                    <div class="qitem" onclick="loadQuery(this)">orch_api_details by URN
+                        <script type="text/plain" class="q-sql">select * from eisapp.orch_api_details where URN in ('');</script>
+                    </div>
+                    <div class="qitem" onclick="loadQuery(this)">backend_log by URN
+                        <script type="text/plain" class="q-sql">select * from eisapp.backend_log where URN in ('');</script>
+                    </div>
+                    <div class="qitem" onclick="loadQuery(this)">backend_details by URN
+                        <script type="text/plain" class="q-sql">select * from eisapp.backend_details where URN in ('');</script>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tgroup">
+                <div class="tgroup-head" onclick="toggleGroup(this)">
+                    <span class="tg-arrow">&#9654;</span> URL / Mappers
+                </div>
+                <div class="tgroup-body">
+                    <div class="qitem" onclick="loadQuery(this)">source_mapper
+                        <script type="text/plain" class="q-sql">select * from EISAPP.source_mapper;</script>
+                    </div>
+                    <div class="qitem" onclick="loadQuery(this)">url_mapper
+                        <script type="text/plain" class="q-sql">select * from EISAPP.url_mapper;</script>
+                    </div>
+                    <div class="qitem" onclick="loadQuery(this)">urn_details
+                        <script type="text/plain" class="q-sql">select * from EISAPP.urn_details;</script>
+                    </div>
+                    <div class="qitem" onclick="loadQuery(this)">cache_details
+                        <script type="text/plain" class="q-sql">SELECT * FROM EISAPP.cache_details;</script>
+                    </div>
+                    <div class="qitem" onclick="loadQuery(this)">Find API (NOMINEE)
+                        <script type="text/plain" class="q-sql">select distinct api_name from eisapp.api_log where UPPER(api_name) like '%NOMINEE%';</script>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tgroup">
+                <div class="tgroup-head" onclick="toggleGroup(this)">
+                    <span class="tg-arrow">&#9654;</span> SI Monitoring (SBISI)
+                </div>
+                <div class="tgroup-body">
+                    <div class="qitem" onclick="loadQuery(this)">SI_TRANS_DB — error summary
+                        <script type="text/plain" class="q-sql">SELECT function_name,ERROR_CODE, ERROR_DESC, COUNT(*) AS CNT FROM SBISI.SI_TRANS_DB WHERE SUBSTR(error_code,1,2) = 'SI' and req_time>=SYSDATE - INTERVAL '10' MINUTE GROUP BY ERROR_CODE,ERROR_DESC,function_name ORDER BY CNT DESC;</script>
+                    </div>
+                    <div class="qitem" onclick="loadQuery(this)">EKYC_log — TD% (SI207, SI392)
+                        <script type="text/plain" class="q-sql">select COUNT(1) as TOTAL_HITS, SUM(CASE WHEN ERROR_CODE IS NULL THEN 1 ELSE 0 END) AS SUCCESS, SUM(CASE WHEN ERROR_CODE IS NOT NULL AND error_code NOT IN ('SI392','SI207') THEN 1 ELSE 0 END) "BD", SUM(CASE WHEN ERROR_CODE='SI392' THEN 1 ELSE 0 END) "SI392", ROUND((SUM(CASE WHEN ERROR_CODE='SI392' THEN 1 ELSE 0 END)/COUNT(1))*100,2) "SI392%", SUM(CASE WHEN ERROR_CODE='SI207' THEN 1 ELSE 0 END) "SI207", ROUND((SUM(CASE WHEN error_code IN ('SI392','SI207') THEN 1 ELSE 0 END)/COUNT(1))*100,2) "TD%" from SBISI.EKYC_log where resp_date_time >=sysdate - interval '15' minute;</script>
+                    </div>
+                    <div class="qitem" onclick="loadQuery(this)">EKYC (SI392) — recent
+                        <script type="text/plain" class="q-sql">select * from SBISI.ekyc_log where error_code = 'SI392' and req_date_time>=SYSDATE - INTERVAL '10' MINUTE order by req_date_time desc;</script>
+                    </div>
+                </div>
+            </div>
+
+            <div class="tgroup">
+                <div class="tgroup-head" onclick="toggleGroup(this)">
+                    <span class="tg-arrow">&#9654;</span> Performance / Latency
+                </div>
+                <div class="tgroup-body">
+                    <div class="qitem" onclick="loadQuery(this)">EXP IP response-time buckets
+                        <script type="text/plain" class="q-sql">SELECT exp_ip,COUNT(1), SUM(CASE WHEN RESPONSE_STATUS in ('0','SUCCESS') THEN 1 ELSE 0 END) AS SUCCESS, sum(case when TO_NUMBER(SUBSTR(TO_CHAR(RESPONSE_DATE_TIME-dpg_request_date_time),18))< 0.1 then 1 else 0 end ) as BELOW_100MSEC, sum(case when TO_NUMBER(SUBSTR(TO_CHAR(RESPONSE_DATE_TIME-dpg_request_date_time),18))between 0.1 AND 0.5 then 1 else 0 end ) as "between 100ms-500ms", sum(case when TO_NUMBER(SUBSTR(TO_CHAR(RESPONSE_DATE_TIME-dpg_request_date_time),18))> 5 then 1 else 0 end ) as ABOVE_FIVE_SEC FROM EISAPP.API_LOG WHERE broker_name = 'LOGGING_EXP' and request_date_time>=SYSDATE-INTERVAL '02' MINUTE group by exp_ip;</script>
+                    </div>
+                    <div class="qitem" onclick="loadQuery(this)">SYS latency — backend vs orch
+                        <script type="text/plain" class="q-sql">SELECT b.sys_ip,COUNT(1), sum(case when TO_NUMBER(SUBSTR(TO_CHAR(b.request_DATE_TIME-a.request_DATE_TIME),18))< 0.1 then 1 else 0 end ) as BELOW_100MSEC, sum(case when TO_NUMBER(SUBSTR(TO_CHAR(b.request_DATE_TIME-a.request_DATE_TIME),18))> 5 then 1 else 0 end ) as ABOVE_FIVE_SEC FROM EISAPP.backend_log b , EISAPP.orch_api_log a WHERE a.urn=b.urn and b.sys_broker = 'LOGGING_SYS' and b.creation_date_time>=SYSDATE-INTERVAL '02' MINUTE group by b.sys_ip;</script>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- MAIN -->
+    <div class="main">
+        <div class="tabbar" id="tabbar">
+            <div class="tab-add" onclick="newTab()" title="New Tab (Ctrl+T)">+</div>
+        </div>
+        <div class="tab-content" id="tabContent"></div>
+    </div>
+
+    <!-- PINNED PANEL (bottom of main area) -->
+    <div class="pinned-panel" id="pinnedPanel" style="grid-area: main; align-self: end;">
+        <div class="pinned-head">
+            <span class="pinned-title">&#128204; Pinned Result</span>
+            <div class="pinned-meta" id="pinnedMeta"></div>
+            <div class="pinned-spacer"></div>
+            <button class="pinned-close" onclick="unpinResult()">Unpin</button>
+        </div>
+        <div class="pinned-body" id="pinnedBody"></div>
+    </div>
+
+    <!-- STATUS BAR -->
+    <div class="status">
+        <div class="st-item">
+            <span class="st-dot"></span>
+            <b id="stDb">IIB DB (EISAPP)</b>
+        </div>
+        <div class="st-item" id="stTab">Tab: —</div>
+        <div class="right">
+            <div class="st-item" id="stLast">Last exec: —</div>
+            <div class="st-item" id="stCount">1 tab</div>
+        </div>
+    </div>
+
+</div>
+
+<div id="acBox" class="ac-box"></div>
+
+<script>
+/* ============================================================
+ * EIS QUERY CONSOLE — v4.0
+ * ============================================================ */
+
+var DB_META = {
+    "IIB":    { label: "IIB DB (EISAPP)", dot: "db-IIB" },
+    "SI":     { label: "SI DB (SBISI)",   dot: "db-SI" },
+    "REPORT": { label: "Report DB",       dot: "db-REPORT" }
+};
+var DEFAULT_DB = "<%= dbType %>";
+
+var FALLBACK = {
+    "IIB": { schemas: ["EISAPP"], tables: [
+        "EISAPP.API_LOG", "EISAPP.API_DETAILS", "EISAPP.BACKEND_LOG",
+        "EISAPP.BACKEND_DETAILS", "EISAPP.ORCH_API_LOG", "EISAPP.ORCH_API_DETAILS",
+        "EISAPP.SOURCE_MAPPER", "EISAPP.URL_MAPPER", "EISAPP.URN_DETAILS",
+        "EISAPP.CACHE_DETAILS", "EISAPP.CONNECTION_MASTER"
+    ]},
+    "SI": { schemas: ["SBISI"], tables: [
+        "SBISI.SI_TRANS_DB", "SBISI.EKYC_LOG", "SBISI.EPAY_TXN_MASTER", "SBISI.EPAY_FEED_MASTER"
+    ]},
+    "REPORT": { schemas: ["EISAPP"], tables: ["EISAPP.CONNECTION_MASTER"] }
+};
+
+var SUGGEST = {
+    loaded: false, loading: false,
+    schemas: [], tables: [], keywords: [],
+    columnCache: {}, dbFetched: null
+};
+
+var tabs = [];
+var activeTabId = null;
+var usedNumbers = {};
+
+var BOOTSTRAP_KEYWORDS = ["SELECT","FROM","WHERE","AND","OR","NOT","NULL","IS","IN",
+    "LIKE","BETWEEN","ORDER BY","GROUP BY","HAVING","JOIN","INNER JOIN","LEFT JOIN",
+    "RIGHT JOIN","FULL JOIN","ON","AS","DISTINCT","COUNT","SUM","AVG","MIN","MAX",
+    "INSERT INTO","VALUES","UPDATE","SET","DELETE FROM","UNION","UNION ALL","EXISTS",
+    "CASE","WHEN","THEN","ELSE","END","ROWNUM","SYSDATE","DUAL","FETCH FIRST",
+    "OFFSET","LIMIT","ASC","DESC","COMMIT","ROLLBACK","WITH","PARTITION","TRUNC"
+].map(function(k){ return { label: k, insert: k, type: "KEYWORD" }; });
+
+/* ============ PINNED STATE (global) ============ */
+var PINNED = null;  // { columns, rows, message, queryType, executionTimeMs, db, tabTitle }
+
+/* ============================================================
+ * THEME
+ * ============================================================ */
+function toggleTheme() {
+    var cur = document.body.getAttribute('data-theme') || 'dark';
+    var next = cur === 'dark' ? 'light' : 'dark';
+    document.body.setAttribute('data-theme', next);
+    try { localStorage.setItem('eis_theme', next); } catch(e){}
+    toast("Switched to " + next + " mode");
+}
+(function initTheme(){
+    try {
+        var saved = localStorage.getItem('eis_theme');
+        if (saved === 'light' || saved === 'dark') {
+            document.body.setAttribute('data-theme', saved);
+        }
+    } catch(e){}
+})();
+
+/* ============================================================
+ * TAB
+ * ============================================================ */
+function Tab(num, db) {
+    this.num = num;
+    this.id = 'tab_' + num + '_' + Math.random().toString(36).substr(2, 9);
+    this.db = db || DEFAULT_DB;
+    this.title = "Query " + num;
+    this.sql = "";
+    this.editorEl = null;
+    this.el = null;
+    this.paneEl = null;
+    this.currentItems = [];
+    this.activeIdx = -1;
+    this.lastExecMs = null;
+    this.lastResult = null;
+    this.running = false;
+    this.rawRows = null;
+    this.rawCols = null;
+    this.filterText = "";
+    this.sortCol = null;
+    this.sortDir = null;
+}
+
+function nextFreeNum() {
+    var n = 1;
+    while (usedNumbers[n]) n++;
+    usedNumbers[n] = true;
+    return n;
+}
+
+function newTab() {
+    var num = nextFreeNum();
+    var t = new Tab(num, DEFAULT_DB);
+    tabs.push(t);
+    renderTab(t);
+    switchTab(t.id);
+    saveTabs();
+    return t;
+}
+
+function renderTab(t) {
+    var el = document.createElement('div');
+    el.className = 'tab';
+    el.dataset.tabId = t.id;
+    el.innerHTML = buildTabHTML(t);
+
+    el.addEventListener('click', function(e) {
+        if (e.target.classList.contains('tab-close')) {
+            e.stopPropagation();
+            closeTab(t.id);
+            return;
+        }
+        switchTab(t.id);
+    });
+
+    var tabAdd = document.querySelector('.tab-add');
+    document.getElementById('tabbar').insertBefore(el, tabAdd);
+    t.el = el;
+
+    var pane = document.createElement('div');
+    pane.className = 'pane';
+    pane.dataset.tabId = t.id;
+    pane.innerHTML = buildPaneHTML(t);
+    document.getElementById('tabContent').appendChild(pane);
+    t.paneEl = pane;
+    t.editorEl = pane.querySelector('.sql');
+
+    bindEditorEvents(t);
+    updateCount();
+}
+
+function buildTabHTML(t) {
+    var runningBadge = t.running ? '<span class="tab-running-badge">RUNNING</span>' : '';
+    return '<span class="tab-dot ' + DB_META[t.db].dot + '"></span>' +
+           '<span class="tab-name">' + t.title + '</span>' +
+           runningBadge +
+           '<span class="tab-close" title="Close (Ctrl+W)">&#215;</span>';
+}
+
+function refreshTabHeader(t) {
+    if (!t.el) return;
+    t.el.innerHTML = buildTabHTML(t);
+    t.el.classList.toggle('running', t.running);
+}
+
+function buildPaneHTML(t) {
+    return '' +
+    '<div class="toolbar">' +
+        '<select class="db-sel">' +
+            '<option value="IIB"'    + (t.db === "IIB"    ? " selected" : "") + '>IIB DB (eisapp)</option>' +
+            '<option value="SI"'     + (t.db === "SI"     ? " selected" : "") + '>SI DB (sbisi)</option>' +
+            '<option value="REPORT"' + (t.db === "REPORT" ? " selected" : "") + '>Report DB</option>' +
+        '</select>' +
+        '<button class="tb tb-run"     onclick="runQuery(\'' + t.id + '\')">&#9654; Run</button>' +
+        '<button class="tb tb-suggest" onclick="doSuggest(\'' + t.id + '\')">Suggest</button>' +
+        '<button class="tb tb-format"  onclick="formatSQL(\'' + t.id + '\')">Format</button>' +
+        '<button class="tb tb-export"  onclick="exportResult(\'' + t.id + '\')" disabled>Export Excel</button>' +
+        '<button class="tb tb-clear"   onclick="clearEditor(\'' + t.id + '\')">Clear</button>' +
+        '<button class="tb tb-close"   onclick="closeTab(\'' + t.id + '\')">Close</button>' +
+        '<div class="toolbar-spacer"></div>' +
+        '<span class="chip" data-role="chip">idle</span>' +
+    '</div>' +
+    '<div class="editor-wrap">' +
+        '<div class="editor-box">' +
+            '<textarea class="sql" spellcheck="false" autocomplete="off" ' +
+                'placeholder="-- Select a saved query, or write your SQL&#10;-- Ctrl+Space: suggestions  |  Ctrl+Enter: run  |  Ctrl+T: new tab">' + escapeHtml(t.sql) + '</textarea>' +
+        '</div>' +
+    '</div>' +
+    '<div class="results">' +
+        '<div class="res-bar" style="display:none;" data-role="resBar">' +
+            '<span class="res-stat"><span class="label">Type</span><b data-role="qType">&#8212;</b></span>' +
+            '<span class="res-stat"><span class="label">Rows</span><b data-role="qRows">&#8212;</b></span>' +
+            '<span class="res-stat"><span class="label">Time</span><b data-role="qTime">&#8212;</b></span>' +
+            '<span class="res-stat"><span class="label">DB</span><b data-role="qDb">&#8212;</b></span>' +
+            '<button class="pin-btn" data-role="pinBtn" onclick="pinCurrentResult(\'' + t.id + '\')" title="Pin this result">&#128204; Pin</button>' +
+            '<div class="res-bar-spacer"></div>' +
+            '<div class="res-search-wrap">' +
+                '<span class="res-search-icon">&#128269;</span>' +
+                '<input type="text" class="res-search" placeholder="Search in results..." data-role="resSearch">' +
+            '</div>' +
+        '</div>' +
+        '<div class="res-body" data-role="resBody">' +
+            '<div class="placeholder">' +
+                '<div class="ph-icon">&#9654;</div>' +
+                '<div class="ph-title">Ready</div>' +
+                '<div class="ph-sub">Write a query or pick one from the sidebar, then click <b>Run</b>.</div>' +
+            '</div>' +
+        '</div>' +
+    '</div>';
+}
+
+/* ============ SWITCH / CLOSE ============ */
+function switchTab(id) {
+    activeTabId = id;
+    document.querySelectorAll('.tab').forEach(function(el) {
+        el.classList.toggle('active', el.dataset.tabId === id);
+    });
+    document.querySelectorAll('.pane').forEach(function(el) {
+        el.classList.toggle('active', el.dataset.tabId === id);
+    });
+    var t = getTab(id);
+    if (t && t.editorEl) try { t.editorEl.focus(); } catch(e) {}
+    updateStatus();
+    saveTabs();
+}
+
+function getTab(id) {
+    for (var i = 0; i < tabs.length; i++) if (tabs[i].id === id) return tabs[i];
+    return null;
+}
+
+function closeTab(id) {
+    var idx = -1;
+    for (var i = 0; i < tabs.length; i++) if (tabs[i].id === id) { idx = i; break; }
+    if (idx === -1) return;
+    var t = tabs[idx];
+
+    if (t.running) {
+        if (!confirm('Query is still running in "' + t.title + '". Close anyway?')) return;
+    } else if (t.sql && t.sql.trim()) {
+        if (!confirm('Close "' + t.title + '"? Unsaved query will be lost.')) return;
+    }
+
+    delete usedNumbers[t.num];
+    if (t.el) t.el.remove();
+    if (t.paneEl) t.paneEl.remove();
+    tabs.splice(idx, 1);
+
+    if (tabs.length === 0) newTab();
+    else if (activeTabId === id) switchTab(tabs[Math.max(0, idx - 1)].id);
+    updateCount();
+    saveTabs();
+}
+
+/* ============ EDITOR EVENTS ============ */
+function bindEditorEvents(t) {
+    var ta = t.editorEl;
+    var dbSel = t.paneEl.querySelector('.db-sel');
+    var resSearch = t.paneEl.querySelector('[data-role="resSearch"]');
+
+    ta.addEventListener('input', function() {
+        t.sql = ta.value;
+        clearTimeout(ta._tmr);
+        ta._tmr = setTimeout(function() {
+            saveTabs();
+            autoSuggest(t);
+        }, 130);
+    });
+
+    dbSel.addEventListener('change', function() {
+        t.db = dbSel.value;
+        t.el.querySelector('.tab-dot').className = 'tab-dot ' + DB_META[t.db].dot;
+        if (SUGGEST.dbFetched && SUGGEST.dbFetched !== t.db) {
+            SUGGEST.loaded = false; SUGGEST.dbFetched = null;
+        }
+        updateStatus();
+        toast("DB switched to " + DB_META[t.db].label);
+        saveTabs();
+    });
+
+    if (resSearch) {
+        resSearch.addEventListener('input', function() {
+            t.filterText = resSearch.value;
+            renderFilteredResult(t);
+        });
+    }
+
+    ta.addEventListener('keydown', function(e) {
+        var boxOpen = document.getElementById('acBox').style.display === 'block';
+
+        if (e.ctrlKey && e.key === ' ') { e.preventDefault(); doSuggest(t.id); return; }
+        if (e.ctrlKey && e.key === 'Enter') { e.preventDefault(); runQuery(t.id); return; }
+        if (e.ctrlKey && (e.key === 't' || e.key === 'T')) { e.preventDefault(); newTab(); return; }
+        if (e.ctrlKey && (e.key === 'w' || e.key === 'W')) { e.preventDefault(); closeTab(t.id); return; }
+        if (e.ctrlKey && e.shiftKey && (e.key === 'f' || e.key === 'F')) { e.preventDefault(); formatSQL(t.id); return; }
+
+        if (boxOpen && t.currentItems.length > 0) {
+            if (e.key === 'ArrowDown') { e.preventDefault(); t.activeIdx = (t.activeIdx + 1) % t.currentItems.length; updateActive(t); return; }
+            if (e.key === 'ArrowUp')   { e.preventDefault(); t.activeIdx = (t.activeIdx - 1 + t.currentItems.length) % t.currentItems.length; updateActive(t); return; }
+            if (e.key === 'Enter' || e.key === 'Tab') {
+                if (t.activeIdx >= 0) { e.preventDefault(); pickSuggestion(t, t.activeIdx); return; }
+            }
+            if (e.key === 'Escape') { e.preventDefault(); hideSuggest(t); return; }
+        }
+    });
+}
+
+/* ============================================================
+ * SQL FORMATTER
+ * ============================================================ */
+var SQL_MAJOR = ["SELECT","FROM","WHERE","GROUP BY","ORDER BY","HAVING","UNION ALL","UNION","INSERT INTO","VALUES","UPDATE","SET","DELETE FROM","WITH","JOIN","INNER JOIN","LEFT JOIN","RIGHT JOIN","FULL JOIN","LEFT OUTER JOIN","RIGHT OUTER JOIN","CROSS JOIN","ON"];
+var SQL_MINOR = ["AND","OR"];
+var SQL_CLAUSE = { "FROM":1, "WHERE":1, "GROUP BY":1, "ORDER BY":1, "HAVING":1, "UNION":1, "UNION ALL":1,
+                   "JOIN":1, "INNER JOIN":1, "LEFT JOIN":1, "RIGHT JOIN":1, "FULL JOIN":1,
+                   "LEFT OUTER JOIN":1, "RIGHT OUTER JOIN":1, "CROSS JOIN":1, "ON":1,
+                   "SET":1, "VALUES":1, "UPDATE":1, "INSERT INTO":1 };
+
+function formatSQL(tabId) {
+    var t = getTab(tabId); if (!t) return;
+    var raw = t.editorEl.value;
+    if (!raw || !raw.trim()) { toast("Nothing to format.", true); return; }
+
+    // 1. Normalize whitespace
+    var sql = raw.replace(/\r\n/g, '\n').replace(/\s+/g, ' ').trim();
+
+    // 2. Protect strings and comments
+    var tokens = [];
+    sql = sql.replace(/'[^']*'/g, function(m){ tokens.push(m); return '\u0001' + (tokens.length-1) + '\u0001'; });
+    sql = sql.replace(/"[^"]*"/g, function(m){ tokens.push(m); return '\u0001' + (tokens.length-1) + '\u0001'; });
+    sql = sql.replace(/--[^\n]*/g, function(m){ tokens.push(m); return '\u0001' + (tokens.length-1) + '\u0001'; });
+    sql = sql.replace(/\/\*[\s\S]*?\*\//g, function(m){ tokens.push(m); return '\u0001' + (tokens.length-1) + '\u0001'; });
+
+    // 3. Uppercase major keywords for easier matching
+    var upper = sql.toUpperCase();
+    var result = '';
+    var i = 0;
+    var majorRegex = /\b(SELECT|FROM|WHERE|GROUP BY|ORDER BY|HAVING|UNION ALL|UNION|INSERT INTO|VALUES|UPDATE|SET|DELETE FROM|INNER JOIN|LEFT OUTER JOIN|RIGHT OUTER JOIN|LEFT JOIN|RIGHT JOIN|FULL JOIN|CROSS JOIN|JOIN|ON|AND|OR|WITH)\b/g;
+
+    var matches = [];
+    var m;
+    while ((m = majorRegex.exec(upper)) !== null) {
+        matches.push({ start: m.index, end: m.index + m[0].length, kw: m[0] });
+    }
+
+    // Build output
+    var out = '';
+    var prev = 0;
+    var indent = 0;
+    var firstKw = true;
+
+    for (var k = 0; k < matches.length; k++) {
+        var mk = matches[k];
+        var beforeText = sql.substring(prev, mk.start).trim();
+        if (beforeText) {
+            if (out && !out.endsWith('\n') && !out.endsWith(' ')) out += ' ';
+            out += beforeText;
+        }
+
+        var kw = mk.kw;
+        if (kw === 'AND' || kw === 'OR') {
+            out += '\n' + '  '.repeat(indent + 1) + kw + ' ';
+        } else if (kw === 'ON') {
+            out += '\n' + '  '.repeat(indent + 1) + kw + ' ';
+        } else {
+            if (out) out += '\n';
+            if (kw === 'UNION' || kw === 'UNION ALL') {
+                out += kw + '\n';
+                indent = 0;
+            } else if (kw === 'FROM' || kw === 'WHERE' || kw === 'GROUP BY' || kw === 'ORDER BY' || kw === 'HAVING') {
+                out += kw + ' ';
+                indent = 0;
+            } else if (kw === 'SELECT') {
+                out += kw + ' ';
+                indent = 0;
+            } else if (kw.indexOf('JOIN') !== -1) {
+                out += '  ' + kw + ' ';
+                indent = 1;
+            } else {
+                out += kw + ' ';
+            }
+        }
+        prev = mk.end;
+    }
+    var afterText = sql.substring(prev).trim();
+    if (afterText) {
+        if (out && !out.endsWith('\n') && !out.endsWith(' ')) out += ' ';
+        out += afterText;
+    }
+
+    // 4. Clean up
+    out = out.replace(/[ \t]+\n/g, '\n');
+    out = out.replace(/\n{3,}/g, '\n\n');
+    out = out.trim();
+
+    // 5. Restore tokens
+    out = out.replace(/\u0001(\d+)\u0001/g, function(_, n){ return tokens[parseInt(n, 10)]; });
+
+    // 6. Replace in editor
+    t.editorEl.value = out;
+    t.sql = out;
+    saveTabs();
+    toast("Query formatted");
+}
+
+/* ============ SUGGESTIONS ============ */
+function autoSuggest(t) {
+    var ctx = getCtx(t);
+    if ((ctx.word && ctx.word.length >= 1) || ctx.dotBefore) {
+        showSuggestInstant(t, false);
+    } else {
+        hideSuggest(t);
+    }
+}
+
+function doSuggest(id) {
+    var t = getTab(id); if (!t) return;
+    ensureSuggestLoaded(t);
+    showSuggestInstant(t, true);
+}
+
+function showSuggestInstant(t, forceAll) {
+    var ctx = getCtx(t);
+    var items;
+
+    var schemas, tables, keywords;
+    if (SUGGEST.loaded && SUGGEST.dbFetched === t.db) {
+        schemas  = SUGGEST.schemas;
+        tables   = SUGGEST.tables;
+        keywords = SUGGEST.keywords.length ? SUGGEST.keywords : BOOTSTRAP_KEYWORDS;
+    } else {
+        var fb = FALLBACK[t.db] || { schemas: [], tables: [] };
+        schemas  = fb.schemas.map(function(s){ return { label: s, insert: s + ".", type: "SCHEMA" }; });
+        tables   = fb.tables.map(function(tb){ return { label: tb, insert: tb, type: "TABLE" }; });
+        keywords = BOOTSTRAP_KEYWORDS;
+        ensureSuggestLoaded(t);
+    }
+
+    if (ctx.dotBefore) {
+        var prefUp = ctx.prefix.toUpperCase();
+        var isSchema = schemas.some(function(s){ return s.label.toUpperCase() === prefUp; });
+        if (isSchema) {
+            items = tables.filter(function(tb){
+                return tb.label.toUpperCase().startsWith(prefUp + ".");
+            }).map(function(tb){
+                var shortName = tb.label.substring(tb.label.indexOf('.') + 1);
+                return { label: shortName, insert: shortName, type: "TABLE" };
+            });
+            if (ctx.word) {
+                var w = ctx.word.toLowerCase();
+                items = items.filter(function(x){ return x.label.toLowerCase().indexOf(w) !== -1; });
+            }
+            renderSuggest(t, items);
+        } else {
+            fetchCols(t, ctx.prefix, function(cols){
+                var w = (ctx.word || '').toLowerCase();
+                var filtered = w ? cols.filter(function(c){ return c.label.toLowerCase().indexOf(w) !== -1; }) : cols;
+                renderSuggest(t, filtered);
+            });
+        }
+        return;
+    }
+
+    items = keywords.concat(schemas).concat(tables);
+    var w = (ctx.word || '').toLowerCase();
+    if (!forceAll && w) {
+        var starts = [], contains = [];
+        items.forEach(function(it){
+            var l = it.label.toLowerCase();
+            if (l.startsWith(w)) starts.push(it);
+            else if (l.indexOf(w) !== -1) contains.push(it);
+        });
+        items = starts.concat(contains);
+    }
+    renderSuggest(t, items);
+}
+
+function ensureSuggestLoaded(t) {
+    if (SUGGEST.loaded && SUGGEST.dbFetched === t.db) return;
+    if (SUGGEST.loading) return;
+
+    SUGGEST.loading = true;
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', 'query.jsp?ajax=suggest&db=' + encodeURIComponent(t.db), true);
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState !== 4) return;
+        SUGGEST.loading = false;
+        if (xhr.status === 200) {
+            try {
+                var d = JSON.parse(xhr.responseText);
+                var fb = FALLBACK[t.db] || { schemas: [], tables: [] };
+                var fbSchemas = fb.schemas.map(function(s){ return { label: s, insert: s + ".", type: "SCHEMA" }; });
+                var fbTables  = fb.tables.map(function(tb){ return { label: tb, insert: tb, type: "TABLE" }; });
+
+                var seenS = {}; var mergedS = [];
+                (d.schemas || []).concat(fbSchemas).forEach(function(s){
+                    if (!seenS[s.label.toUpperCase()]) { seenS[s.label.toUpperCase()] = true; mergedS.push(s); }
+                });
+                var seenT = {}; var mergedT = [];
+                (d.tables || []).concat(fbTables).forEach(function(tb){
+                    var key = tb.label.toUpperCase();
+                    if (!seenT[key]) { seenT[key] = true; mergedT.push(tb); }
+                });
+
+                SUGGEST.schemas  = mergedS;
+                SUGGEST.tables   = mergedT;
+                SUGGEST.keywords = (d.keywords && d.keywords.length) ? d.keywords : BOOTSTRAP_KEYWORDS;
+                SUGGEST.loaded = true;
+                SUGGEST.dbFetched = t.db;
+            } catch(e) { console.error("Suggest parse error:", e); }
+        }
+    };
+    xhr.send();
+}
+
+function renderSuggest(t, items) {
+    var box = document.getElementById('acBox');
+    if (!items || items.length === 0) { hideSuggest(t); return; }
+    items = items.slice(0, 50);
+    t.currentItems = items;
+    t.activeIdx = 0;
+    var html = '';
+    items.forEach(function(it, i) {
+        var cls = 'ac-item' + (i === 0 ? ' active' : '');
+        var tag = it.type.split(':')[0];
+        var tagTxt = tag === 'COLUMN' ? 'COL' : tag;
+        html += '<div class="' + cls + '" onmousedown="event.preventDefault();" onclick="pickById(\'' + t.id + '\',' + i + ')">' +
+                    '<span>' + escapeHtml(it.label) + '</span>' +
+                    '<span class="ac-tag tag-' + tag + '">' + tagTxt + '</span>' +
+                '</div>';
+    });
+    box.innerHTML = html;
+    box.style.display = 'block';
+
+    var p = caretXY(t.editorEl);
+    var h = Math.min(320, items.length * 32 + 8);
+    var top = p.top;
+    if (top + h > window.innerHeight - 50) top = p.top - h - p.lineHeight - 6;
+    box.style.left = Math.max(6, Math.min(p.left, window.innerWidth - 360)) + 'px';
+    box.style.top  = top + 'px';
+}
+
+function hideSuggest(t) {
+    document.getElementById('acBox').style.display = 'none';
+    if (t) { t.currentItems = []; t.activeIdx = -1; }
+}
+
+function updateActive(t) {
+    document.querySelectorAll('#acBox .ac-item').forEach(function(el, i){
+        if (i === t.activeIdx) { el.classList.add('active'); el.scrollIntoView({block:'nearest'}); }
+        else el.classList.remove('active');
+    });
+}
+
+function pickById(tabId, idx) {
+    var t = getTab(tabId); if (!t) return;
+    pickSuggestion(t, idx);
+}
+
+function pickSuggestion(t, idx) {
+    if (idx < 0 || idx >= t.currentItems.length) return;
+    var it = t.currentItems[idx];
+    var ctx = getCtx(t);
+    var val = t.editorEl.value;
+    var before = val.substring(0, ctx.start);
+    var after = val.substring(ctx.end);
+    t.editorEl.value = before + it.insert + after;
+    var np = before.length + it.insert.length;
+    t.editorEl.selectionStart = t.editorEl.selectionEnd = np;
+    t.sql = t.editorEl.value;
+    hideSuggest(t);
+    t.editorEl.focus();
+}
+
+function fetchCols(t, schema, table, cb) {
+    var key = (schema || '').toUpperCase() + '.' + table.toUpperCase();
+    if (SUGGEST.columnCache[key]) { cb(SUGGEST.columnCache[key]); return; }
+    var url = 'query.jsp?ajax=cols&db=' + encodeURIComponent(t.db) +
+              '&schema=' + encodeURIComponent(schema || '') +
+              '&table=' + encodeURIComponent(table);
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', url, true);
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4 && xhr.status === 200) {
+            try {
+                var d = JSON.parse(xhr.responseText);
+                SUGGEST.columnCache[key] = d;
+                cb(d);
+            } catch(e){ cb([]); }
+        }
+    };
+    xhr.send();
+}
+
+function getCtx(t) {
+    var ta = t.editorEl;
+    var pos = ta.selectionStart;
+    var val = ta.value;
+    var s = pos;
+    while (s > 0 && /[A-Za-z0-9_$#]/.test(val.charAt(s - 1))) s--;
+    var e = pos;
+    while (e < val.length && /[A-Za-z0-9_$#]/.test(val.charAt(e))) e++;
+    var word = val.substring(s, pos);
+    var prefix = "";
+    var dotBefore = false;
+    if (s > 0 && val.charAt(s - 1) === '.') {
+        dotBefore = true;
+        var p = s - 2;
+        while (p >= 0 && /[A-Za-z0-9_$#]/.test(val.charAt(p))) p--;
+        prefix = val.substring(p + 1, s - 1);
+    }
+    return { word: word, start: s, end: e, dotBefore: dotBefore, prefix: prefix };
+}
+
+function caretXY(ta) {
+    var d = document.createElement('div');
+    var st = window.getComputedStyle(ta);
+    var ps = ['fontFamily','fontSize','fontWeight','lineHeight','letterSpacing',
+              'paddingTop','paddingLeft','paddingRight','paddingBottom',
+              'borderTopWidth','borderLeftWidth','whiteSpace','wordWrap','wordBreak'];
+    ps.forEach(function(p){ d.style[p] = st[p]; });
+    d.style.position = 'fixed';
+    d.style.visibility = 'hidden';
+    d.style.whiteSpace = 'pre-wrap';
+    d.style.wordWrap = 'break-word';
+    d.style.width = (ta.clientWidth - parseInt(st.paddingLeft) - parseInt(st.paddingRight)) + 'px';
+    d.style.top = '-9999px';
+    d.textContent = ta.value.substring(0, ta.selectionStart);
+    var span = document.createElement('span');
+    span.textContent = ta.value.substring(ta.selectionStart) || '.';
+    d.appendChild(span);
+    document.body.appendChild(d);
+    var sr = span.getBoundingClientRect();
+    var lineH = parseInt(st.lineHeight) || 22;
+    var pos = { left: sr.left, top: sr.bottom + 2, lineHeight: lineH };
+    document.body.removeChild(d);
+    return pos;
+}
+
+/* ============ RUN QUERY ============ */
+function runQuery(tabId) {
+    var t = getTab(tabId); if (!t) return;
+    var sql = t.editorEl.value.trim();
+    if (!sql) { toast("Query is empty.", true); return; }
+    if (t.running) { toast("Query already running in this tab.", true); return; }
+
+    t.sql = t.editorEl.value;
+    saveTabs();
+    t.running = true;
+    refreshTabHeader(t);
+    setChip(t, "loading", "running");
+    hideSuggest(t);
+
+    var resBar = t.paneEl.querySelector('[data-role="resBar"]');
+    resBar.style.display = 'none';
+    resBar.querySelector('[data-role="qType"]').textContent = '\u2014';
+    resBar.querySelector('[data-role="qRows"]').textContent = '\u2014';
+    var tEl0 = resBar.querySelector('[data-role="qTime"]');
+    tEl0.textContent = '\u2014';
+    tEl0.className = '';
+    resBar.querySelector('[data-role="qDb"]').textContent = '\u2014';
+
+    t.filterText = "";
+    t.sortCol = null;
+    t.sortDir = null;
+    var searchInp = t.paneEl.querySelector('[data-role="resSearch"]');
+    if (searchInp) searchInp.value = '';
+    t.rawRows = null;
+    t.rawCols = null;
+    t.lastResult = null;
+    var expBtn = t.paneEl.querySelector('.tb-export');
+    if (expBtn) expBtn.disabled = true;
+
+    var resBody = t.paneEl.querySelector('[data-role="resBody"]');
+    resBody.innerHTML = '' +
+        '<div class="loader-overlay">' +
+            '<div class="loader-big"></div>' +
+            '<div class="loader-text">Executing query...</div>' +
+            '<div class="loader-sub">Target: ' + DB_META[t.db].label + '</div>' +
+        '</div>';
+
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', 'query.jsp?ajax=run', true);
+    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded; charset=UTF-8');
+    var payload = 'sql=' + encodeURIComponent(sql) + '&dbType=' + encodeURIComponent(t.db);
+
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState !== 4) return;
+        t.running = false;
+        refreshTabHeader(t);
+
+        if (xhr.status !== 200) {
+            resBody.innerHTML = '<div class="alert alert-err">HTTP ' + xhr.status + ' — execution failed.</div>';
+            setChip(t, "err", "error");
+            updateStatus();
+            toast("HTTP " + xhr.status, true);
+            return;
+        }
+        try {
+            var res = JSON.parse(xhr.responseText);
+            t.lastExecMs = res.executionTimeMs;
+            t.lastResult = res;
+
+            resBar.style.display = 'flex';
+            resBar.querySelector('[data-role="qType"]').textContent = res.queryType || '\u2014';
+            resBar.querySelector('[data-role="qRows"]').textContent = (res.rows ? res.rows.length : 0);
+            resBar.querySelector('[data-role="qDb"]').textContent = DB_META[t.db].label;
+
+            var tEl = resBar.querySelector('[data-role="qTime"]');
+            tEl.textContent = res.executionTimeMs + ' ms';
+            tEl.className = 'res-time ' + (res.executionTimeMs < 500 ? 'ok' : res.executionTimeMs < 3000 ? 'warn' : 'slow');
+
+            if (res.success && res.columns && res.columns.length > 0) {
+                t.rawCols = res.columns.slice();
+                t.rawRows = res.rows ? res.rows.slice() : [];
+            } else {
+                t.rawCols = null;
+                t.rawRows = null;
+            }
+
+            renderFilteredResult(t);
+            updatePinButton(t);
+
+            setChip(t, res.success ? "ok" : "err", res.success ? "success" : "error");
+            if (expBtn) expBtn.disabled = !(res.success && t.rawRows && t.rawRows.length > 0);
+
+            updateStatus();
+            toast(res.success ? "Query ran in " + res.executionTimeMs + " ms" : "Query failed", !res.success);
+        } catch(e) {
+            resBody.innerHTML = '<div class="alert alert-err">Parse error: ' + escapeHtml(e.message) + '</div>';
+            setChip(t, "err", "parse error");
+            updateStatus();
+        }
+    };
+    xhr.send(payload);
+}
+
+/* ============ FILTER + SORT + RENDER ============ */
+function renderFilteredResult(t) {
+    var resBody = t.paneEl.querySelector('[data-role="resBody"]');
+    var res = t.lastResult;
+
+    if (!res) {
+        resBody.innerHTML = '<div class="placeholder"><div class="ph-icon">&#9654;</div><div class="ph-title">Ready</div></div>';
+        return;
+    }
+    if (!res.success) {
+        resBody.innerHTML = '<div class="alert alert-err">' + escapeHtml(res.message) + '</div>';
+        return;
+    }
+    if (!t.rawCols || !t.rawRows || t.rawRows.length === 0) {
+        var msg = res.updateCount >= 0 ? ('Rows affected: ' + res.updateCount) : 'Query executed. 0 rows returned.';
+        resBody.innerHTML = '<div class="alert alert-ok">' + escapeHtml(res.message) + '</div>' +
+                            '<div class="placeholder"><div class="ph-title">0 rows</div><div class="ph-sub">' + escapeHtml(msg) + '</div></div>';
+        return;
+    }
+
+    var filter = (t.filterText || '').toLowerCase().trim();
+    var rows = t.rawRows;
+    if (filter) {
+        rows = rows.filter(function(row){
+            for (var i = 0; i < t.rawCols.length; i++) {
+                var v = row[t.rawCols[i]];
+                if (v != null && String(v).toLowerCase().indexOf(filter) !== -1) return true;
+            }
+            return false;
+        });
+    }
+    if (t.sortCol) {
+        var col = t.sortCol;
+        var dir = t.sortDir === 'desc' ? -1 : 1;
+        rows = rows.slice().sort(function(a, b){
+            var va = a[col], vb = b[col];
+            if (va == null && vb == null) return 0;
+            if (va == null) return 1;
+            if (vb == null) return -1;
+            var na = parseFloat(va), nb = parseFloat(vb);
+            if (!isNaN(na) && !isNaN(nb) && String(va).trim() === String(na) && String(vb).trim() === String(nb)) {
+                return (na - nb) * dir;
+            }
+            return String(va).localeCompare(String(vb)) * dir;
+        });
+    }
+
+    var html = '<div class="alert alert-ok">' + escapeHtml(res.message) +
+               (filter ? ' <b>(' + rows.length + ' of ' + t.rawRows.length + ' shown)</b>' : '') + '</div>';
+    html += buildDataTable(t, rows, filter);
+    resBody.innerHTML = html;
+}
+
+function buildDataTable(t, rows, filter) {
+    var html = '<table class="data"><thead><tr><th>#</th>';
+    t.rawCols.forEach(function(c){
+        var sortCls = '';
+        var sortIcon = '\u21C5';
+        if (t.sortCol === c) {
+            if (t.sortDir === 'asc') { sortCls = 'sorted-asc'; sortIcon = '\u25B2'; }
+            else { sortCls = 'sorted-desc'; sortIcon = '\u25BC'; }
+        }
+        html += '<th class="' + sortCls + '" onclick="sortByColumn(\'' + t.id + '\',\'' + escapeJs(c) + '\')">' +
+                    escapeHtml(c) + '<span class="sort-icon">' + sortIcon + '</span>' +
+                '</th>';
+    });
+    html += '</tr></thead><tbody>';
+    rows.forEach(function(row, i){
+        html += '<tr><td class="row-no">' + (i+1) + '</td>';
+        t.rawCols.forEach(function(c){
+            var v = row[c];
+            if (v === null || v === undefined) html += '<td><span class="null-cell">NULL</span></td>';
+            else {
+                var s = String(v);
+                var disp = filter ? highlightMatch(s, filter) : escapeHtml(s);
+                html += '<td title="' + escapeHtml(s) + '">' + disp + '</td>';
+            }
+        });
+        html += '</tr>';
+    });
+    html += '</tbody></table>';
+    return html;
+}
+
+function sortByColumn(tabId, col) {
+    var t = getTab(tabId); if (!t) return;
+    if (t.sortCol === col) {
+        if (t.sortDir === 'asc') t.sortDir = 'desc';
+        else if (t.sortDir === 'desc') { t.sortCol = null; t.sortDir = null; }
+        else t.sortDir = 'asc';
+    } else {
+        t.sortCol = col;
+        t.sortDir = 'asc';
+    }
+    renderFilteredResult(t);
+}
+
+function highlightMatch(text, filter) {
+    var esc = escapeHtml(text);
+    if (!filter) return esc;
+    try {
+        var re = new RegExp('(' + filter.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+        return esc.replace(re, '<span class="hl-match">$1</span>');
+    } catch(e) { return esc; }
+}
+
+function escapeJs(s) {
+    return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g,'\\n');
+}
+
+/* ============================================================
+ * PIN / UNPIN
+ * ============================================================ */
+function pinCurrentResult(tabId) {
+    var t = getTab(tabId); if (!t) return;
+    if (!t.lastResult || !t.lastResult.success || !t.rawCols || !t.rawRows || t.rawRows.length === 0) {
+        toast("Nothing to pin — run a successful query first.", true);
+        return;
+    }
+    PINNED = {
+        columns: t.rawCols.slice(),
+        rows: t.rawRows.slice(),
+        message: t.lastResult.message,
+        queryType: t.lastResult.queryType,
+        executionTimeMs: t.lastResult.executionTimeMs,
+        db: t.db,
+        tabTitle: t.title
+    };
+    renderPinned();
+    updatePinButton(t);
+    toast("Result pinned");
+}
+
+function unpinResult() {
+    PINNED = null;
+    renderPinned();
+    if (activeTabId) {
+        var t = getTab(activeTabId);
+        if (t) updatePinButton(t);
+    }
+    toast("Result unpinned");
+}
+
+function renderPinned() {
+    var panel = document.getElementById('pinnedPanel');
+    var body = document.getElementById('pinnedBody');
+    var meta = document.getElementById('pinnedMeta');
+    if (!PINNED) {
+        panel.classList.remove('visible');
+        body.innerHTML = '';
+        meta.innerHTML = '';
+        return;
+    }
+    panel.classList.add('visible');
+    meta.innerHTML =
+        '<span>Type: <b>' + escapeHtml(PINNED.queryType || '\u2014') + '</b></span>' +
+        '<span>Rows: <b>' + PINNED.rows.length + '</b></span>' +
+        '<span>Time: <b>' + PINNED.executionTimeMs + ' ms</b></span>' +
+        '<span>DB: <b>' + DB_META[PINNED.db].label + '</b></span>' +
+        '<span>From: <b>' + escapeHtml(PINNED.tabTitle) + '</b></span>';
+
+    // Build a fake tab object for table rendering (no sort state)
+    var fakeTab = {
+        rawCols: PINNED.columns,
+        rawRows: PINNED.rows,
+        sortCol: null,
+        sortDir: null,
+        id: '__pinned__'
+    };
+    // use a simpler table render (no sorting interaction)
+    var html = '<div class="alert alert-ok">' + escapeHtml(PINNED.message) + '</div>';
+    html += '<table class="data"><thead><tr><th>#</th>';
+    PINNED.columns.forEach(function(c){ html += '<th>' + escapeHtml(c) + '</th>'; });
+    html += '</tr></thead><tbody>';
+    PINNED.rows.forEach(function(row, i){
+        html += '<tr><td class="row-no">' + (i+1) + '</td>';
+        PINNED.columns.forEach(function(c){
+            var v = row[c];
+            if (v === null || v === undefined) html += '<td><span class="null-cell">NULL</span></td>';
+            else html += '<td title="' + escapeHtml(String(v)) + '">' + escapeHtml(String(v)) + '</td>';
+        });
+        html += '</tr>';
+    });
+    html += '</tbody></table>';
+    body.innerHTML = html;
+}
+
+function updatePinButton(t) {
+    var btn = t.paneEl.querySelector('[data-role="pinBtn"]');
+    if (!btn) return;
+    var isPinned = PINNED && PINNED.tabTitle === t.title;
+    if (isPinned) {
+        btn.classList.add('pinned');
+        btn.innerHTML = '\u2713 Pinned';
+    } else {
+        btn.classList.remove('pinned');
+        btn.innerHTML = '\uD83D\uDCCC Pin';
+    }
+}
+
+/* ============ EXPORT EXCEL ============ */
+function exportResult(tabId) {
+    var t = getTab(tabId); if (!t) return;
+    if (!t.rawCols || !t.rawRows || t.rawRows.length === 0) {
+        toast("Nothing to export.", true);
+        return;
+    }
+    var BOM = '\uFEFF';
+    var lines = [];
+    lines.push(t.rawCols.map(csvCell).join(','));
+    t.rawRows.forEach(function(row){
+        lines.push(t.rawCols.map(function(c){ return csvCell(row[c]); }).join(','));
+    });
+    var csv = BOM + lines.join('\r\n');
+    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    var fname = 'query_' + t.num + '_' + t.db + '_' + stamp + '.csv';
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = fname;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast("Exported " + t.rawRows.length + " rows");
+}
+
+function csvCell(v) {
+    if (v === null || v === undefined) return '';
+    var s = String(v);
+    if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+    return s;
+}
+
+/* ============ HELPERS ============ */
+function setChip(t, type, text) {
+    var el = t.paneEl.querySelector('[data-role="chip"]');
+    if (!el) return;
+    el.textContent = text || "idle";
+    el.className = 'chip';
+    if (type === 'ok') el.classList.add('ok');
+    if (type === 'loading') el.classList.add('loading');
+    if (type === 'err') el.classList.add('err');
+}
+
+function updateStatus() {
+    var t = getTab(activeTabId);
+    if (t) {
+        document.getElementById('stDb').textContent = DB_META[t.db].label;
+        document.getElementById('stTab').innerHTML = 'Tab: <b>' + escapeHtml(t.title) + '</b>' +
+            (t.running ? ' <span style="color:#60a5fa;">&#9679; running</span>' : '');
+        document.getElementById('stLast').innerHTML = 'Last exec: <b>' + (t.lastExecMs != null ? t.lastExecMs + ' ms' : '\u2014') + '</b>';
+    }
+    document.getElementById('stCount').textContent = tabs.length + (tabs.length === 1 ? ' tab' : ' tabs');
+    document.getElementById('qCount').textContent = document.querySelectorAll('.qitem').length;
+}
+
+function updateCount() { updateStatus(); }
+
+function clearEditor(id) {
+    var t = getTab(id); if (!t) return;
+    t.editorEl.value = '';
+    t.sql = '';
+    t.editorEl.focus();
+    hideSuggest(t);
+    saveTabs();
+}
+
+/* ============ SIDEBAR ============ */
+function toggleGroup(el) {
+    var body = el.nextElementSibling;
+    var open = body.classList.toggle('open');
+    el.classList.toggle('open', open);
+}
+
+function loadQuery(el) {
+    var sqlEl = el.querySelector('.q-sql');
+    if (!sqlEl) return;
+    var text = (sqlEl.textContent || sqlEl.innerText).replace(/^\s*\n+/, '').replace(/\s+$/, '');
+    var t = getTab(activeTabId);
+    if (!t) return;
+    t.editorEl.value = text;
+    t.sql = text;
+    t.editorEl.focus();
+    t.editorEl.selectionStart = t.editorEl.selectionEnd = text.length;
+    document.querySelectorAll('.qitem').forEach(function(i){ i.classList.remove('active'); });
+    el.classList.add('active');
+    saveTabs();
+    toast("Loaded into " + t.title);
+}
+
+document.getElementById('qSearch').addEventListener('input', function(e) {
+    var q = e.target.value.toLowerCase().trim();
+    document.querySelectorAll('.tgroup').forEach(function(g){
+        var items = g.querySelectorAll('.qitem');
+        var any = false;
+        items.forEach(function(it){
+            var txt = it.textContent.toLowerCase();
+            if (!q || txt.indexOf(q) !== -1) { it.style.display = ''; any = true; }
+            else it.style.display = 'none';
+        });
+        g.style.display = (any || !q) ? '' : 'none';
+        if (q && any) {
+            g.querySelector('.tgroup-body').classList.add('open');
+            g.querySelector('.tgroup-head').classList.add('open');
+        }
+    });
+});
+
+/* ============ UTILS ============ */
+function escapeHtml(s) {
+    if (s == null) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+            .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function toast(msg, isErr) {
+    var el = document.createElement('div');
+    el.className = 'toast' + (isErr ? ' err' : '');
+    el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(function(){
+        el.style.transition = 'opacity .3s, transform .3s';
+        el.style.opacity = '0';
+        el.style.transform = 'translateX(30px)';
+        setTimeout(function(){ el.remove(); }, 320);
+    }, 2400);
+}
+
+/* ============ PERSIST ============ */
+function saveTabs() {
+    try {
+        localStorage.setItem('eis_qc_v4', JSON.stringify({
+            tabs: tabs.map(function(t){ return { num: t.num, db: t.db, sql: t.sql }; }),
+            active: activeTabId,
+            usedNumbers: usedNumbers,
+            pinned: PINNED
+        }));
+    } catch(e){}
+}
+
+function restoreTabs() {
+    try {
+        var raw = localStorage.getItem('eis_qc_v4');
+        if (!raw) return false;
+        var d = JSON.parse(raw);
+        if (!d || !d.tabs || !d.tabs.length) return false;
+        usedNumbers = d.usedNumbers || {};
+        d.tabs.forEach(function(td){
+            var t = new Tab(td.num || nextFreeNum(), td.db || DEFAULT_DB);
+            t.sql = td.sql || '';
+            tabs.push(t);
+            renderTab(t);
+            t.editorEl.value = t.sql;
+        });
+        if (d.pinned) {
+            PINNED = d.pinned;
+            renderPinned();
+        }
+        switchTab(d.active || tabs[0].id);
+        return true;
+    } catch(e){ return false; }
+}
+
+/* ============ INIT ============ */
+window.addEventListener('load', function() {
+    if (!restoreTabs()) newTab();
+    var firstBody = document.querySelector('.tgroup-body');
+    var firstHead = document.querySelector('.tgroup-head');
+    if (firstBody && firstHead) {
+        firstBody.classList.add('open');
+        firstHead.classList.add('open');
+    }
+    setTimeout(function() {
+        var t = getTab(activeTabId);
+        if (t) ensureSuggestLoaded(t);
+    }, 400);
+    updateCount();
+});
+
+document.addEventListener('mousedown', function(e) {
+    if (!e.target.closest('#acBox')) {
+        var t = getTab(activeTabId);
+        if (t) hideSuggest(t);
+    }
+});
+</script>
+</body>
+</html>
