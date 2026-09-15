@@ -1,265 +1,12 @@
-package com.jdbc;
-
-import java.sql.Connection;
-import java.sql.DatabaseMetaData;
-import java.sql.ResultSet;
-import java.sql.ResultSetMetaData;
-import java.sql.Statement;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-
-public class QueryRunner {
-
-    public static class QueryResult {
-        public boolean success;
-        public String message;
-        public List<String> columns = new ArrayList<>();
-        public List<Map<String, Object>> rows = new ArrayList<>();
-        public int updateCount = -1;
-        public long executionTimeMs;
-        public String queryType;
-    }
-
-    public static class Suggestion {
-        public String label;
-        public String insert;
-        public String type;
-        public Suggestion(String label, String insert, String type) {
-            this.label = label; this.insert = insert; this.type = type;
-        }
-    }
-
-    private static final String[] KEYWORDS = {
-        "SELECT","FROM","WHERE","AND","OR","NOT","NULL","IS","IN",
-        "LIKE","BETWEEN","ORDER BY","GROUP BY","HAVING","JOIN","INNER JOIN",
-        "LEFT JOIN","RIGHT JOIN","FULL JOIN","ON","AS","DISTINCT","COUNT",
-        "SUM","AVG","MIN","MAX","INSERT INTO","VALUES","UPDATE","SET",
-        "DELETE FROM","CREATE TABLE","DROP TABLE","ALTER TABLE","TRUNCATE",
-        "UNION","UNION ALL","EXISTS","CASE","WHEN","THEN","ELSE","END",
-        "ROWNUM","SYSDATE","DUAL","FETCH FIRST","OFFSET","LIMIT",
-        "ASC","DESC","COMMIT","ROLLBACK","WITH","PARTITION"
-    };
-
-    public static String getDefaultSchema(String dbType) {
-        if ("IIB".equalsIgnoreCase(dbType)) return "EISAPP";
-        if ("SI".equalsIgnoreCase(dbType))  return "SBISI";
-        return null;
-    }
-
-    private static Connection getConn(String dbType) throws Exception {
-        if ("IIB".equalsIgnoreCase(dbType))      return DBUtilityAuto.getIIBDBConnection();
-        if ("SI".equalsIgnoreCase(dbType))       return DBUtilityAuto.getSIDBConnection();
-        return DBUtilityAuto.getReportDBConnection();
-    }
-
-    public static List<Suggestion> getSchemaSuggestions(String dbType) {
-        List<Suggestion> list = new ArrayList<>();
-        Set<String> seen = new LinkedHashSet<>();
-        Connection conn = null; ResultSet rs = null;
-        try {
-            conn = getConn(dbType);
-            if (conn == null) return list;
-            DatabaseMetaData md = conn.getMetaData();
-
-            String defSch = getDefaultSchema(dbType);
-            if (defSch != null && seen.add(defSch.toUpperCase()))
-                list.add(new Suggestion(defSch, defSch + ".", "SCHEMA"));
-
-            String userSch = md.getUserName();
-            if (userSch != null && seen.add(userSch.toUpperCase()))
-                list.add(new Suggestion(userSch, userSch + ".", "SCHEMA"));
-
-            rs = md.getSchemas();
-            int count = 0;
-            while (rs.next() && count < 50) {
-                String s = rs.getString("TABLE_SCHEM");
-                if (s == null) continue;
-                String upper = s.toUpperCase();
-                if (upper.startsWith("SYS") || upper.startsWith("XDB")
-                    || upper.equals("MDSYS") || upper.equals("CTXSYS")
-                    || upper.equals("DBSNMP") || upper.equals("OUTLN")
-                    || upper.equals("APPQOSSYS") || upper.equals("ANONYMOUS")
-                    || upper.equals("OLAPSYS") || upper.equals("ORDDATA")
-                    || upper.equals("ORDSYS") || upper.equals("WMSYS")
-                    || upper.equals("LBACSYS") || upper.equals("AUDSYS")
-                    || upper.equals("GSMADMIN_INTERNAL") || upper.equals("OJVMSYS")) continue;
-                if (seen.add(upper)) { list.add(new Suggestion(s, s + ".", "SCHEMA")); count++; }
-            }
-        } catch (Exception e) {
-            System.err.println("Schema suggestion error: " + e.getMessage());
-        } finally {
-            if (rs != null) try { rs.close(); } catch (Exception ignored) {}
-            if (conn != null) try { conn.close(); } catch (Exception ignored) {}
-        }
-        return list;
-    }
-
-    public static List<Suggestion> getTableSuggestions(String dbType) {
-        List<Suggestion> list = new ArrayList<>();
-        Set<String> seen = new LinkedHashSet<>();
-        Connection conn = null; ResultSet rs = null;
-        try {
-            conn = getConn(dbType);
-            if (conn == null) return list;
-            DatabaseMetaData md = conn.getMetaData();
-
-            String defSch = getDefaultSchema(dbType);
-            if (defSch != null) {
-                rs = md.getTables(null, defSch, "%", new String[]{"TABLE","VIEW"});
-                while (rs.next()) {
-                    String tbl = rs.getString("TABLE_NAME");
-                    String key = defSch.toUpperCase() + "." + tbl.toUpperCase();
-                    if (seen.add(key))
-                        list.add(new Suggestion(defSch + "." + tbl, defSch + "." + tbl, "TABLE"));
-                }
-                try { rs.close(); } catch (Exception ignored) {}
-            }
-
-            String userSch = md.getUserName();
-            if (userSch != null) {
-                rs = md.getTables(null, userSch, "%", new String[]{"TABLE","VIEW"});
-                while (rs.next()) {
-                    String tbl = rs.getString("TABLE_NAME");
-                    String key = userSch.toUpperCase() + "." + tbl.toUpperCase();
-                    if (seen.add(key))
-                        list.add(new Suggestion(tbl, tbl, "TABLE"));
-                }
-            }
-        } catch (Exception e) {
-            System.err.println("Table suggestion error: " + e.getMessage());
-        } finally {
-            if (rs != null) try { rs.close(); } catch (Exception ignored) {}
-            if (conn != null) try { conn.close(); } catch (Exception ignored) {}
-        }
-        return list;
-    }
-
-    public static List<Suggestion> getColumnSuggestions(String dbType, String schema, String tableName) {
-        List<Suggestion> list = new ArrayList<>();
-        Connection conn = null; ResultSet rs = null;
-        try {
-            conn = getConn(dbType);
-            if (conn == null) return list;
-            DatabaseMetaData md = conn.getMetaData();
-            String sch = (schema != null && !schema.isEmpty()) ? schema : md.getUserName();
-            rs = md.getColumns(null, sch.toUpperCase(), tableName.toUpperCase(), "%");
-            while (rs.next()) {
-                String col = rs.getString("COLUMN_NAME");
-                String type = rs.getString("TYPE_NAME");
-                list.add(new Suggestion(col, col, "COLUMN:" + type));
-            }
-        } catch (Exception e) {
-            System.err.println("Column suggestion error: " + e.getMessage());
-        } finally {
-            if (rs != null) try { rs.close(); } catch (Exception ignored) {}
-            if (conn != null) try { conn.close(); } catch (Exception ignored) {}
-        }
-        return list;
-    }
-
-    public static List<Suggestion> getKeywordSuggestions() {
-        List<Suggestion> list = new ArrayList<>();
-        for (String k : KEYWORDS) list.add(new Suggestion(k, k, "KEYWORD"));
-        return list;
-    }
-
-    public static QueryResult execute(String sql, String dbType) {
-        QueryResult result = new QueryResult();
-        long start = System.currentTimeMillis();
-
-        if (sql == null || sql.trim().isEmpty()) {
-            result.success = false;
-            result.message = "Query is empty.";
-            return result;
-        }
-
-        Connection conn = null; Statement stmt = null; ResultSet rs = null;
-        try {
-            conn = getConn(dbType);
-            if (conn == null) {
-                result.success = false;
-                result.message = "Could not obtain DB connection.";
-                return result;
-            }
-            stmt = conn.createStatement();
-            String trimmed = sql.trim();
-            while (trimmed.endsWith(";")) trimmed = trimmed.substring(0, trimmed.length() - 1).trim();
-            String upper = trimmed.toUpperCase();
-
-            boolean isSelect = upper.startsWith("SELECT") || upper.startsWith("WITH")
-                    || upper.startsWith("SHOW") || upper.startsWith("DESC");
-
-            if (isSelect) {
-                result.queryType = "SELECT";
-                rs = stmt.executeQuery(trimmed);
-                ResultSetMetaData md = rs.getMetaData();
-                int colCount = md.getColumnCount();
-                for (int i = 1; i <= colCount; i++) result.columns.add(md.getColumnLabel(i));
-                int rowLimit = 10000;
-                while (rs.next() && result.rows.size() < rowLimit) {
-                    Map<String, Object> row = new LinkedHashMap<>();
-                    for (int i = 1; i <= colCount; i++) row.put(md.getColumnLabel(i), rs.getObject(i));
-                    result.rows.add(row);
-                }
-                result.success = true;
-                result.message = "Query executed. " + result.rows.size() + " rows returned.";
-            } else {
-                result.queryType = upper.split("\\s+")[0];
-                boolean hasResultSet = stmt.execute(trimmed);
-                if (hasResultSet) {
-                    rs = stmt.getResultSet();
-                    ResultSetMetaData md = rs.getMetaData();
-                    int colCount = md.getColumnCount();
-                    for (int i = 1; i <= colCount; i++) result.columns.add(md.getColumnLabel(i));
-                    while (rs.next() && result.rows.size() < 10000) {
-                        Map<String, Object> row = new LinkedHashMap<>();
-                        for (int i = 1; i <= colCount; i++) row.put(md.getColumnLabel(i), rs.getObject(i));
-                        result.rows.add(row);
-                    }
-                } else {
-                    result.updateCount = stmt.getUpdateCount();
-                }
-                result.success = true;
-                result.message = "Query executed. Rows affected: " + result.updateCount;
-            }
-        } catch (Exception e) {
-            result.success = false;
-            result.message = "Error: " + e.getMessage();
-        } finally {
-            if (rs != null) try { rs.close(); } catch (Exception ignored) {}
-            if (stmt != null) try { stmt.close(); } catch (Exception ignored) {}
-            if (conn != null) try { conn.close(); } catch (Exception ignored) {}
-            result.executionTimeMs = System.currentTimeMillis() - start;
-        }
-        return result;
-    }
-
-    public static String esc(String s) {
-        if (s == null) return "";
-        return s.replace("\\", "\\\\").replace("\"", "\\\"")
-                .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
-    }
-}
-
--------------------------------------------------------------------------------------
-
-
 <%@ page language="java" contentType="text/html; charset=UTF-8" pageEncoding="UTF-8"%>
 <%@ page import="com.jdbc.QueryRunner" %>
 <%@ page import="com.jdbc.QueryRunner.QueryResult" %>
 <%@ page import="com.jdbc.QueryRunner.Suggestion" %>
 <%@ page import="java.util.*" %>
 <%
-    // ============================================================
-    // AJAX ENDPOINTS
-    // ============================================================
     String ajax = request.getParameter("ajax");
 
-    // ---- RUN ----
+    // ---------- RUN ----------
     if ("run".equals(ajax)) {
         String runSql = request.getParameter("sql");
         String runDb  = request.getParameter("dbType");
@@ -299,7 +46,7 @@ public class QueryRunner {
         return;
     }
 
-    // ---- SUGGEST ----
+    // ---------- SUGGEST ----------
     if ("suggest".equals(ajax)) {
         String ajaxDb = request.getParameter("db");
         if (ajaxDb == null) ajaxDb = "IIB";
@@ -346,7 +93,7 @@ public class QueryRunner {
         return;
     }
 
-    // ---- COLS ----
+    // ---------- COLS ----------
     if ("cols".equals(ajax)) {
         String ajaxDb     = request.getParameter("db");
         String ajaxSchema = request.getParameter("schema");
@@ -369,25 +116,22 @@ public class QueryRunner {
         return;
     }
 
-    // ============================================================
-    // NORMAL PAGE LOAD
-    // ============================================================
     String dbType = request.getParameter("dbType");
     if (dbType == null || dbType.trim().isEmpty()) dbType = "IIB";
 %>
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Query Runner</title>
+    <title>EIS Query Console</title>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         html, body {
             height: 100%; width: 100%;
-            font-family: 'Segoe UI', 'Inter', -apple-system, Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: #1b1d23;
-            color: #e4e6eb;
+            font-family: 'Inter', 'Segoe UI', -apple-system, Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: #0f1115;
+            color: #e2e4e9;
             font-size: 15px;
             overflow: hidden;
         }
@@ -395,158 +139,170 @@ public class QueryRunner {
         /* ========== LAYOUT ========== */
         .app {
             display: grid;
-            grid-template-rows: 52px 1fr 28px;
-            grid-template-columns: 300px 1fr;
-            grid-template-areas:
-                "header header"
-                "sidebar main"
-                "status status";
+            grid-template-rows: 56px 1fr 30px;
+            grid-template-columns: 320px 1fr;
+            grid-template-areas: "header header" "sidebar main" "status status";
             height: 100vh;
         }
 
         /* ========== HEADER ========== */
         .header {
             grid-area: header;
-            background: #23262e;
-            border-bottom: 1px solid #2f333d;
+            background: linear-gradient(90deg, #14171d 0%, #1a1e26 100%);
+            border-bottom: 1px solid #242932;
             display: flex; align-items: center;
-            padding: 0 20px;
-            gap: 16px;
+            padding: 0 24px;
+            gap: 18px;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.4);
         }
         .brand {
-            display: flex; align-items: center; gap: 10px;
-            font-weight: 700; font-size: 16px; color: #e4e6eb;
+            display: flex; align-items: center; gap: 12px;
+            font-weight: 800; font-size: 17px;
+            color: #fff;
+            letter-spacing: -0.2px;
         }
         .brand-mark {
-            width: 26px; height: 26px;
-            background: linear-gradient(135deg, #3b82f6, #2563eb);
-            border-radius: 6px;
+            width: 30px; height: 30px;
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            border-radius: 8px;
             display: flex; align-items: center; justify-content: center;
-            color: #fff; font-size: 13px; font-weight: 800;
+            color: #fff; font-size: 15px; font-weight: 900;
+            box-shadow: 0 4px 12px rgba(59,130,246,0.35);
         }
-        .brand-tag {
-            font-size: 11px; font-weight: 500;
+        .brand-sub {
+            font-size: 11.5px; font-weight: 500;
             color: #6b7280;
-            margin-left: 6px;
-            padding: 2px 8px;
-            background: #2a2e38;
+            margin-left: 4px;
+            padding: 3px 10px;
+            background: #242932;
             border-radius: 10px;
+            letter-spacing: 0.3px;
         }
         .header-spacer { flex: 1; }
-        .conn-status {
-            display: flex; align-items: center; gap: 8px;
-            padding: 6px 14px;
-            background: #1e3a2a;
-            border: 1px solid #2f5a3f;
-            border-radius: 6px;
+        .conn-pill {
+            display: flex; align-items: center; gap: 9px;
+            padding: 7px 16px;
+            background: rgba(74,222,128,0.08);
+            border: 1px solid rgba(74,222,128,0.25);
+            border-radius: 8px;
             font-size: 12.5px;
-            font-weight: 600;
+            font-weight: 700;
             color: #4ade80;
+            letter-spacing: 0.5px;
         }
         .conn-dot {
             width: 8px; height: 8px; border-radius: 50%;
             background: #4ade80;
+            box-shadow: 0 0 10px rgba(74,222,128,0.7);
             animation: pulse 2s infinite;
         }
-        @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+        @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.35;} }
 
-        .btn-primary {
-            padding: 8px 16px;
-            background: #2563eb;
+        .btn-new {
+            padding: 9px 20px;
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
             color: #fff;
             border: none;
-            border-radius: 6px;
+            border-radius: 8px;
             font-size: 13.5px;
-            font-weight: 600;
+            font-weight: 700;
             cursor: pointer;
-            display: flex; align-items: center; gap: 6px;
-            transition: 0.15s;
+            display: flex; align-items: center; gap: 7px;
+            transition: 0.18s;
+            box-shadow: 0 4px 12px rgba(59,130,246,0.3);
         }
-        .btn-primary:hover { background: #1d4ed8; }
+        .btn-new:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 18px rgba(59,130,246,0.45);
+        }
 
         /* ========== SIDEBAR ========== */
         .sidebar {
             grid-area: sidebar;
-            background: #1f2229;
-            border-right: 1px solid #2f333d;
+            background: #14171d;
+            border-right: 1px solid #242932;
             display: flex; flex-direction: column;
             overflow: hidden;
         }
-        .sidebar-title {
-            padding: 14px 18px 10px;
+        .sidebar-head {
+            padding: 16px 20px 12px;
             font-size: 11.5px;
             text-transform: uppercase;
-            letter-spacing: 1.2px;
+            letter-spacing: 1.3px;
             color: #6b7280;
+            font-weight: 800;
+            border-bottom: 1px solid #242932;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .sidebar-count {
+            font-size: 11px;
+            color: #4b5563;
+            background: #1a1e26;
+            padding: 2px 9px;
+            border-radius: 10px;
             font-weight: 700;
-            border-bottom: 1px solid #2f333d;
         }
-        .search-wrap {
-            padding: 10px 14px;
-            border-bottom: 1px solid #2f333d;
-        }
+        .search-wrap { padding: 12px 16px; border-bottom: 1px solid #242932; }
         .search-input {
             width: 100%;
-            padding: 8px 12px;
-            background: #262a33;
-            border: 1px solid #2f333d;
-            border-radius: 6px;
-            color: #e4e6eb;
-            font-size: 13px;
+            padding: 9px 14px;
+            background: #1a1e26;
+            border: 1px solid #2a3038;
+            border-radius: 8px;
+            color: #e2e4e9;
+            font-size: 13.5px;
             outline: none;
             font-family: inherit;
+            transition: 0.15s;
         }
-        .search-input:focus { border-color: #3b82f6; }
+        .search-input:focus {
+            border-color: #3b82f6;
+            background: #1e242d;
+            box-shadow: 0 0 0 3px rgba(59,130,246,0.12);
+        }
 
-        .tree { flex: 1; overflow-y: auto; padding: 6px 0; }
+        .tree { flex: 1; overflow-y: auto; padding: 8px 0; }
         .tree::-webkit-scrollbar { width: 10px; }
-        .tree::-webkit-scrollbar-thumb { background: #3a3f4b; border-radius: 5px; }
+        .tree::-webkit-scrollbar-thumb { background: #2a3038; border-radius: 5px; }
+        .tree::-webkit-scrollbar-thumb:hover { background: #3a4048; }
 
-        .tgroup { border-bottom: 1px solid #262a33; }
+        .tgroup { border-bottom: 1px solid #1a1e26; }
         .tgroup-head {
-            padding: 10px 16px;
+            padding: 11px 18px;
             cursor: pointer;
             font-size: 13.5px;
-            font-weight: 600;
+            font-weight: 700;
             color: #c7cad1;
-            display: flex; align-items: center; gap: 8px;
+            display: flex; align-items: center; gap: 9px;
             user-select: none;
             transition: background 0.12s;
         }
-        .tgroup-head:hover { background: #262a33; }
+        .tgroup-head:hover { background: #1a1e26; }
         .tg-arrow {
             font-size: 10px; color: #6b7280;
-            transition: transform 0.15s;
+            transition: transform 0.18s;
             width: 10px; display: inline-block;
         }
         .tgroup-head.open .tg-arrow { transform: rotate(90deg); }
-        .tg-count {
-            margin-left: auto;
-            font-size: 11px;
-            color: #6b7280;
-            background: #2a2e38;
-            padding: 1px 8px;
-            border-radius: 10px;
-        }
-        .tgroup-body { display: none; padding: 4px 0 8px; }
+        .tgroup-body { display: none; padding: 4px 0 10px; }
         .tgroup-body.open { display: block; }
 
         .qitem {
-            padding: 8px 16px 8px 32px;
+            padding: 9px 18px 9px 36px;
             cursor: pointer;
             font-size: 13px;
             color: #a8adb8;
-            line-height: 1.4;
+            line-height: 1.45;
             transition: 0.1s;
-            border-left: 2px solid transparent;
+            border-left: 3px solid transparent;
         }
         .qitem:hover {
-            background: #262a33;
-            color: #e4e6eb;
+            background: #1a1e26;
+            color: #e2e4e9;
             border-left-color: #3b82f6;
         }
         .qitem.active {
-            background: #1e3a5f;
+            background: rgba(59,130,246,0.12);
             color: #fff;
             border-left-color: #3b82f6;
         }
@@ -556,39 +312,38 @@ public class QueryRunner {
             grid-area: main;
             display: flex; flex-direction: column;
             overflow: hidden;
-            background: #181a1f;
+            background: #0f1115;
         }
 
-        /* Tab bar */
         .tabbar {
-            background: #23262e;
+            background: #14171d;
             display: flex;
-            border-bottom: 1px solid #2f333d;
+            border-bottom: 1px solid #242932;
             overflow-x: auto;
-            min-height: 42px;
+            min-height: 44px;
         }
         .tabbar::-webkit-scrollbar { height: 4px; }
-        .tabbar::-webkit-scrollbar-thumb { background: #3a3f4b; }
+        .tabbar::-webkit-scrollbar-thumb { background: #2a3038; }
 
         .tab {
             display: flex; align-items: center; gap: 10px;
-            padding: 0 12px 0 16px;
-            background: #1f2229;
-            border-right: 1px solid #2f333d;
+            padding: 0 14px 0 18px;
+            background: #14171d;
+            border-right: 1px solid #242932;
             cursor: pointer;
             font-size: 13.5px;
-            color: #8b909a;
+            color: #6b7280;
             white-space: nowrap;
-            min-width: 150px;
-            max-width: 240px;
+            min-width: 160px;
+            max-width: 260px;
             position: relative;
             user-select: none;
-            transition: 0.12s;
+            transition: 0.14s;
         }
-        .tab:hover { background: #262a33; color: #c7cad1; }
+        .tab:hover { background: #1a1e26; color: #c7cad1; }
         .tab.active {
-            background: #181a1f;
-            color: #e4e6eb;
+            background: #0f1115;
+            color: #e2e4e9;
             font-weight: 600;
         }
         .tab.active::before {
@@ -599,13 +354,33 @@ public class QueryRunner {
             background: #3b82f6;
         }
         .tab-dot {
-            width: 8px; height: 8px;
+            width: 9px; height: 9px;
             border-radius: 50%;
             flex-shrink: 0;
         }
         .tab-dot.db-IIB    { background: #4ade80; }
         .tab-dot.db-SI     { background: #fbbf24; }
         .tab-dot.db-REPORT { background: #c084fc; }
+
+        .tab.running .tab-dot {
+            animation: tabpulse 1s infinite;
+            box-shadow: 0 0 10px currentColor;
+        }
+        @keyframes tabpulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(1.3); }
+        }
+        .tab-running-badge {
+            font-size: 9.5px;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+            color: #60a5fa;
+            background: rgba(59,130,246,0.15);
+            padding: 2px 7px;
+            border-radius: 8px;
+            border: 1px solid rgba(59,130,246,0.3);
+            margin-left: auto;
+        }
 
         .tab-name {
             flex: 1;
@@ -617,22 +392,21 @@ public class QueryRunner {
             border-radius: 4px;
             display: flex; align-items: center; justify-content: center;
             font-size: 16px;
-            color: #6b7280;
+            color: #4b5563;
             line-height: 1;
             transition: 0.1s;
         }
-        .tab-close:hover { background: #3a3f4b; color: #fff; }
+        .tab-close:hover { background: #2a3038; color: #fff; }
 
         .tab-add {
             display: flex; align-items: center; justify-content: center;
-            padding: 0 16px;
+            padding: 0 18px;
             cursor: pointer;
             color: #6b7280;
             font-size: 18px;
         }
-        .tab-add:hover { background: #262a33; color: #e4e6eb; }
+        .tab-add:hover { background: #1a1e26; color: #e2e4e9; }
 
-        /* Tab content */
         .tab-content {
             flex: 1;
             display: flex; flex-direction: column;
@@ -647,22 +421,22 @@ public class QueryRunner {
         }
         .pane.active { display: flex; }
 
-        /* Toolbar */
+        /* ========== TOOLBAR ========== */
         .toolbar {
-            background: #23262e;
-            border-bottom: 1px solid #2f333d;
-            padding: 10px 16px;
+            background: #14171d;
+            border-bottom: 1px solid #242932;
+            padding: 12px 18px;
             display: flex;
             align-items: center;
             gap: 10px;
             flex-wrap: wrap;
         }
         .toolbar select {
-            padding: 8px 12px;
-            background: #262a33;
-            color: #e4e6eb;
-            border: 1px solid #3a3f4b;
-            border-radius: 6px;
+            padding: 9px 14px;
+            background: #1a1e26;
+            color: #e2e4e9;
+            border: 1px solid #2a3038;
+            border-radius: 8px;
             font-size: 13.5px;
             font-weight: 600;
             cursor: pointer;
@@ -672,83 +446,67 @@ public class QueryRunner {
         .toolbar select:focus { border-color: #3b82f6; }
 
         .tb {
-            padding: 8px 16px;
-            border-radius: 6px;
+            padding: 9px 18px;
+            border-radius: 8px;
             font-size: 13.5px;
-            font-weight: 600;
+            font-weight: 700;
             cursor: pointer;
-            display: flex; align-items: center; gap: 6px;
-            transition: 0.12s;
+            display: flex; align-items: center; gap: 7px;
+            transition: 0.15s;
             border: 1px solid transparent;
             font-family: inherit;
+            letter-spacing: 0.2px;
         }
         .tb:hover { transform: translateY(-1px); }
         .tb:active { transform: translateY(0); }
 
-        .tb-run {
-            background: #16a34a;
-            color: #fff;
-        }
-        .tb-run:hover { background: #15803d; }
+        .tb-run { background: #16a34a; color: #fff; box-shadow: 0 3px 10px rgba(22,163,74,0.25); }
+        .tb-run:hover { background: #15803d; box-shadow: 0 5px 14px rgba(22,163,74,0.4); }
 
         .tb-suggest {
-            background: #262a33;
-            color: #3b82f6;
-            border-color: #3a3f4b;
+            background: #1a1e26; color: #60a5fa; border-color: #2a3038;
         }
-        .tb-suggest:hover { background: #2f333d; color: #60a5fa; }
-
-        .tb-clear {
-            background: #262a33;
-            color: #e4e6eb;
-            border-color: #3a3f4b;
-        }
-        .tb-clear:hover { background: #2f333d; }
-
-        .tb-close {
-            background: #262a33;
-            color: #ef4444;
-            border-color: #3a3f4b;
-        }
-        .tb-close:hover { background: #3a2020; color: #f87171; }
+        .tb-suggest:hover { background: #242932; color: #93c5fd; border-color: #3b82f6; }
 
         .tb-export {
-            background: #262a33;
-            color: #4ade80;
-            border-color: #3a3f4b;
+            background: #1a1e26; color: #4ade80; border-color: #2a3038;
         }
-        .tb-export:hover { background: #1e3a2a; color: #6ee7b7; }
-        .tb-export:disabled {
-            opacity: 0.4;
-            cursor: not-allowed;
-            transform: none;
+        .tb-export:hover:not(:disabled) { background: #142a1e; color: #6ee7b7; border-color: #16a34a; }
+        .tb-export:disabled { opacity: 0.35; cursor: not-allowed; transform: none; }
+
+        .tb-clear {
+            background: #1a1e26; color: #c7cad1; border-color: #2a3038;
         }
+        .tb-clear:hover { background: #242932; }
+
+        .tb-close {
+            background: #1a1e26; color: #f87171; border-color: #2a3038;
+        }
+        .tb-close:hover { background: #2a1616; color: #fca5a5; border-color: #ef4444; }
 
         .toolbar-spacer { flex: 1; }
-        .status-chip {
-            padding: 5px 12px;
-            border-radius: 12px;
+        .chip {
+            padding: 6px 14px;
+            border-radius: 14px;
             font-size: 11.5px;
-            font-weight: 700;
-            background: #262a33;
+            font-weight: 800;
+            background: #1a1e26;
             color: #6b7280;
             text-transform: uppercase;
-            letter-spacing: 0.6px;
+            letter-spacing: 0.7px;
         }
-        .status-chip.ok { background: #1e3a2a; color: #4ade80; }
-        .status-chip.loading { background: #3a3020; color: #fbbf24; }
-        .status-chip.err { background: #3a2020; color: #f87171; }
+        .chip.ok { background: rgba(74,222,128,0.12); color: #4ade80; }
+        .chip.loading { background: rgba(251,191,36,0.12); color: #fbbf24; }
+        .chip.err { background: rgba(248,113,113,0.12); color: #f87171; }
 
-        /* Editor */
-        .editor-wrap {
-            padding: 12px 16px;
-            background: #181a1f;
-        }
+        /* ========== EDITOR ========== */
+        .editor-wrap { padding: 14px 18px; background: #0f1115; }
         .editor-box {
-            border: 1px solid #2f333d;
-            border-radius: 8px;
-            background: #14161a;
+            border: 1px solid #242932;
+            border-radius: 10px;
+            background: #0a0c10;
             overflow: hidden;
+            transition: 0.15s;
         }
         .editor-box:focus-within {
             border-color: #3b82f6;
@@ -756,56 +514,87 @@ public class QueryRunner {
         }
         textarea.sql {
             width: 100%;
-            min-height: 220px;
-            max-height: 460px;
-            padding: 14px 18px;
-            background: #14161a;
-            color: #e4e6eb;
+            min-height: 240px;
+            max-height: 480px;
+            padding: 16px 20px;
+            background: #0a0c10;
+            color: #e2e4e9;
             border: none;
             outline: none;
             resize: vertical;
-            font-family: 'JetBrains Mono', 'Consolas', 'Monaco', monospace;
-            font-size: 14px;
-            line-height: 1.65;
+            font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', 'Monaco', monospace;
+            font-size: 14.5px;
+            line-height: 1.7;
             caret-color: #3b82f6;
             tab-size: 4;
             display: block;
         }
-        textarea.sql::placeholder { color: #4b5159; }
+        textarea.sql::placeholder { color: #4b5563; }
 
-        /* Results */
+        /* ========== RESULTS ========== */
         .results {
             flex: 1;
-            display: flex;
-            flex-direction: column;
+            display: flex; flex-direction: column;
             overflow: hidden;
-            border-top: 1px solid #2f333d;
-            background: #14161a;
+            border-top: 1px solid #242932;
+            background: #0a0c10;
             min-height: 0;
         }
         .res-bar {
-            padding: 8px 16px;
-            background: #23262e;
-            border-bottom: 1px solid #2f333d;
+            padding: 10px 18px;
+            background: #14171d;
+            border-bottom: 1px solid #242932;
             display: flex;
             align-items: center;
-            gap: 18px;
-            font-size: 12.5px;
+            gap: 20px;
+            font-size: 13px;
             flex-wrap: wrap;
         }
         .res-bar .label {
-            font-size: 11.5px;
+            font-size: 11px;
             text-transform: uppercase;
-            letter-spacing: 0.8px;
+            letter-spacing: 0.9px;
             color: #6b7280;
-            font-weight: 700;
-            margin-right: 4px;
+            font-weight: 800;
+            margin-right: 6px;
         }
-        .res-stat { color: #a8adb8; }
-        .res-stat b { color: #e4e6eb; font-weight: 600; }
-        .res-time.ok   { color: #4ade80; font-weight: 700; }
-        .res-time.warn { color: #fbbf24; font-weight: 700; }
-        .res-time.slow { color: #f87171; font-weight: 700; }
+        .res-stat { color: #a8adb8; display: flex; align-items: center; }
+        .res-stat b { color: #e2e4e9; font-weight: 700; margin-left: 4px; }
+        .res-time.ok   { color: #4ade80; }
+        .res-time.warn { color: #fbbf24; }
+        .res-time.slow { color: #f87171; }
+        .res-bar-spacer { flex: 1; }
+
+        .res-search-wrap {
+            position: relative;
+            display: flex; align-items: center;
+        }
+        .res-search-icon {
+            position: absolute;
+            left: 10px;
+            color: #4b5563;
+            font-size: 14px;
+            pointer-events: none;
+        }
+        .res-search {
+            padding: 7px 12px 7px 32px;
+            background: #1a1e26;
+            border: 1px solid #2a3038;
+            border-radius: 8px;
+            color: #e2e4e9;
+            font-size: 13px;
+            width: 240px;
+            outline: none;
+            font-family: inherit;
+            transition: 0.15s;
+        }
+        .res-search:focus {
+            border-color: #3b82f6;
+            width: 300px;
+            background: #1e242d;
+            box-shadow: 0 0 0 3px rgba(59,130,246,0.12);
+        }
+        .res-search::placeholder { color: #4b5563; }
 
         .res-body {
             flex: 1;
@@ -813,13 +602,13 @@ public class QueryRunner {
             position: relative;
         }
         .res-body::-webkit-scrollbar { width: 12px; height: 12px; }
-        .res-body::-webkit-scrollbar-track { background: #14161a; }
+        .res-body::-webkit-scrollbar-track { background: #0a0c10; }
         .res-body::-webkit-scrollbar-thumb {
-            background: #3a3f4b;
+            background: #2a3038;
             border-radius: 6px;
-            border: 3px solid #14161a;
+            border: 3px solid #0a0c10;
         }
-        .res-body::-webkit-scrollbar-thumb:hover { background: #4a505c; }
+        .res-body::-webkit-scrollbar-thumb:hover { background: #3a4048; }
 
         table.data {
             width: 100%;
@@ -828,54 +617,69 @@ public class QueryRunner {
             font-family: 'JetBrains Mono', 'Consolas', monospace;
         }
         table.data th {
-            background: #1f2229;
+            background: #14171d;
             color: #93c5fd;
-            padding: 10px 14px;
+            padding: 11px 14px;
             text-align: left;
             position: sticky;
             top: 0;
             z-index: 2;
-            font-weight: 700;
+            font-weight: 800;
             font-size: 12.5px;
             white-space: nowrap;
-            border-bottom: 2px solid #2f333d;
-            border-right: 1px solid #262a33;
-            letter-spacing: 0.3px;
+            border-bottom: 2px solid #242932;
+            border-right: 1px solid #1a1e26;
+            letter-spacing: 0.4px;
+            cursor: pointer;
+            user-select: none;
+            transition: background 0.12s;
         }
+        table.data th:hover { background: #1a1e26; color: #bfdbfe; }
+        table.data th .sort-icon {
+            display: inline-block;
+            margin-left: 6px;
+            font-size: 10px;
+            color: #4b5563;
+            transition: 0.15s;
+        }
+        table.data th.sorted-asc .sort-icon { color: #4ade80; }
+        table.data th.sorted-desc .sort-icon { color: #f87171; }
+
         table.data td {
-            padding: 8px 14px;
-            border-bottom: 1px solid #1f2229;
-            border-right: 1px solid #1f2229;
+            padding: 9px 14px;
+            border-bottom: 1px solid #14171d;
+            border-right: 1px solid #14171d;
             color: #d1d5db;
             max-width: 450px;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
         }
-        table.data tr:nth-child(even) td { background: #171a1f; }
-        table.data tr:hover td { background: #1e293b; }
+        table.data tr:nth-child(even) td { background: #0d1014; }
+        table.data tr:hover td { background: #1a2332; }
         table.data td.row-no {
             color: #6b7280;
-            background: #14161a !important;
-            width: 60px;
+            background: #0a0c10 !important;
+            width: 65px;
             text-align: right;
             font-size: 12px;
         }
-        .null-cell { color: #4b5159; font-style: italic; }
+        .null-cell { color: #4b5563; font-style: italic; }
+        .hl-match { background: rgba(251,191,36,0.25); color: #fde68a; padding: 1px 3px; border-radius: 3px; }
 
         .alert {
-            padding: 14px 20px;
-            margin: 14px 20px;
-            border-radius: 6px;
+            padding: 14px 22px;
+            margin: 16px 22px;
+            border-radius: 8px;
             font-size: 13.5px;
         }
         .alert-ok {
-            background: #142a1e;
+            background: rgba(22,163,74,0.1);
             border-left: 4px solid #16a34a;
             color: #86efac;
         }
         .alert-err {
-            background: #2a1414;
+            background: rgba(239,68,68,0.1);
             border-left: 4px solid #ef4444;
             color: #fca5a5;
             font-family: 'JetBrains Mono', monospace;
@@ -883,100 +687,138 @@ public class QueryRunner {
             font-size: 12.5px;
         }
 
+        /* ========== LOADER (big, visible) ========== */
+        .loader-overlay {
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            height: 100%;
+            gap: 20px;
+            padding: 40px;
+        }
+        .loader-big {
+            width: 56px; height: 56px;
+            border: 4px solid #1a1e26;
+            border-top-color: #3b82f6;
+            border-right-color: #60a5fa;
+            border-radius: 50%;
+            animation: spin 0.9s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loader-text {
+            font-size: 15px;
+            font-weight: 600;
+            color: #c7cad1;
+            letter-spacing: 0.3px;
+        }
+        .loader-sub {
+            font-size: 12.5px;
+            color: #6b7280;
+            margin-top: -12px;
+        }
+        .loader-dots {
+            display: inline-block;
+            animation: dots 1.4s infinite;
+        }
+        @keyframes dots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60%, 100% { content: '...'; }
+        }
+
         .placeholder {
             display: flex; flex-direction: column;
             align-items: center; justify-content: center;
             height: 100%;
-            color: #4b5159;
-            gap: 12px;
+            color: #4b5563;
+            gap: 14px;
             padding: 40px;
             text-align: center;
         }
-        .placeholder .ph-icon { font-size: 42px; opacity: 0.5; }
-        .placeholder .ph-title { font-size: 15px; color: #6b7280; }
-        .placeholder .ph-sub { font-size: 13px; color: #4b5159; }
+        .placeholder .ph-icon { font-size: 48px; opacity: 0.35; }
+        .placeholder .ph-title { font-size: 17px; color: #6b7280; font-weight: 600; }
+        .placeholder .ph-sub { font-size: 13.5px; color: #4b5563; }
 
-        /* Status bar */
+        /* ========== STATUS BAR ========== */
         .status {
             grid-area: status;
-            background: #23262e;
+            background: #14171d;
             color: #8b909a;
             display: flex;
             align-items: center;
             font-size: 12.5px;
-            padding: 0 18px;
-            gap: 22px;
-            border-top: 1px solid #2f333d;
+            padding: 0 22px;
+            gap: 24px;
+            border-top: 1px solid #242932;
         }
-        .status .st-item { display: flex; align-items: center; gap: 7px; }
-        .status .st-item b { color: #e4e6eb; font-weight: 600; }
-        .status .right { margin-left: auto; display: flex; gap: 22px; }
+        .status .st-item { display: flex; align-items: center; gap: 8px; }
+        .status .st-item b { color: #e2e4e9; font-weight: 700; }
+        .status .right { margin-left: auto; display: flex; gap: 24px; }
         .st-dot {
-            width: 8px; height: 8px; border-radius: 50%;
+            width: 9px; height: 9px; border-radius: 50%;
             background: #4ade80;
         }
 
-        /* Autocomplete */
+        /* ========== AUTOCOMPLETE ========== */
         .ac-box {
             position: fixed;
-            background: #23262e;
-            border: 1px solid #3a3f4b;
-            border-radius: 6px;
-            box-shadow: 0 12px 36px rgba(0,0,0,0.7);
-            max-height: 300px;
+            background: #1a1e26;
+            border: 1px solid #2f3742;
+            border-radius: 8px;
+            box-shadow: 0 16px 44px rgba(0,0,0,0.75);
+            max-height: 320px;
             overflow-y: auto;
             z-index: 9999;
             display: none;
-            min-width: 320px;
+            min-width: 340px;
             font-family: 'JetBrains Mono', monospace;
             font-size: 13px;
         }
         .ac-box::-webkit-scrollbar { width: 8px; }
-        .ac-box::-webkit-scrollbar-thumb { background: #3a3f4b; border-radius: 4px; }
+        .ac-box::-webkit-scrollbar-thumb { background: #2f3742; border-radius: 4px; }
 
         .ac-item {
-            padding: 7px 14px;
+            padding: 8px 14px;
             cursor: pointer;
             color: #d1d5db;
             display: flex;
             justify-content: space-between;
             gap: 14px;
             align-items: center;
-            border-bottom: 1px solid #1f2229;
+            border-bottom: 1px solid #14171d;
         }
         .ac-item:last-child { border-bottom: none; }
         .ac-item:hover, .ac-item.active {
             background: #1e3a5f;
             color: #fff;
         }
+        .ac-item.active { background: #2563eb; }
         .ac-tag {
             font-size: 10px;
-            padding: 2px 8px;
+            padding: 2px 9px;
             border-radius: 8px;
-            font-weight: 700;
+            font-weight: 800;
             letter-spacing: 0.5px;
             white-space: nowrap;
         }
-        .tag-KEYWORD { background: #3b2f4a; color: #c084fc; }
-        .tag-SCHEMA  { background: #1e3a5f; color: #60a5fa; }
-        .tag-TABLE   { background: #1e3a2a; color: #4ade80; }
-        .tag-COLUMN  { background: #3a3020; color: #fbbf24; }
+        .tag-KEYWORD { background: rgba(192,132,252,0.15); color: #c084fc; }
+        .tag-SCHEMA  { background: rgba(96,165,250,0.15); color: #60a5fa; }
+        .tag-TABLE   { background: rgba(74,222,128,0.15); color: #4ade80; }
+        .tag-COLUMN  { background: rgba(251,191,36,0.15); color: #fbbf24; }
 
-        /* Toast */
         .toast {
             position: fixed;
-            bottom: 44px; right: 24px;
-            background: #23262e;
+            bottom: 46px; right: 24px;
+            background: #1a1e26;
             border-left: 4px solid #16a34a;
-            color: #e4e6eb;
-            padding: 14px 20px;
-            border-radius: 6px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+            color: #e2e4e9;
+            padding: 15px 22px;
+            border-radius: 8px;
+            box-shadow: 0 12px 36px rgba(0,0,0,0.7);
             font-size: 13.5px;
             z-index: 10001;
             animation: slideIn 0.22s ease;
-            max-width: 380px;
-            font-weight: 500;
+            max-width: 400px;
+            font-weight: 600;
         }
         .toast.err { border-left-color: #ef4444; }
         @keyframes slideIn {
@@ -989,24 +831,26 @@ public class QueryRunner {
 
 <div class="app">
 
-    <!-- ========== HEADER ========== -->
+    <!-- HEADER -->
     <div class="header">
         <div class="brand">
-            <div class="brand-mark">Q</div>
-            Query Runner
-            <span class="brand-tag">v2.0</span>
+            <div class="brand-mark">EIS</div>
+            Query Console
+            <span class="brand-sub">Production</span>
         </div>
         <div class="header-spacer"></div>
-        <div class="conn-status">
-            <span class="conn-dot"></span>
-            CONNECTED
+        <div class="conn-pill">
+            <span class="conn-dot"></span> CONNECTED
         </div>
-        <button class="btn-primary" onclick="newTab()">+ New Tab</button>
+        <button class="btn-new" onclick="newTab()">+ New Query Tab</button>
     </div>
 
-    <!-- ========== SIDEBAR ========== -->
+    <!-- SIDEBAR -->
     <div class="sidebar">
-        <div class="sidebar-title">Saved Queries</div>
+        <div class="sidebar-head">
+            SAVED QUERIES
+            <span class="sidebar-count" id="qCount">0</span>
+        </div>
         <div class="search-wrap">
             <input type="text" class="search-input" id="qSearch" placeholder="Search queries...">
         </div>
@@ -1129,22 +973,6 @@ request_date_time>=SYSDATE - INTERVAL '60' minute
 GROUP BY trim(API_NAME)
 ORDER BY TD_PERCENT DESC;</script>
                     </div>
-                    <div class="qitem" onclick="loadQuery(this)">Backend-wise TD/BD (last 60 min)
-                        <script type="text/plain" class="q-sql">select TRIM(api_name),
-COUNT(1) "TOTAL_HITS",
-SUM(CASE WHEN error_code is null THEN 1 ELSE 0 END) AS SUCCESS,
-SUM(CASE WHEN error_code ='SI001' then 1 else 0 end) As "SI001",
-SUM(CASE WHEN substr(error_code,3,3) ='002' then 1 else 0 end) As "002",
-SUM(CASE WHEN error_code ='SI007' and error_code<> '70007' then 1 else 0 end) As "SI007",
-SUM(CASE WHEN error_code ='SI051' then 1 else 0 end) As "SI051",
-SUM(CASE WHEN substr(error_code,3,3) ='014' and error_code <> '00014' then 1 else 0 end) AS "014",
-SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI569','SI570','SI052','SI005','SI077','SI003','SI017','SI015')) and error_code <> '00014' THEN 1 ELSE 0 END) AS TD,
-ROUND((SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI569','SI570','SI052','SI005','SI077','SI003','SI017','SI015')) and error_code <> '00014' THEN 1 ELSE 0 END)*100)/COUNT(1),2) AS TD_PERCENT
-from eisapp.BACKEND_LOG  WHERE
-REQUEST_DATE_TIME>=SYSDATE - INTERVAL '60' minute
-GROUP BY TRIM(api_name)
-ORDER BY TD_PERCENT DESC;</script>
-                    </div>
                 </div>
             </div>
 
@@ -1153,7 +981,7 @@ ORDER BY TD_PERCENT DESC;</script>
                     <span class="tg-arrow">▶</span> SI Monitoring (SBISI)
                 </div>
                 <div class="tgroup-body">
-                    <div class="qitem" onclick="loadQuery(this)">SI_TRANS_DB — error summary (last 10 min)
+                    <div class="qitem" onclick="loadQuery(this)">SI_TRANS_DB — error summary
                         <script type="text/plain" class="q-sql">SELECT function_name,ERROR_CODE, ERROR_DESC, COUNT(*) AS CNT FROM SBISI.SI_TRANS_DB
 WHERE SUBSTR(error_code,1,2) = 'SI'
 and req_time>=SYSDATE - INTERVAL '10' MINUTE
@@ -1182,7 +1010,7 @@ and req_date_time>=SYSDATE - INTERVAL '10' MINUTE  order by req_date_time desc;<
                     <span class="tg-arrow">▶</span> Performance / Latency
                 </div>
                 <div class="tgroup-body">
-                    <div class="qitem" onclick="loadQuery(this)">EXP IP response-time buckets (last 2 min)
+                    <div class="qitem" onclick="loadQuery(this)">EXP IP response-time buckets
                         <script type="text/plain" class="q-sql">SELECT exp_ip,COUNT(1),
 SUM(CASE WHEN RESPONSE_STATUS in ('0','SUCCESS') THEN 1 ELSE 0 END) AS SUCCESS,
 sum(case when TO_NUMBER(SUBSTR(TO_CHAR(RESPONSE_DATE_TIME-dpg_request_date_time),18))< 0.1 then 1 else 0 end ) as BELOW_100MSEC ,
@@ -1192,7 +1020,7 @@ FROM EISAPP.API_LOG WHERE broker_name = 'LOGGING_EXP' and
 request_date_time>=SYSDATE-INTERVAL '02' MINUTE
 group by exp_ip;</script>
                     </div>
-                    <div class="qitem" onclick="loadQuery(this)">SYS latency — backend vs orch (last 2 min)
+                    <div class="qitem" onclick="loadQuery(this)">SYS latency — backend vs orch
                         <script type="text/plain" class="q-sql">SELECT b.sys_ip,COUNT(1),
 sum(case when TO_NUMBER(SUBSTR(TO_CHAR(b.request_DATE_TIME-a.request_DATE_TIME),18))< 0.1 then 1 else 0 end ) as BELOW_100MSEC ,
 sum(case when TO_NUMBER(SUBSTR(TO_CHAR(b.request_DATE_TIME-a.request_DATE_TIME),18))> 5 then 1 else 0 end ) as ABOVE_FIVE_SEC
@@ -1206,7 +1034,7 @@ group by b.sys_ip;</script>
         </div>
     </div>
 
-    <!-- ========== MAIN ========== -->
+    <!-- MAIN -->
     <div class="main">
         <div class="tabbar" id="tabbar">
             <div class="tab-add" onclick="newTab()" title="New Tab (Ctrl+T)">+</div>
@@ -1214,7 +1042,7 @@ group by b.sys_ip;</script>
         <div class="tab-content" id="tabContent"></div>
     </div>
 
-    <!-- ========== STATUS BAR ========== -->
+    <!-- STATUS BAR -->
     <div class="status">
         <div class="st-item">
             <span class="st-dot"></span>
@@ -1233,7 +1061,7 @@ group by b.sys_ip;</script>
 
 <script>
 /* ============================================================
- * QUERY RUNNER — v2.0
+ * EIS QUERY CONSOLE — v3.0
  * ============================================================ */
 
 var DB_META = {
@@ -1243,6 +1071,35 @@ var DB_META = {
 };
 var DEFAULT_DB = "<%= dbType %>";
 
+/* ============================================================
+ * FALLBACK SUGGESTIONS — Always available instantly
+ * (in case DB metadata is slow / fails)
+ * ============================================================ */
+var FALLBACK = {
+    "IIB": {
+        schemas: ["EISAPP"],
+        tables: [
+            "EISAPP.API_LOG", "EISAPP.API_DETAILS", "EISAPP.BACKEND_LOG",
+            "EISAPP.BACKEND_DETAILS", "EISAPP.ORCH_API_LOG", "EISAPP.ORCH_API_DETAILS",
+            "EISAPP.SOURCE_MAPPER", "EISAPP.URL_MAPPER", "EISAPP.URN_DETAILS",
+            "EISAPP.CACHE_DETAILS", "EISAPP.CONNECTION_MASTER"
+        ]
+    },
+    "SI": {
+        schemas: ["SBISI"],
+        tables: [
+            "SBISI.SI_TRANS_DB", "SBISI.EKYC_LOG", "SBISI.EPAY_TXN_MASTER",
+            "SBISI.EPAY_FEED_MASTER"
+        ]
+    },
+    "REPORT": {
+        schemas: ["EISAPP"],
+        tables: [
+            "EISAPP.CONNECTION_MASTER"
+        ]
+    }
+};
+
 var SUGGEST = {
     loaded: false, loading: false,
     schemas: [], tables: [], keywords: [],
@@ -1251,12 +1108,25 @@ var SUGGEST = {
 
 var tabs = [];
 var activeTabId = null;
-var usedNumbers = {};   // track used numbers for reuse
+var usedNumbers = {};
 
-/* ============ TAB ============ */
+/* ============================================================
+ * BOOTSTRAP FALLBACK KEYWORDS (always loaded)
+ * ============================================================ */
+var BOOTSTRAP_KEYWORDS = ["SELECT","FROM","WHERE","AND","OR","NOT","NULL","IS","IN",
+    "LIKE","BETWEEN","ORDER BY","GROUP BY","HAVING","JOIN","INNER JOIN","LEFT JOIN",
+    "RIGHT JOIN","FULL JOIN","ON","AS","DISTINCT","COUNT","SUM","AVG","MIN","MAX",
+    "INSERT INTO","VALUES","UPDATE","SET","DELETE FROM","UNION","UNION ALL","EXISTS",
+    "CASE","WHEN","THEN","ELSE","END","ROWNUM","SYSDATE","DUAL","FETCH FIRST",
+    "OFFSET","LIMIT","ASC","DESC","COMMIT","ROLLBACK","WITH","PARTITION","TRUNC"
+].map(function(k){ return { label: k, insert: k, type: "KEYWORD" }; });
+
+/* ============================================================
+ * TAB
+ * ============================================================ */
 function Tab(num, db) {
     this.num = num;
-    this.id = 'tab_' + num + '_' + Date.now();
+    this.id = 'tab_' + num + '_' + Math.random().toString(36).substr(2, 9);
     this.db = db || DEFAULT_DB;
     this.title = "Query " + num;
     this.sql = "";
@@ -1266,10 +1136,15 @@ function Tab(num, db) {
     this.currentItems = [];
     this.activeIdx = -1;
     this.lastExecMs = null;
-    this.lastResult = null;  // store result for export
+    this.lastResult = null;
+    this.running = false;
+    this.rawRows = null;       // full data for sort/filter
+    this.rawCols = null;
+    this.filterText = "";
+    this.sortCol = null;
+    this.sortDir = null;
 }
 
-/* ============ FIND FREE NUMBER (reuse on close) ============ */
 function nextFreeNum() {
     var n = 1;
     while (usedNumbers[n]) n++;
@@ -1277,7 +1152,6 @@ function nextFreeNum() {
     return n;
 }
 
-/* ============ NEW TAB ============ */
 function newTab() {
     var num = nextFreeNum();
     var t = new Tab(num, DEFAULT_DB);
@@ -1289,14 +1163,10 @@ function newTab() {
 }
 
 function renderTab(t) {
-    // Tab button
     var el = document.createElement('div');
     el.className = 'tab';
     el.dataset.tabId = t.id;
-    el.innerHTML =
-        '<span class="tab-dot ' + DB_META[t.db].dot + '"></span>' +
-        '<span class="tab-name">' + t.title + '</span>' +
-        '<span class="tab-close" title="Close (Ctrl+W)">×</span>';
+    el.innerHTML = buildTabHTML(t);
 
     el.addEventListener('click', function(e) {
         if (e.target.classList.contains('tab-close')) {
@@ -1311,7 +1181,6 @@ function renderTab(t) {
     document.getElementById('tabbar').insertBefore(el, tabAdd);
     t.el = el;
 
-    // Pane
     var pane = document.createElement('div');
     pane.className = 'pane';
     pane.dataset.tabId = t.id;
@@ -1324,6 +1193,20 @@ function renderTab(t) {
     updateCount();
 }
 
+function buildTabHTML(t) {
+    var runningBadge = t.running ? '<span class="tab-running-badge">RUNNING</span>' : '';
+    return '<span class="tab-dot ' + DB_META[t.db].dot + '"></span>' +
+           '<span class="tab-name">' + t.title + '</span>' +
+           runningBadge +
+           '<span class="tab-close" title="Close (Ctrl+W)">×</span>';
+}
+
+function refreshTabHeader(t) {
+    if (!t.el) return;
+    t.el.innerHTML = buildTabHTML(t);
+    t.el.classList.toggle('running', t.running);
+}
+
 function buildPaneHTML(t) {
     return '' +
     '<div class="toolbar">' +
@@ -1334,16 +1217,16 @@ function buildPaneHTML(t) {
         '</select>' +
         '<button class="tb tb-run"     onclick="runQuery(\'' + t.id + '\')">▶ Run</button>' +
         '<button class="tb tb-suggest" onclick="doSuggest(\'' + t.id + '\')">💡 Suggest</button>' +
-        '<button class="tb tb-export"  onclick="exportResult(\'' + t.id + '\')" disabled>↓ Export</button>' +
+        '<button class="tb tb-export"  onclick="exportResult(\'' + t.id + '\')" disabled>↓ Export Excel</button>' +
         '<button class="tb tb-clear"   onclick="clearEditor(\'' + t.id + '\')">Clear</button>' +
         '<button class="tb tb-close"   onclick="closeTab(\'' + t.id + '\')">Close</button>' +
         '<div class="toolbar-spacer"></div>' +
-        '<span class="status-chip" data-role="chip">idle</span>' +
+        '<span class="chip" data-role="chip">idle</span>' +
     '</div>' +
     '<div class="editor-wrap">' +
         '<div class="editor-box">' +
             '<textarea class="sql" spellcheck="false" autocomplete="off" ' +
-                'placeholder="-- Select a saved query from the sidebar, or write your SQL here&#10;-- Ctrl+Space: suggestions   |   Ctrl+Enter: run   |   Ctrl+T: new tab">' + escapeHtml(t.sql) + '</textarea>' +
+                'placeholder="-- Select a saved query, or write your SQL&#10;-- Ctrl+Space: suggestions  |  Ctrl+Enter: run  |  Ctrl+T: new tab">' + escapeHtml(t.sql) + '</textarea>' +
         '</div>' +
     '</div>' +
     '<div class="results">' +
@@ -1352,6 +1235,11 @@ function buildPaneHTML(t) {
             '<span class="res-stat"><span class="label">Rows</span><b data-role="qRows">—</b></span>' +
             '<span class="res-stat"><span class="label">Time</span><b data-role="qTime">—</b></span>' +
             '<span class="res-stat"><span class="label">DB</span><b data-role="qDb">—</b></span>' +
+            '<div class="res-bar-spacer"></div>' +
+            '<div class="res-search-wrap">' +
+                '<span class="res-search-icon">🔍</span>' +
+                '<input type="text" class="res-search" placeholder="Search in results..." data-role="resSearch">' +
+            '</div>' +
         '</div>' +
         '<div class="res-body" data-role="resBody">' +
             '<div class="placeholder">' +
@@ -1363,7 +1251,9 @@ function buildPaneHTML(t) {
     '</div>';
 }
 
-/* ============ SWITCH / CLOSE ============ */
+/* ============================================================
+ * SWITCH / CLOSE
+ * ============================================================ */
 function switchTab(id) {
     activeTabId = id;
     document.querySelectorAll('.tab').forEach(function(el) {
@@ -1389,30 +1279,30 @@ function closeTab(id) {
     if (idx === -1) return;
     var t = tabs[idx];
 
-    if (t.sql && t.sql.trim()) {
+    if (t.running) {
+        if (!confirm('Query is still running in "' + t.title + '". Close anyway?')) return;
+    } else if (t.sql && t.sql.trim()) {
         if (!confirm('Close "' + t.title + '"? Unsaved query will be lost.')) return;
     }
 
-    // free the number for reuse
     delete usedNumbers[t.num];
-
     if (t.el) t.el.remove();
     if (t.paneEl) t.paneEl.remove();
     tabs.splice(idx, 1);
 
-    if (tabs.length === 0) {
-        newTab();
-    } else if (activeTabId === id) {
-        switchTab(tabs[Math.max(0, idx - 1)].id);
-    }
+    if (tabs.length === 0) newTab();
+    else if (activeTabId === id) switchTab(tabs[Math.max(0, idx - 1)].id);
     updateCount();
     saveTabs();
 }
 
-/* ============ EDITOR EVENTS ============ */
+/* ============================================================
+ * EDITOR EVENTS
+ * ============================================================ */
 function bindEditorEvents(t) {
     var ta = t.editorEl;
     var dbSel = t.paneEl.querySelector('.db-sel');
+    var resSearch = t.paneEl.querySelector('[data-role="resSearch"]');
 
     ta.addEventListener('input', function() {
         t.sql = ta.value;
@@ -1434,6 +1324,13 @@ function bindEditorEvents(t) {
         saveTabs();
     });
 
+    if (resSearch) {
+        resSearch.addEventListener('input', function() {
+            t.filterText = resSearch.value;
+            renderFilteredResult(t);
+        });
+    }
+
     ta.addEventListener('keydown', function(e) {
         var boxOpen = document.getElementById('acBox').style.display === 'block';
 
@@ -1453,123 +1350,53 @@ function bindEditorEvents(t) {
     });
 }
 
-/* ============ AUTO SUGGEST ON TYPING ============ */
+/* ============================================================
+ * SUGGESTIONS
+ * ============================================================ */
 function autoSuggest(t) {
     var ctx = getCtx(t);
     if ((ctx.word && ctx.word.length >= 1) || ctx.dotBefore) {
-        ensureSuggest(t, function(){ showSuggest(t, false); });
+        showSuggestInstant(t, false);
     } else {
         hideSuggest(t);
     }
 }
 
-/* ============ BUTTON: SUGGEST ============ */
 function doSuggest(id) {
     var t = getTab(id); if (!t) return;
-    ensureSuggest(t, function(){ showSuggest(t, true); });
+    // Ensure suggestions loaded (fallback + background refresh)
+    ensureSuggestLoaded(t);
+    showSuggestInstant(t, true);
 }
 
-/* ============ ENSURE SUGGESTIONS LOADED ============ */
-function ensureSuggest(t, cb) {
-    if (SUGGEST.loaded && SUGGEST.dbFetched === t.db) { cb(); return; }
-    if (SUGGEST.loading) {
-        var w = setInterval(function(){
-            if (!SUGGEST.loading) {
-                clearInterval(w);
-                if (SUGGEST.dbFetched === t.db) cb();
-                else ensureSuggest(t, cb);
-            }
-        }, 80);
-        return;
-    }
-    SUGGEST.loading = true;
-    setChip(t, "loading", "loading...");
-
-    var xhr = new XMLHttpRequest();
-    xhr.open('GET', 'query.jsp?ajax=suggest&db=' + encodeURIComponent(t.db), true);
-    xhr.onreadystatechange = function() {
-        if (xhr.readyState !== 4) return;
-        if (xhr.status === 200) {
-            try {
-                var d = JSON.parse(xhr.responseText);
-                SUGGEST.schemas = d.schemas || [];
-                SUGGEST.tables  = d.tables  || [];
-                SUGGEST.keywords = d.keywords || [];
-                SUGGEST.loaded = true;
-                SUGGEST.dbFetched = t.db;
-                setChip(t, "ok", "ready");
-                setTimeout(function(){ setChip(t, null, "idle"); }, 2000);
-                if (d.error) console.warn("Suggest warn: " + d.error);
-            } catch(e) {
-                console.error("Suggest parse error", e);
-                setChip(t, "err", "suggest failed");
-            }
-        } else {
-            setChip(t, "err", "suggest failed " + xhr.status);
-        }
-        SUGGEST.loading = false;
-        cb();
-    };
-    xhr.send();
-}
-
-/* ============ CONTEXT ============ */
-function getCtx(t) {
-    var ta = t.editorEl;
-    var pos = ta.selectionStart;
-    var val = ta.value;
-    var s = pos;
-    while (s > 0 && /[A-Za-z0-9_$#]/.test(val.charAt(s - 1))) s--;
-    var e = pos;
-    while (e < val.length && /[A-Za-z0-9_$#]/.test(val.charAt(e))) e++;
-    var word = val.substring(s, pos);
-    var prefix = "";
-    var dotBefore = false;
-    if (s > 0 && val.charAt(s - 1) === '.') {
-        dotBefore = true;
-        var p = s - 2;
-        while (p >= 0 && /[A-Za-z0-9_$#]/.test(val.charAt(p))) p--;
-        prefix = val.substring(p + 1, s - 1);
-    }
-    return { word: word, start: s, end: e, dotBefore: dotBefore, prefix: prefix };
-}
-
-/* ============ CARET POSITION ============ */
-function caretXY(ta) {
-    var d = document.createElement('div');
-    var st = window.getComputedStyle(ta);
-    var ps = ['fontFamily','fontSize','fontWeight','lineHeight','letterSpacing',
-              'paddingTop','paddingLeft','paddingRight','paddingBottom',
-              'borderTopWidth','borderLeftWidth','whiteSpace','wordWrap','wordBreak'];
-    ps.forEach(function(p){ d.style[p] = st[p]; });
-    d.style.position = 'fixed';
-    d.style.visibility = 'hidden';
-    d.style.whiteSpace = 'pre-wrap';
-    d.style.wordWrap = 'break-word';
-    d.style.width = (ta.clientWidth - parseInt(st.paddingLeft) - parseInt(st.paddingRight)) + 'px';
-    d.style.top = '-9999px';
-    d.textContent = ta.value.substring(0, ta.selectionStart);
-    var span = document.createElement('span');
-    span.textContent = ta.value.substring(ta.selectionStart) || '.';
-    d.appendChild(span);
-    document.body.appendChild(d);
-    var sr = span.getBoundingClientRect();
-    var lineH = parseInt(st.lineHeight) || 22;
-    var pos = { left: sr.left, top: sr.bottom + 2, lineHeight: lineH };
-    document.body.removeChild(d);
-    return pos;
-}
-
-/* ============ SHOW SUGGEST ============ */
-function showSuggest(t, forceAll) {
+/* ============================================================
+ * INSTANT suggestions: fallback + loaded data
+ * ============================================================ */
+function showSuggestInstant(t, forceAll) {
     var ctx = getCtx(t);
     var items;
 
+    // Build items from current known data (fallback + loaded)
+    var schemas, tables, keywords;
+    if (SUGGEST.loaded && SUGGEST.dbFetched === t.db) {
+        schemas  = SUGGEST.schemas;
+        tables   = SUGGEST.tables;
+        keywords = SUGGEST.keywords.length ? SUGGEST.keywords : BOOTSTRAP_KEYWORDS;
+    } else {
+        // Use fallback immediately
+        var fb = FALLBACK[t.db] || { schemas: [], tables: [] };
+        schemas  = fb.schemas.map(function(s){ return { label: s, insert: s + ".", type: "SCHEMA" }; });
+        tables   = fb.tables.map(function(tb){ return { label: tb, insert: tb, type: "TABLE" }; });
+        keywords = BOOTSTRAP_KEYWORDS;
+        // Kick off background load
+        ensureSuggestLoaded(t);
+    }
+
     if (ctx.dotBefore) {
         var prefUp = ctx.prefix.toUpperCase();
-        var isSchema = SUGGEST.schemas.some(function(s){ return s.label.toUpperCase() === prefUp; });
+        var isSchema = schemas.some(function(s){ return s.label.toUpperCase() === prefUp; });
         if (isSchema) {
-            items = SUGGEST.tables.filter(function(tb){
+            items = tables.filter(function(tb){
                 return tb.label.toUpperCase().startsWith(prefUp + ".");
             }).map(function(tb){
                 var shortName = tb.label.substring(tb.label.indexOf('.') + 1);
@@ -1590,7 +1417,7 @@ function showSuggest(t, forceAll) {
         return;
     }
 
-    items = SUGGEST.keywords.concat(SUGGEST.schemas).concat(SUGGEST.tables);
+    items = keywords.concat(schemas).concat(tables);
     var w = (ctx.word || '').toLowerCase();
     if (!forceAll && w) {
         var starts = [], contains = [];
@@ -1604,6 +1431,58 @@ function showSuggest(t, forceAll) {
     renderSuggest(t, items);
 }
 
+function ensureSuggestLoaded(t) {
+    if (SUGGEST.loaded && SUGGEST.dbFetched === t.db) return;
+    if (SUGGEST.loading) return;
+
+    SUGGEST.loading = true;
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', 'query.jsp?ajax=suggest&db=' + encodeURIComponent(t.db), true);
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState !== 4) return;
+        SUGGEST.loading = false;
+        if (xhr.status === 200) {
+            try {
+                var d = JSON.parse(xhr.responseText);
+                // Merge with fallback (so we never lose anything)
+                var fb = FALLBACK[t.db] || { schemas: [], tables: [] };
+                var fbSchemas = fb.schemas.map(function(s){ return { label: s, insert: s + ".", type: "SCHEMA" }; });
+                var fbTables  = fb.tables.map(function(tb){ return { label: tb, insert: tb, type: "TABLE" }; });
+
+                var seenSchemas = {};
+                var mergedSchemas = [];
+                (d.schemas || []).concat(fbSchemas).forEach(function(s){
+                    if (!seenSchemas[s.label.toUpperCase()]) {
+                        seenSchemas[s.label.toUpperCase()] = true;
+                        mergedSchemas.push(s);
+                    }
+                });
+                var seenTables = {};
+                var mergedTables = [];
+                (d.tables || []).concat(fbTables).forEach(function(tb){
+                    var key = tb.label.toUpperCase();
+                    if (!seenTables[key]) {
+                        seenTables[key] = true;
+                        mergedTables.push(tb);
+                    }
+                });
+
+                SUGGEST.schemas  = mergedSchemas;
+                SUGGEST.tables   = mergedTables;
+                SUGGEST.keywords = (d.keywords && d.keywords.length) ? d.keywords : BOOTSTRAP_KEYWORDS;
+                SUGGEST.loaded = true;
+                SUGGEST.dbFetched = t.db;
+                if (d.error) console.warn("Suggest partial:", d.error);
+            } catch(e) {
+                console.error("Suggest parse error:", e);
+            }
+        } else {
+            console.warn("Suggest HTTP " + xhr.status);
+        }
+    };
+    xhr.send();
+}
+
 function renderSuggest(t, items) {
     var box = document.getElementById('acBox');
     if (!items || items.length === 0) { hideSuggest(t); return; }
@@ -1615,7 +1494,7 @@ function renderSuggest(t, items) {
         var cls = 'ac-item' + (i === 0 ? ' active' : '');
         var tag = it.type.split(':')[0];
         var tagTxt = tag === 'COLUMN' ? 'COL' : tag;
-        html += '<div class="' + cls + '" data-i="' + i + '" onmousedown="event.preventDefault();" onclick="pickById(\'' + t.id + '\',' + i + ')">' +
+        html += '<div class="' + cls + '" onmousedown="event.preventDefault();" onclick="pickById(\'' + t.id + '\',' + i + ')">' +
                     '<span>' + escapeHtml(it.label) + '</span>' +
                     '<span class="ac-tag tag-' + tag + '">' + tagTxt + '</span>' +
                 '</div>';
@@ -1624,10 +1503,10 @@ function renderSuggest(t, items) {
     box.style.display = 'block';
 
     var p = caretXY(t.editorEl);
-    var h = Math.min(300, items.length * 30 + 8);
+    var h = Math.min(320, items.length * 32 + 8);
     var top = p.top;
     if (top + h > window.innerHeight - 50) top = p.top - h - p.lineHeight - 6;
-    box.style.left = Math.max(6, Math.min(p.left, window.innerWidth - 340)) + 'px';
+    box.style.left = Math.max(6, Math.min(p.left, window.innerWidth - 360)) + 'px';
     box.style.top  = top + 'px';
 }
 
@@ -1683,20 +1562,98 @@ function fetchCols(t, schema, table, cb) {
     xhr.send();
 }
 
-/* ============ RUN QUERY ============ */
+function getCtx(t) {
+    var ta = t.editorEl;
+    var pos = ta.selectionStart;
+    var val = ta.value;
+    var s = pos;
+    while (s > 0 && /[A-Za-z0-9_$#]/.test(val.charAt(s - 1))) s--;
+    var e = pos;
+    while (e < val.length && /[A-Za-z0-9_$#]/.test(val.charAt(e))) e++;
+    var word = val.substring(s, pos);
+    var prefix = "";
+    var dotBefore = false;
+    if (s > 0 && val.charAt(s - 1) === '.') {
+        dotBefore = true;
+        var p = s - 2;
+        while (p >= 0 && /[A-Za-z0-9_$#]/.test(val.charAt(p))) p--;
+        prefix = val.substring(p + 1, s - 1);
+    }
+    return { word: word, start: s, end: e, dotBefore: dotBefore, prefix: prefix };
+}
+
+function caretXY(ta) {
+    var d = document.createElement('div');
+    var st = window.getComputedStyle(ta);
+    var ps = ['fontFamily','fontSize','fontWeight','lineHeight','letterSpacing',
+              'paddingTop','paddingLeft','paddingRight','paddingBottom',
+              'borderTopWidth','borderLeftWidth','whiteSpace','wordWrap','wordBreak'];
+    ps.forEach(function(p){ d.style[p] = st[p]; });
+    d.style.position = 'fixed';
+    d.style.visibility = 'hidden';
+    d.style.whiteSpace = 'pre-wrap';
+    d.style.wordWrap = 'break-word';
+    d.style.width = (ta.clientWidth - parseInt(st.paddingLeft) - parseInt(st.paddingRight)) + 'px';
+    d.style.top = '-9999px';
+    d.textContent = ta.value.substring(0, ta.selectionStart);
+    var span = document.createElement('span');
+    span.textContent = ta.value.substring(ta.selectionStart) || '.';
+    d.appendChild(span);
+    document.body.appendChild(d);
+    var sr = span.getBoundingClientRect();
+    var lineH = parseInt(st.lineHeight) || 22;
+    var pos = { left: sr.left, top: sr.bottom + 2, lineHeight: lineH };
+    document.body.removeChild(d);
+    return pos;
+}
+
+/* ============================================================
+ * RUN QUERY
+ * ============================================================ */
 function runQuery(tabId) {
     var t = getTab(tabId); if (!t) return;
     var sql = t.editorEl.value.trim();
     if (!sql) { toast("Query is empty.", true); return; }
 
+    if (t.running) { toast("Query already running in this tab.", true); return; }
+
     t.sql = t.editorEl.value;
     saveTabs();
-    setChip(t, "loading", "running...");
+    t.running = true;
+    refreshTabHeader(t);
+    setChip(t, "loading", "running");
     hideSuggest(t);
 
-    var resBody = t.paneEl.querySelector('[data-role="resBody"]');
+    // ===== CLEAR previous meta on new run =====
     var resBar = t.paneEl.querySelector('[data-role="resBar"]');
-    resBody.innerHTML = '<div class="placeholder"><div class="ph-icon" style="animation: spin 1s linear infinite; display:inline-block;">◌</div><div class="ph-title">Executing...</div><div class="ph-sub">Running on ' + DB_META[t.db].label + '</div></div>';
+    resBar.style.display = 'none';
+    resBar.querySelector('[data-role="qType"]').textContent = '—';
+    resBar.querySelector('[data-role="qRows"]').textContent = '—';
+    resBar.querySelector('[data-role="qTime"]').textContent = '—';
+    var timeEl0 = resBar.querySelector('[data-role="qTime"]');
+    timeEl0.className = '';
+    resBar.querySelector('[data-role="qDb"]').textContent = '—';
+
+    // Reset search + sort state
+    t.filterText = "";
+    t.sortCol = null;
+    t.sortDir = null;
+    var searchInp = t.paneEl.querySelector('[data-role="resSearch"]');
+    if (searchInp) searchInp.value = '';
+    t.rawRows = null;
+    t.rawCols = null;
+    t.lastResult = null;
+    var expBtn = t.paneEl.querySelector('.tb-export');
+    if (expBtn) expBtn.disabled = true;
+
+    // Big visible loader
+    var resBody = t.paneEl.querySelector('[data-role="resBody"]');
+    resBody.innerHTML = '' +
+        '<div class="loader-overlay">' +
+            '<div class="loader-big"></div>' +
+            '<div class="loader-text">Executing query<span class="loader-dots">...</span></div>' +
+            '<div class="loader-sub">Target: ' + DB_META[t.db].label + '</div>' +
+        '</div>';
 
     var xhr = new XMLHttpRequest();
     xhr.open('POST', 'query.jsp?ajax=run', true);
@@ -1705,9 +1662,14 @@ function runQuery(tabId) {
 
     xhr.onreadystatechange = function() {
         if (xhr.readyState !== 4) return;
+        t.running = false;
+        refreshTabHeader(t);
+
         if (xhr.status !== 200) {
             resBody.innerHTML = '<div class="alert alert-err">HTTP ' + xhr.status + ' — execution failed.</div>';
             setChip(t, "err", "error");
+            updateStatus();
+            toast("HTTP " + xhr.status, true);
             return;
         }
         try {
@@ -1724,75 +1686,164 @@ function runQuery(tabId) {
             tEl.textContent = res.executionTimeMs + ' ms';
             tEl.className = 'res-time ' + (res.executionTimeMs < 500 ? 'ok' : res.executionTimeMs < 3000 ? 'warn' : 'slow');
 
-            resBody.innerHTML = renderResult(res);
-            setChip(t, res.success ? "ok" : "err", res.success ? "success" : "error");
+            if (res.success && res.columns && res.columns.length > 0) {
+                t.rawCols = res.columns.slice();
+                t.rawRows = res.rows ? res.rows.slice() : [];
+            } else {
+                t.rawCols = null;
+                t.rawRows = null;
+            }
 
-            var expBtn = t.paneEl.querySelector('.tb-export');
-            if (expBtn) expBtn.disabled = !(res.success && res.rows && res.rows.length > 0);
+            renderFilteredResult(t);
+
+            setChip(t, res.success ? "ok" : "err", res.success ? "success" : "error");
+            if (expBtn) expBtn.disabled = !(res.success && t.rawRows && t.rawRows.length > 0);
 
             updateStatus();
             toast(res.success ? "Query ran in " + res.executionTimeMs + " ms" : "Query failed", !res.success);
         } catch(e) {
             resBody.innerHTML = '<div class="alert alert-err">Parse error: ' + escapeHtml(e.message) + '</div>';
             setChip(t, "err", "parse error");
+            updateStatus();
         }
     };
     xhr.send(payload);
 }
 
-function renderResult(res) {
-    if (!res.success) return '<div class="alert alert-err">' + escapeHtml(res.message) + '</div>';
-    var html = '<div class="alert alert-ok">' + escapeHtml(res.message) + '</div>';
-    if (res.columns && res.columns.length > 0 && res.rows && res.rows.length > 0) {
-        html += '<table class="data"><thead><tr><th>#</th>';
-        res.columns.forEach(function(c){ html += '<th>' + escapeHtml(c) + '</th>'; });
-        html += '</tr></thead><tbody>';
-        res.rows.forEach(function(row, i) {
-            html += '<tr><td class="row-no">' + (i+1) + '</td>';
-            res.columns.forEach(function(c){
-                var v = row[c];
-                if (v === null || v === undefined) html += '<td><span class="null-cell">NULL</span></td>';
-                else html += '<td title="' + escapeHtml(String(v)) + '">' + escapeHtml(String(v)) + '</td>';
-            });
-            html += '</tr>';
-        });
-        html += '</tbody></table>';
-    } else if (res.updateCount >= 0) {
-        html += '<div class="alert alert-ok">Rows affected: ' + res.updateCount + '</div>';
-    } else {
-        html += '<div class="placeholder"><div class="ph-title">0 rows</div><div class="ph-sub">Query executed successfully.</div></div>';
-    }
-    return html;
-}
-
-/* ============ EXPORT TO EXCEL (CSV that Excel opens natively) ============ */
-function exportResult(tabId) {
-    var t = getTab(tabId); if (!t) return;
+/* ============================================================
+ * FILTER + SORT + RENDER
+ * ============================================================ */
+function renderFilteredResult(t) {
+    var resBody = t.paneEl.querySelector('[data-role="resBody"]');
     var res = t.lastResult;
-    if (!res || !res.success || !res.rows || res.rows.length === 0) {
-        toast("Nothing to export.", true);
+
+    if (!res) {
+        resBody.innerHTML = '<div class="placeholder"><div class="ph-icon">▶</div><div class="ph-title">Ready</div></div>';
         return;
     }
 
-    // Build CSV with UTF-8 BOM so Excel reads it correctly
-    var BOM = '\uFEFF';
-    var sep = ',';
-    var lines = [];
+    if (!res.success) {
+        resBody.innerHTML = '<div class="alert alert-err">' + escapeHtml(res.message) + '</div>';
+        return;
+    }
 
-    // Header
-    lines.push(res.columns.map(csvCell).join(sep));
-    // Rows
-    res.rows.forEach(function(row) {
-        lines.push(res.columns.map(function(c){ return csvCell(row[c]); }).join(sep));
+    if (!t.rawCols || !t.rawRows || t.rawRows.length === 0) {
+        var msg = res.updateCount >= 0 ? ('Rows affected: ' + res.updateCount) : 'Query executed. 0 rows returned.';
+        resBody.innerHTML = '<div class="alert alert-ok">' + escapeHtml(res.message) + '</div>' +
+                            '<div class="placeholder"><div class="ph-title">0 rows</div><div class="ph-sub">' + escapeHtml(msg) + '</div></div>';
+        return;
+    }
+
+    // 1. Filter
+    var filter = (t.filterText || '').toLowerCase().trim();
+    var rows = t.rawRows;
+    if (filter) {
+        rows = rows.filter(function(row){
+            for (var i = 0; i < t.rawCols.length; i++) {
+                var v = row[t.rawCols[i]];
+                if (v != null && String(v).toLowerCase().indexOf(filter) !== -1) return true;
+            }
+            return false;
+        });
+    }
+
+    // 2. Sort
+    if (t.sortCol) {
+        var col = t.sortCol;
+        var dir = t.sortDir === 'desc' ? -1 : 1;
+        rows = rows.slice().sort(function(a, b){
+            var va = a[col], vb = b[col];
+            if (va == null && vb == null) return 0;
+            if (va == null) return 1;
+            if (vb == null) return -1;
+            // Numeric compare if both look numeric
+            var na = parseFloat(va), nb = parseFloat(vb);
+            if (!isNaN(na) && !isNaN(nb) && String(va).trim() === String(na) && String(vb).trim() === String(nb)) {
+                return (na - nb) * dir;
+            }
+            return String(va).localeCompare(String(vb)) * dir;
+        });
+    }
+
+    // 3. Render
+    var html = '<div class="alert alert-ok">' + escapeHtml(res.message) +
+               (filter ? ' <b>(' + rows.length + ' of ' + t.rawRows.length + ' shown)</b>' : '') + '</div>';
+    html += '<table class="data"><thead><tr><th>#</th>';
+    t.rawCols.forEach(function(c){
+        var sortCls = '';
+        var sortIcon = '⇅';
+        if (t.sortCol === c) {
+            if (t.sortDir === 'asc') { sortCls = 'sorted-asc'; sortIcon = '▲'; }
+            else { sortCls = 'sorted-desc'; sortIcon = '▼'; }
+        }
+        html += '<th class="' + sortCls + '" onclick="sortByColumn(\'' + t.id + '\',\'' + escapeJs(c) + '\')">' +
+                    escapeHtml(c) + '<span class="sort-icon">' + sortIcon + '</span>' +
+                '</th>';
     });
+    html += '</tr></thead><tbody>';
+    rows.forEach(function(row, i){
+        html += '<tr><td class="row-no">' + (i+1) + '</td>';
+        t.rawCols.forEach(function(c){
+            var v = row[c];
+            if (v === null || v === undefined) html += '<td><span class="null-cell">NULL</span></td>';
+            else {
+                var s = String(v);
+                var disp = filter ? highlightMatch(s, filter) : escapeHtml(s);
+                html += '<td title="' + escapeHtml(s) + '">' + disp + '</td>';
+            }
+        });
+        html += '</tr>';
+    });
+    html += '</tbody></table>';
+    resBody.innerHTML = html;
+}
 
+function sortByColumn(tabId, col) {
+    var t = getTab(tabId); if (!t) return;
+    if (t.sortCol === col) {
+        if (t.sortDir === 'asc') t.sortDir = 'desc';
+        else if (t.sortDir === 'desc') { t.sortCol = null; t.sortDir = null; }
+        else t.sortDir = 'asc';
+    } else {
+        t.sortCol = col;
+        t.sortDir = 'asc';
+    }
+    renderFilteredResult(t);
+}
+
+function highlightMatch(text, filter) {
+    var esc = escapeHtml(text);
+    if (!filter) return esc;
+    try {
+        var re = new RegExp('(' + filter.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+        return esc.replace(re, '<span class="hl-match">$1</span>');
+    } catch(e) { return esc; }
+}
+
+function escapeJs(s) {
+    return String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g,'\\n');
+}
+
+/* ============================================================
+ * EXPORT TO EXCEL (CSV)
+ * ============================================================ */
+function exportResult(tabId) {
+    var t = getTab(tabId); if (!t) return;
+    if (!t.rawCols || !t.rawRows || t.rawRows.length === 0) {
+        toast("Nothing to export.", true);
+        return;
+    }
+    var BOM = '\uFEFF';
+    var lines = [];
+    lines.push(t.rawCols.map(csvCell).join(','));
+    t.rawRows.forEach(function(row){
+        lines.push(t.rawCols.map(function(c){ return csvCell(row[c]); }).join(','));
+    });
     var csv = BOM + lines.join('\r\n');
     var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     var url = URL.createObjectURL(blob);
-
     var stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
     var fname = 'query_' + t.num + '_' + t.db + '_' + stamp + '.csv';
-
     var a = document.createElement('a');
     a.href = url;
     a.download = fname;
@@ -1800,7 +1851,7 @@ function exportResult(tabId) {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    toast("Exported " + res.rows.length + " rows → " + fname);
+    toast("Exported " + t.rawRows.length + " rows → " + fname);
 }
 
 function csvCell(v) {
@@ -1810,12 +1861,14 @@ function csvCell(v) {
     return s;
 }
 
-/* ============ HELPERS ============ */
+/* ============================================================
+ * HELPERS
+ * ============================================================ */
 function setChip(t, type, text) {
     var el = t.paneEl.querySelector('[data-role="chip"]');
     if (!el) return;
     el.textContent = text || "idle";
-    el.className = 'status-chip';
+    el.className = 'chip';
     if (type === 'ok') el.classList.add('ok');
     if (type === 'loading') el.classList.add('loading');
     if (type === 'err') el.classList.add('err');
@@ -1825,10 +1878,12 @@ function updateStatus() {
     var t = getTab(activeTabId);
     if (t) {
         document.getElementById('stDb').textContent = DB_META[t.db].label;
-        document.getElementById('stTab').innerHTML = 'Tab: <b>' + escapeHtml(t.title) + '</b>';
+        document.getElementById('stTab').innerHTML = 'Tab: <b>' + escapeHtml(t.title) + '</b>' +
+            (t.running ? ' <span style="color:#60a5fa;">● running</span>' : '');
         document.getElementById('stLast').innerHTML = 'Last exec: <b>' + (t.lastExecMs != null ? t.lastExecMs + ' ms' : '—') + '</b>';
     }
     document.getElementById('stCount').textContent = tabs.length + (tabs.length === 1 ? ' tab' : ' tabs');
+    document.getElementById('qCount').textContent = document.querySelectorAll('.qitem').length;
 }
 
 function updateCount() { updateStatus(); }
@@ -1842,7 +1897,9 @@ function clearEditor(id) {
     saveTabs();
 }
 
-/* ============ SIDEBAR ============ */
+/* ============================================================
+ * SIDEBAR
+ * ============================================================ */
 function toggleGroup(el) {
     var body = el.nextElementSibling;
     var open = body.classList.toggle('open');
@@ -1883,7 +1940,9 @@ document.getElementById('qSearch').addEventListener('input', function(e) {
     });
 });
 
-/* ============ UTILS ============ */
+/* ============================================================
+ * UTILS
+ * ============================================================ */
 function escapeHtml(s) {
     if (s == null) return '';
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
@@ -1903,10 +1962,12 @@ function toast(msg, isErr) {
     }, 2400);
 }
 
-/* ============ PERSIST TABS ============ */
+/* ============================================================
+ * PERSIST
+ * ============================================================ */
 function saveTabs() {
     try {
-        localStorage.setItem('qr_v2', JSON.stringify({
+        localStorage.setItem('eis_qc_v3', JSON.stringify({
             tabs: tabs.map(function(t){ return { num: t.num, db: t.db, sql: t.sql }; }),
             active: activeTabId,
             usedNumbers: usedNumbers
@@ -1916,7 +1977,7 @@ function saveTabs() {
 
 function restoreTabs() {
     try {
-        var raw = localStorage.getItem('qr_v2');
+        var raw = localStorage.getItem('eis_qc_v3');
         if (!raw) return false;
         var d = JSON.parse(raw);
         if (!d || !d.tabs || !d.tabs.length) return false;
@@ -1933,7 +1994,9 @@ function restoreTabs() {
     } catch(e){ return false; }
 }
 
-/* ============ INIT ============ */
+/* ============================================================
+ * INIT
+ * ============================================================ */
 window.addEventListener('load', function() {
     if (!restoreTabs()) newTab();
     var firstBody = document.querySelector('.tgroup-body');
@@ -1942,10 +2005,14 @@ window.addEventListener('load', function() {
         firstBody.classList.add('open');
         firstHead.classList.add('open');
     }
+    // Preload suggestions in background (won't block UI)
+    setTimeout(function() {
+        var t = getTab(activeTabId);
+        if (t) ensureSuggestLoaded(t);
+    }, 400);
     updateCount();
 });
 
-/* ============ OUTSIDE CLICK ============ */
 document.addEventListener('mousedown', function(e) {
     if (!e.target.closest('#acBox')) {
         var t = getTab(activeTabId);
