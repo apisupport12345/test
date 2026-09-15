@@ -1,486 +1,512 @@
-QueryRunner.java
+------------Gen 5- ------------------
 
-package com.jdbc;
+SELECT  broker_eg, broker_name, ERROR_CODE, ERROR_DESCRIPTION, url, api_name,
+COUNT(*) AS CNT FROM EISAPP.API_LOG WHERE Request_date_time>=SYSDATE - INTERVAL '05' MINUTE and
+(substr(error_code,3,3) in ('001','002','007','051','014','111','570','569','052','005','077','003','017','015') and error_code<>'00014' OR error_code in ('401','500'))
+and ERROR_DESCRIPTION is not null and error_description not like '%No active transaction found, please do check GCC machine and retry%'
+GROUP BY broker_eg,broker_name, ERROR_CODE, error_description,url,api_name
+ORDER BY CNT DESC;
 
-import java.sql.Connection;
-import java.sql.ResultSet;
-import java.sql.ResultSetMetaData;
-import java.sql.Statement;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+---------------------------Daily use GEN 5----------------------------------
 
-public class QueryRunner {
+select * from eisapp.api_log where
+request_date_time >= sysdate - interval '10' minute
+--and api_name = ''
+--and url = ''
+--and ERROR_CODE = ''
+--and error_code is null
+order by request_date_time desc;
 
-    public static class QueryResult {
-        public boolean success;
-        public String message;
-        public List<String> columns = new ArrayList<>();
-        public List<Map<String, Object>> rows = new ArrayList<>();
-        public int updateCount = -1;
-        public long executionTimeMs;
-        public String queryType;
-    }
+select error_code, error_description, count(1) from eisapp.api_log where
+request_date_time >= sysdate - interval '10' minute
+and api_name = ''
+GROUP by error_code, error_description;
 
-    public static QueryResult execute(String sql, String dbType) {
-        QueryResult result = new QueryResult();
-        long start = System.currentTimeMillis();
+select * from eisapp.BACKEND_log where
+request_date_time >= sysdate - interval '10' minute
+--and api_name = ''
+--AND txn_endpoint = ''
+--and END_POINT_URL = ''
+--and error_code is null
+order by request_date_time desc;
 
-        if (sql == null || sql.trim().isEmpty()) {
-            result.success = false;
-            result.message = "Query empty hai. Kuch likho!";
-            return result;
-        }
-
-        Connection conn = null;
-        Statement stmt = null;
-        ResultSet rs = null;
-
-        try {
-            if ("IIB".equalsIgnoreCase(dbType)) {
-                conn = DBUtilityAuto.getIIBDBConnection();
-            } else if ("SI".equalsIgnoreCase(dbType)) {
-                conn = DBUtilityAuto.getSIDBConnection();
-            } else {
-                conn = DBUtilityAuto.getReportDBConnection();
-            }
-
-            if (conn == null) {
-                result.success = false;
-                result.message = "Connection nahi mila! DB down ho sakta hai.";
-                return result;
-            }
-
-            stmt = conn.createStatement();
-            String trimmed = sql.trim();
-            String upper = trimmed.toUpperCase();
-
-            boolean isSelect = upper.startsWith("SELECT")
-                    || upper.startsWith("WITH")
-                    || upper.startsWith("SHOW")
-                    || upper.startsWith("DESC");
-
-            if (isSelect) {
-                result.queryType = "SELECT";
-                rs = stmt.executeQuery(trimmed);
-
-                ResultSetMetaData md = rs.getMetaData();
-                int colCount = md.getColumnCount();
-                for (int i = 1; i <= colCount; i++) {
-                    result.columns.add(md.getColumnLabel(i));
-                }
-
-                int rowLimit = 5000;
-                while (rs.next() && result.rows.size() < rowLimit) {
-                    Map<String, Object> row = new LinkedHashMap<>();
-                    for (int i = 1; i <= colCount; i++) {
-                        row.put(md.getColumnLabel(i), rs.getObject(i));
-                    }
-                    result.rows.add(row);
-                }
-                result.success = true;
-                result.message = "Query chal gayi. " + result.rows.size() + " rows mile.";
-            } else {
-                result.queryType = upper.split("\\s+")[0];
-                boolean hasResultSet = stmt.execute(trimmed);
-
-                if (hasResultSet) {
-                    rs = stmt.getResultSet();
-                    ResultSetMetaData md = rs.getMetaData();
-                    int colCount = md.getColumnCount();
-                    for (int i = 1; i <= colCount; i++) {
-                        result.columns.add(md.getColumnLabel(i));
-                    }
-                    while (rs.next() && result.rows.size() < 5000) {
-                        Map<String, Object> row = new LinkedHashMap<>();
-                        for (int i = 1; i <= colCount; i++) {
-                            row.put(md.getColumnLabel(i), rs.getObject(i));
-                        }
-                        result.rows.add(row);
-                    }
-                } else {
-                    result.updateCount = stmt.getUpdateCount();
-                }
-                result.success = true;
-                result.message = "Query execute ho gayi. Rows affected: " + result.updateCount;
-            }
-
-        } catch (Exception e) {
-            result.success = false;
-            result.message = "Error: " + e.getMessage();
-        } finally {
-            if (rs != null) try { rs.close(); } catch (Exception ignored) {}
-            if (stmt != null) try { stmt.close(); } catch (Exception ignored) {}
-            if (conn != null) try { conn.close(); } catch (Exception ignored) {}
-            result.executionTimeMs = System.currentTimeMillis() - start;
-        }
-
-        return result;
-    }
-}
+select error_code, error_description, count(1) from eisapp.BACKEND_log where
+request_date_time >= sysdate - interval '10' minute
+and api_name = ''
+GROUP by error_code, error_description;
 
 
-query.jsp
+-----------------------------GEN5--------------------------
 
-<%@ page language="java" contentType="text/html; charset=UTF-8" pageEncoding="UTF-8"%>
-<%@ page import="com.jdbc.QueryRunner" %>
-<%@ page import="com.jdbc.QueryRunner.QueryResult" %>
-<%@ page import="java.util.Map" %>
-<%
-    String sql    = request.getParameter("sql");
-    String dbType = request.getParameter("dbType");
-    if (dbType == null) dbType = "REPORT";
+select * from eisapp.api_log where URN in ('');
 
-    QueryResult qr = null;
-    if (sql != null && !sql.trim().isEmpty()) {
-        qr = QueryRunner.execute(sql, dbType);
-    }
-%>
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Query Runner</title>
-    <meta charset="UTF-8">
-    <style>
-        * { box-sizing: border-box; }
-        body {
-            font-family: 'Segoe UI', Arial, sans-serif;
-            background: linear-gradient(135deg, #eef2f7 0%, #dbe4ef 100%);
-            margin: 0;
-            padding: 30px 20px;
-            min-height: 100vh;
-        }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            background: #fff;
-            padding: 30px;
-            border-radius: 14px;
-            box-shadow: 0 8px 30px rgba(26, 61, 109, 0.15);
-        }
-        h1 {
-            color: #1a3d6d;
-            margin: 0 0 6px 0;
-            font-size: 26px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        .subtitle {
-            color: #667;
-            margin: 0 0 25px 0;
-            font-size: 14px;
-            border-bottom: 2px solid #eef2f7;
-            padding-bottom: 18px;
-        }
-        .form-row {
-            display: grid;
-            grid-template-columns: 220px 1fr;
-            gap: 18px;
-            margin-bottom: 18px;
-            align-items: start;
-        }
-        @media (max-width: 700px) {
-            .form-row { grid-template-columns: 1fr; }
-        }
-        label {
-            display: block;
-            font-weight: 600;
-            margin-bottom: 8px;
-            color: #1a3d6d;
-            font-size: 13px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        select, textarea {
-            width: 100%;
-            padding: 12px 14px;
-            border: 2px solid #dbe4ef;
-            border-radius: 10px;
-            font-size: 14px;
-            transition: 0.2s;
-            background: #fafcff;
-        }
-        select:focus, textarea:focus {
-            outline: none;
-            border-color: #1a3d6d;
-            background: #fff;
-            box-shadow: 0 0 0 4px rgba(26,61,109,0.08);
-        }
-        textarea {
-            min-height: 180px;
-            resize: vertical;
-            font-family: 'Consolas', 'Courier New', monospace;
-            font-size: 13.5px;
-            line-height: 1.6;
-        }
-        .btn-row {
-            display: flex;
-            gap: 12px;
-            margin-top: 20px;
-            flex-wrap: wrap;
-        }
-        button {
-            padding: 13px 32px;
-            border: none;
-            border-radius: 10px;
-            font-size: 15px;
-            font-weight: 700;
-            cursor: pointer;
-            transition: 0.2s;
-            letter-spacing: 0.3px;
-        }
-        .btn-run {
-            background: linear-gradient(135deg, #1a3d6d 0%, #2b5ba0 100%);
-            color: #fff;
-            box-shadow: 0 4px 14px rgba(26,61,109,0.35);
-        }
-        .btn-run:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(26,61,109,0.45);
-        }
-        .btn-clear {
-            background: #f0f3f8;
-            color: #1a3d6d;
-            border: 2px solid #dbe4ef;
-        }
-        .btn-clear:hover { background: #e2e9f3; }
+select * from eisapp.api_details where URN in('');
 
-        /* RESULT SECTION */
-        .result-section {
-            margin-top: 35px;
-            border-top: 3px dashed #dbe4ef;
-            padding-top: 25px;
-            animation: fadeIn 0.4s ease;
-        }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to   { opacity: 1; transform: translateY(0); }
-        }
-        .meta-bar {
-            display: flex;
-            gap: 12px;
-            flex-wrap: wrap;
-            margin-bottom: 18px;
-        }
-        .meta-bar span {
-            background: #eef4ff;
-            color: #1a3d6d;
-            padding: 7px 15px;
-            border-radius: 20px;
-            font-size: 13px;
-            font-weight: 600;
-            border: 1px solid #d3e0f5;
-        }
-        .alert {
-            padding: 14px 18px;
-            border-radius: 10px;
-            margin-bottom: 18px;
-            font-size: 14px;
-            font-weight: 500;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        .alert-success {
-            background: #e7f6ec;
-            border-left: 5px solid #2e9e52;
-            color: #1b5e20;
-        }
-        .alert-error {
-            background: #fdecea;
-            border-left: 5px solid #d93025;
-            color: #b71c1c;
-            font-family: 'Consolas', monospace;
-            white-space: pre-wrap;
-            font-size: 13px;
-        }
-        .table-wrap {
-            max-height: 550px;
-            overflow: auto;
-            border: 1px solid #dbe4ef;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.04);
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 13px;
-        }
-        th {
-            background: linear-gradient(135deg, #1a3d6d 0%, #2b5ba0 100%);
-            color: #fff;
-            padding: 12px 14px;
-            text-align: left;
-            position: sticky;
-            top: 0;
-            font-weight: 600;
-            letter-spacing: 0.3px;
-            white-space: nowrap;
-        }
-        td {
-            padding: 10px 14px;
-            border-bottom: 1px solid #eef2f7;
-            color: #333;
-            max-width: 400px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-        tr:nth-child(even) td { background: #fafcff; }
-        tr:hover td { background: #eef4ff; }
-        td.idx {
-            color: #889;
-            font-weight: 600;
-            font-size: 12px;
-            background: #f0f3f8 !important;
-        }
-        .null-val { color: #bbb; font-style: italic; }
-        .sql-preview {
-            margin-top: 18px;
-            background: #1e1e2e;
-            color: #cdd6f4;
-            padding: 14px 18px;
-            border-radius: 10px;
-            font-family: 'Consolas', monospace;
-            font-size: 12.5px;
-            white-space: pre-wrap;
-            overflow-x: auto;
-            border-left: 4px solid #2b5ba0;
-        }
-        .sql-preview b { color: #89b4fa; }
-        .empty {
-            text-align: center;
-            padding: 40px;
-            color: #889;
-            font-size: 14px;
-        }
-        .hint {
-            background: #fff8e1;
-            border-left: 4px solid #ffb300;
-            padding: 12px 16px;
-            border-radius: 8px;
-            font-size: 12.5px;
-            color: #664d00;
-            margin-top: 18px;
-        }
-        .hint code {
-            background: #fff;
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-size: 12px;
-        }
-    </style>
-</head>
-<body>
-<div class="container">
+select * from eisapp.orch_api_log where URN in ('');
 
-    <h1>🔎 Query Runner</h1>
-    <p class="subtitle">Database select karo, SQL likho, aur Run dabao — result neeche aayega.</p>
+select * from eisapp.orch_api_details where URN in ('');
 
-    <form method="post" action="query.jsp" id="qForm">
-        <div class="form-row">
-            <div>
-                <label for="dbType">Database</label>
-                <select name="dbType" id="dbType" required>
-                    <option value="REPORT" <%= "REPORT".equals(dbType) ? "selected" : "" %>>Report DB</option>
-                    <option value="IIB"    <%= "IIB".equals(dbType)    ? "selected" : "" %>>IIB DB</option>
-                    <option value="SI"     <%= "SI".equals(dbType)     ? "selected" : "" %>>SI DB</option>
-                </select>
-            </div>
-            <div>
-                <label for="sql">SQL Query</label>
-                <textarea name="sql" id="sql" placeholder="SELECT * FROM connection_master;" required><%= sql != null ? sql : "" %></textarea>
-            </div>
-        </div>
+select * from eisapp.backend_log where URN in ('');
 
-        <div class="btn-row">
-            <button type="submit" class="btn-run">▶ Run Query</button>
-            <button type="button" class="btn-clear" onclick="document.getElementById('sql').value=''; document.getElementById('sql').focus();">🗑 Clear</button>
-        </div>
+select * from eisapp.backend_details where URN in ('');
 
-        <div class="hint">
-            <b>Tip:</b> Bade tables par <code>WHERE rownum &lt;= 100</code> lagao. &nbsp;|&nbsp; <b>Ctrl+Enter</b> se bhi run ho jayega.
-        </div>
-    </form>
 
-    <%-- ================= RESULT SECTION (SAME PAGE) ================= --%>
-    <% if (qr != null) { %>
-        <div class="result-section">
-            <div class="meta-bar">
-                <span>🗄 DB: <%= dbType %></span>
-                <% if (qr.queryType != null) { %>
-                    <span>📝 Type: <%= qr.queryType %></span>
-                <% } %>
-                <span>⏱ Time: <%= qr.executionTimeMs %> ms</span>
-                <span>📦 Rows: <%= qr.rows.size() %></span>
-                <% if (qr.updateCount >= 0) { %>
-                    <span>✏️ Affected: <%= qr.updateCount %></span>
-                <% } %>
-            </div>
+----------------------------url--------------------------------------
 
-            <% if (qr.success) { %>
-                <div class="alert alert-success">✅ <%= qr.message %></div>
-            <% } else { %>
-                <div class="alert alert-error">❌ <%= qr.message %></div>
-            <% } %>
+select * from EISAPP.source_mapper;
 
-            <% if (qr.success && !qr.columns.isEmpty()) { %>
-                <div class="table-wrap">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>#</th>
-                                <% for (String col : qr.columns) { %>
-                                    <th><%= col %></th>
-                                <% } %>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <%
-                                int i = 1;
-                                for (Map<String, Object> row : qr.rows) {
-                            %>
-                                <tr>
-                                    <td class="idx"><%= i++ %></td>
-                                    <% for (String col : qr.columns) {
-                                           Object val = row.get(col);
-                                    %>
-                                        <td title="<%= val == null ? "NULL" : val.toString().replace("\"","&quot;") %>">
-                                            <%= val == null ? "<span class='null-val'>NULL</span>" : val.toString() %>
-                                        </td>
-                                    <% } %>
-                                </tr>
-                            <% } %>
-                        </tbody>
-                    </table>
-                </div>
-            <% } else if (qr.success && qr.columns.isEmpty()) { %>
-                <div class="empty">✅ Query execute ho gayi — koi row return nahi hui.</div>
-            <% } %>
+select * from EISAPP.url_mapper;
 
-            <div class="sql-preview"><b>Executed SQL:</b>
-<%= sql %></div>
-        </div>
-    <% } %>
+select * from EISAPP.urn_details;
 
-</div>
+SELECT * FROM EISAPP.cache_details;
 
-<script>
-    // Ctrl+Enter = Run
-    document.getElementById('sql').addEventListener('keydown', function(e) {
-        if (e.ctrlKey && e.key === 'Enter') {
-            e.preventDefault();
-            document.getElementById('qForm').submit();
-        }
-    });
-    // Auto focus on query box
-    window.addEventListener('load', function() {
-        var t = document.getElementById('sql');
-        t.focus();
-        t.selectionStart = t.selectionEnd = t.value.length;
-    });
-</script>
-</body>
-</html>
+select distinct api_name from eisapp.api_log where UPPER(api_name) like '%NOMINEE%';
+
+
+-------------------------------API LOG----------------------------------
+
+select trim(API_NAME),
+COUNT(1) "TOTAL_HITS",
+SUM(CASE WHEN RESPONSE_STATUS in ('0','SUCCESS') THEN 1 ELSE 0 END) AS SUCCESS,
+SUM(CASE WHEN error_code ='SI001' then 1 else 0 end) As "SI001",
+SUM(CASE WHEN substr(error_code,3,3) ='002'then 1 else 0 end) As "002",
+SUM(CASE WHEN error_code ='SI007' and error_code<> '70007' then 1 else 0 end) As "SI007",
+SUM(CASE WHEN error_code ='SI051' then 1 else 0 end) As "SI051",
+SUM(CASE WHEN substr(error_code,3,3) ='014' and error_code <> '00014' then 1 else 0 end) AS "014",
+SUM(CASE WHEN error_code ='SI569' then 1 else 0 end) As "SI569",
+SUM(CASE WHEN error_code ='SI570' then 1 else 0 end) As "SI570",
+SUM(CASE WHEN error_code ='SI052' then 1 else 0 end) As "SI052",
+SUM(CASE WHEN error_code ='SI005' then 1 else 0 end) As "SI005",
+SUM(CASE WHEN error_code ='SI077' then 1 else 0 end) As "SI077",
+SUM(CASE WHEN error_code ='SI003' then 1 else 0 end) As "SI003",
+SUM(CASE WHEN error_code ='SI017' then 1 else 0 end) As "SI017",
+SUM(CASE WHEN error_code ='SI015' then 1 else 0 end) As "SI015",
+SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI569','SI570','SI052','SI005','SI077','SI003','SI017','SI015')) and error_code <> '00014' THEN 1 ELSE 0 END) AS TD,
+ROUND((SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI569','SI570','SI052','SI005','SI077','SI003','SI017','SI015')) and error_code <> '00014' THEN 1 ELSE 0 END)*100)/COUNT(1),2) AS TD_PERCENT,
+SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','051','014','015') OR error_code IN ('00014','70007') ) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END) AS BD,
+ROUND((SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','051','014','015') OR error_code IN ('00014','70007') ) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END)*100)/COUNT(1),2) AS BD_PERCENT
+from eisapp.api_log where
+request_date_time>=SYSDATE - INTERVAL '60' minute
+--request_date_time between to_date('16-OCT-2025 17:00:00','DD-MON-YYYY HH24:MI:SS') and to_date('16-OCT-2025 18:00:00','DD-MON-YYYY HH24:MI:SS')
+GROUP BY trim(API_NAME)
+ORDER BY TD_PERCENT DESC;
+
+
+
+--------------------------------BACKEND LOG----------------------------------
+
+select TRIM(api_name),
+COUNT(1) "TOTAL_HITS",
+SUM(CASE WHEN error_code is null THEN 1 ELSE 0 END) AS SUCCESS,
+SUM(CASE WHEN error_code ='SI001' then 1 else 0 end) As "SI001",
+SUM(CASE WHEN substr(error_code,3,3) ='002' then 1 else 0 end) As "002",
+SUM(CASE WHEN error_code ='SI007' and error_code<> '70007' then 1 else 0 end) As "SI007",
+SUM(CASE WHEN error_code ='SI051' then 1 else 0 end) As "SI051",
+SUM(CASE WHEN substr(error_code,3,3) ='014' and error_code <> '00014' then 1 else 0 end) AS "014",
+SUM(CASE WHEN error_code ='SI569' then 1 else 0 end) As "SI569",
+SUM(CASE WHEN error_code ='SI570' then 1 else 0 end) As "SI570",
+SUM(CASE WHEN error_code ='SI052' then 1 else 0 end) As "SI052",
+SUM(CASE WHEN error_code ='SI005' then 1 else 0 end) As "SI005",
+SUM(CASE WHEN error_code ='SI077' then 1 else 0 end) As "SI077",
+SUM(CASE WHEN error_code ='SI003' then 1 else 0 end) As "SI003",
+SUM(CASE WHEN error_code ='SI017' then 1 else 0 end) As "SI017",
+SUM(CASE WHEN error_code ='SI015' then 1 else 0 end) As "SI015",
+SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI569','SI570','SI052','SI005','SI077','SI003','SI017','SI015')) and error_code <> '00014' THEN 1 ELSE 0 END) AS TD,
+ROUND((SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI569','SI570','SI052','SI005','SI077','SI003','SI017','SI015')) and error_code <> '00014' THEN 1 ELSE 0 END)*100)/COUNT(1),2) AS TD_PERCENT,
+SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','051','014','015') OR error_code IN ('00014','70007') ) and error_code IS NOT NULL THEN 1 ELSE 0 END) AS BD,
+ROUND((SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','051','014','015') OR error_code IN ('00014','70007') ) and error_code IS NOT NULL THEN 1 ELSE 0 END)*100)/COUNT(1),2) AS BD_PERCENT
+from eisapp.BACKEND_LOG  WHERE
+REQUEST_DATE_TIME>=SYSDATE - INTERVAL '60' minute
+--request_date_time between to_date('16-OCT-2025 17:00:00','DD-MON-YYYY HH24:MI:SS') and to_date('16-OCT-2025 18:00:00','DD-MON-YYYY HH24:MI:SS')
+--AND txn_endpoint = ''
+--and sys_broker = ''
+GROUP BY TRIM(api_name)
+ORDER BY TD_PERCENT DESC;
+
+--------------------THIRD PARTY----------------------------------
+
+select SUP_URL,ORIGINAL_URN,TRANSACTION_URN,source_id,
+COUNT(1) "TOTAL_HITS",
+SUM(CASE WHEN RESPONSE_STATUS in ('0','SUCCESS') THEN 1 ELSE 0 END) AS SUCCESS,
+SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') or error_code in('SI001','SI007','SI017','SI569','SI570','SI051','SI111')) and error_code<>'00014' THEN 1 ELSE 0 END) AS TD,
+ROUND((SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') or error_code in('SI001','SI007','SI017','SI569','SI570','SI051','SI111')) and error_code<>'00014' THEN 1 ELSE 0 END)*100)/COUNT(1)) AS TD_PERCENT,
+SUM(CASE WHEN substr(error_code,3,3) in ('002') THEN 1 ELSE 0 END) AS "002",
+SUM(CASE WHEN substr(error_code,3,3) in ('014') THEN 1 ELSE 0 END) AS "014",
+SUM(CASE WHEN ERROR_CODE='SI001'  THEN 1 ELSE 0 END) AS SI001,
+SUM(CASE WHEN ERROR_CODE='SI007'  THEN 1 ELSE 0 END) AS SI007,
+SUM(CASE WHEN ERROR_CODE='SI017'  THEN 1 ELSE 0 END) AS SI017,
+SUM(CASE WHEN ERROR_CODE='SI569'  THEN 1 ELSE 0 END) AS SI569,
+SUM(CASE WHEN ERROR_CODE='SI570'  THEN 1 ELSE 0 END) AS SI570,
+SUM(CASE WHEN ERROR_CODE='SI051'  THEN 1 ELSE 0 END) AS SI051,
+SUM(CASE WHEN ERROR_CODE='SI111'  THEN 1 ELSE 0 END) AS SI111,
+SUM(CASE WHEN ERROR_CODE ='SI052' THEN 1 ELSE 0 end) As SI052,
+SUM(CASE WHEN error_code ='SI005' then 1 else 0 end) As "SI005",
+SUM(CASE WHEN error_code ='SI077' then 1 else 0 end) As "SI077",
+SUM(CASE WHEN error_code ='SI003' then 1 else 0 end) As "SI003",
+SUM(CASE WHEN error_code ='SI017' then 1 else 0 end) As "SI017",
+SUM(CASE  WHEN ((nvl( substr(error_code,3,3),'A') not in  ('002','014') and  error_code not in('SI001','SI007','SI017','SI569','SI570','SI051','SI111','SI052','SI005','SI077','SI003','SI017')) OR error_code IN ('00014','70007') ) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END) AS BD_new,
+ROUND((SUM(CASE  WHEN ((nvl( substr(error_code,3,3),'A') not in  ('002','014') and  error_code not in('SI001','SI007','SI017','SI569','SI570','SI051','SI111','SI052','SI005','SI077','SI003','SI017')) OR error_code IN ('00014','70007') ) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END)*100)/count(1),2) AS BD_per_new
+from eisapp.api_LOG PARTITION(JUN_26) where URL in ('http://eispri.sbi.co.in:3011/TF/thirdParty/wrapper/services/misc',
+'http://eispri.sbi.co.in:3011/thirdPartyCMP/wrapper/services/misc',
+'http://eispri.sbi.co.in:3029/CCSID/thirdParty/wrapper/services/misc',
+'http://eispri.sbi.co.in:3024/thirdParty/microService/dedupe/misc',
+'http://eispri.sbi.co.in:3043/Y2/ht/thirdParty/microService/cifEnquiry/misc',
+'http://eispri.sbi.co.in:3040/thirdParty/wrapper/Loylty/services/misc',
+'http://eispri.sbi.co.in:3029/CCSID/PFM/thirdParty/wrapper/services/misc',
+'http://eispri.sbi.co.in:3011/thirdParty/AadhaarSeedDeseedCallback/misc',
+'http://eispri.sbi.co.in:3038/thirdParty/EKYCgenerateOTP/service/misc',
+'http://eispri.sbi.co.in:3016/IVR/thirdParty/wrapper/services/misc',
+'http://eispri.sbi.co.in:3011/thirdParty/rlms/lamfu/misc',
+'http://eispri.sbi.co.in:3017/thirdParty/wrapper/PMScheme/services/misc',
+'http://eispri.sbi.co.in:3011/thirdParty/OIGIDAM/wrapper/services/misc',
+'http://eispri.sbi.co.in:3038/thirdParty/EKYCgetDetails/service/misc',
+'http://eispri.sbi.co.in:3019/thirdParty/wrapper/services/misc',
+'http://eispri.sbi.co.in:3011/thirdPartyNXTGEN/wrapper/services/misc',
+'http://eispri.sbi.co.in:3017/thirdParty/wrapper/services/misc',
+'http://eispri.sbi.co.in:3028/thirdParty/wrapper/CRM/services/misc',
+'http://eispri.sbi.co.in:3011/thirdParty/wrapper/INB/services/misc',
+'http://eispri.sbi.co.in:3011/thirdParty/wrapper/CERSAI/misc',
+'http://eispri.sbi.co.in:3011/thirdParty/wrapper/RLMS/services/misc',
+'http://eispri.sbi.co.in:3034/thirdParty/microService/cifEnquiry/misc',
+'http://eispri.sbi.co.in:3011/ThirdParty/BASE/GetAccountDetails/misc',
+'http://eispri.sbi.co.in:3040/thirdParty/wrapper/SP1/services/misc',
+'http://eispri.sbi.co.in:3032/thirdParty/microService/cifEnquiryLW/misc',
+'http://eispri.sbi.co.in:3011/ThirdParty/Generic/BASE/misc',
+'http://eispri.sbi.co.in:3011/thirdParty/wrapper/NCRP_I4C/services/misc',
+'http://eispri.sbi.co.in:3011/thirdParty/vidyaLakshmiPortal/misc',
+'http://eispri.sbi.co.in:3017/thirdParty/wrapper/NSE/services/misc',
+'http://eispri.sbi.co.in:3017/thirdPartyLargePayload/wrapper/services/misc',
+'http://eispri.sbi.co.in:3011/thirdParty/BMC/wrapper/services/misc',
+'http://eispri.sbi.co.in:3039/thirdParty/wrapper/Martech/services/misc',
+'http://eispri.sbi.co.in:3038/thirdParty/EKYCAuthenticate/Aadharservice/misc',
+'http://eispri.sbi.co.in:3038/thirdParty/AadharSeedingNPCIMulti/Bio/misc',
+'http://eispri.sbi.co.in:3030/thirdParty/ivr/mobilechange/misc') AND
+creation_date_time>=SYSDATE - INTERVAL '60' minute
+--creation_date_time between to_date('06-JUN-2023 10:00:00','DD-MON-YYYY HH24:MI:SS') and to_date('06-JUN-2023  10:30:00','DD-MON-YYYY HH24:MI:SS')
+GROUP BY SUP_URL,ORIGINAL_URN,TRANSACTION_URN,source_id
+HAVING (SUM(CASE WHEN (RESPONSE_STATUS  not in ('0','SUCCESS') and error_code is not null) THEN 1 ELSE 0 END)*100)/COUNT(1)=100
+order by TD_PERCENT desc;
+
+------------------to find a particular service----------------
+
+select * from eisapp.api_LOG where  
+URL = 'http://eispri.sbi.co.in:3017/thirdParty/wrapper/services/misc'
+and SUP_URL = ''
+and ORIGINAL_URN = ''
+and TRANSACTION_URN = ''
+and source_id = ''
+and trunc(request_date_time)=trunc(sysdate)
+order by creation_date_time desc ;
+
+
+
+-------------- MINUTE WISE-----------------
+--TO FIND MINUTE WISE TDBD/HITS JUST ADD BELOW LINE IN SELECT AND GROUP BY
+--TO_CHAR(request_date_time, 'YYYY-MM-DD HH24:MI') AS minute_slot
+
+
+---------------SI Monitoring----------
+
+SELECT function_name,ERROR_CODE, ERROR_DESC, COUNT(*) AS CNT FROM SBISI.SI_TRANS_DB
+WHERE --trunc(REQ_TIME)=trunc(SYSDATE )
+SUBSTR(error_code,1,2) = 'SI'
+and req_time>=SYSDATE - INTERVAL '10' MINUTE
+GROUP BY ERROR_CODE,ERROR_DESC,function_name ORDER BY CNT DESC;
+
+
+-------------EKYC TD% (SI207) and (SI372)------
+
+select COUNT(1) as TOTAL_HITS,
+SUM(CASE WHEN ERROR_CODE IS NULL THEN 1 ELSE 0 END) AS SUCCESS,
+SUM(CASE WHEN ERROR_CODE IS NOT NULL AND error_code NOT IN ('SI392','SI207') THEN 1 ELSE 0 END) "BD",
+SUM(CASE WHEN ERROR_CODE='SI392' THEN 1 ELSE 0 END) "SI392",
+ROUND((SUM(CASE WHEN ERROR_CODE='SI392' THEN 1 ELSE 0 END)/COUNT(1))*100,2) "SI392%",
+SUM(CASE WHEN ERROR_CODE='SI207' THEN 1 ELSE 0 END) "SI207",
+ROUND((SUM(CASE WHEN ERROR_CODE='SI207' THEN 1 ELSE 0 END)/COUNT(1))*100,2) "SI207%",
+ROUND((SUM(CASE WHEN error_code IN ('SI392','SI207') THEN 1 ELSE 0 END)/COUNT(1))*100,2) "TD%"
+from SBISI.EKYC_log where resp_date_time >=sysdate - interval '15' minute;
+
+
+select error_code,error_desc,count(1),function_name from SBISI.SI_TRANS_DB where  function_name in ('EKYCGETDETAILS','EKYCGenerateOTP')
+---and SUBSTR(error_code,1,2) = 'SI'
+and req_time>=SYSDATE - INTERVAL '10' MINUTE group by error_code,error_desc,function_name;
+
+select *  from SBISI.SI_TRANS_DB where  function_name in ('EKYCGETDETAILS','EKYCGenerateOTP')
+---and SUBSTR(error_code,1,2) = 'SI'
+and error_code = 'SI392'
+and req_time>=SYSDATE - INTERVAL '10' MINUTE  order by req_time desc;
+
+-----------------NPCI ESCALATION--------------
+
+select count(1), nvl(error_desc,'Success')
+from SBISI.EKYC_log
+where resp_date_time >=sysdate - interval '10' minute
+group by nvl(error_desc,'Success')
+order by 1 desc;
+
+select *  from SBISI.ekyc_log where
+ error_code = 'SI392'
+and req_date_time>=SYSDATE - INTERVAL '10' MINUTE  order by req_date_time desc;
+
+select * from SBISI.ekyc_log where ref_no in ('SBILT24112021140737631568',
+'SBILT24112021140737631568',
+'SBILT24112021140727569388',
+'SBILT24112021140727569388',
+'SBILT24112021140728088991',
+'SBILT24112021140717785729');
+
+
+select 'ekyc' as FUNCTION_NAME, COUNT(1) as TOTAL_HITS,
+SUM(CASE WHEN ERROR_CODE IS NULL THEN 1 ELSE 0 END) AS SUCCESS,
+SUM(CASE WHEN ERROR_CODE IS NOT NULL AND error_code NOT IN ('SI392','SI207') THEN 1 ELSE 0 END) "BD",
+SUM(CASE WHEN ERROR_CODE='SI392' THEN 1 ELSE 0 END) "SI392",
+ROUND((SUM(CASE WHEN ERROR_CODE='SI392' THEN 1 ELSE 0 END)/COUNT(1))*100,2) "SI392%",
+SUM(CASE WHEN ERROR_CODE='SI207' THEN 1 ELSE 0 END) "SI207",
+ROUND((SUM(CASE WHEN ERROR_CODE='SI207' THEN 1 ELSE 0 END)/COUNT(1))*100,2) "SI207%",
+SUM(CASE WHEN error_code IN ('SI392','SI207') THEN 1 ELSE 0 END) TD_COUNT,
+ROUND((SUM(CASE WHEN error_code IN ('SI392','SI207') THEN 1 ELSE 0 END)/COUNT(1))*100,2) "TD%"
+from SBISI.EKYC_log where resp_date_time >=sysdate - interval '15' minute
+
+union all
+select FUNCTION_NAME ,COUNT(1) as TOTAL_HITS,
+SUM(CASE WHEN ERROR_CODE IS NULL THEN 1 ELSE 0 END) AS SUCCESS,
+SUM(CASE WHEN ERROR_CODE IS NOT NULL AND error_code NOT IN ('SI392','SI207') THEN 1 ELSE 0 END) "BD",
+SUM(CASE WHEN ERROR_CODE='SI392' THEN 1 ELSE 0 END) "SI392",
+ROUND((SUM(CASE WHEN ERROR_CODE='SI392' THEN 1 ELSE 0 END)/COUNT(1))*100,2) "SI392%",
+SUM(CASE WHEN ERROR_CODE='SI207' THEN 1 ELSE 0 END) "SI207",
+ROUND((SUM(CASE WHEN ERROR_CODE='SI207' THEN 1 ELSE 0 END)/COUNT(1))*100,2) "SI207%",
+SUM(CASE WHEN error_code IN ('SI392','SI207') THEN 1 ELSE 0 END) TD_COUNT,
+ROUND((SUM(CASE WHEN error_code IN ('SI392','SI207') THEN 1 ELSE 0 END)/COUNT(1))*100,2) "TD%"
+from SBISI.si_trans_db where reQ_time >=sysdate - interval '15' minute
+GROUP BY FUNCTION_NAME
+ORDER BY TD_COUNT DESC;
+
+-----------------EPAY--------------
+
+WITH CTE AS (select
+SUM(CASE WHEN a.payment_status='Y' THEN 1 ELSE 0 END) AS EPAY_SEND,
+MAX(A.payment_date_time) AS EPAY_LAST_SEND_DATE,
+SUM(CASE WHEN b.POST_FLAG='Y' THEN 1 ELSE 0 END) AS EPAY_POST,
+MAX(B.POST_DATE_TIME) AS EPAY_LAST_POST_DATE
+from EPAY_txn_master a INNER JOIN EPAY_feed_master b ON a.REFERENCE_NO=b.REFERENCE_NO
+WHERE
+A.PAYMENT_DATE_TIME between
+to_date('06-NOV-24 19:00:00','DD-MM-YY HH24:MI:SS') and to_date('06-11-24 20:00:00','DD-MM-YY HH24:MI:SS'))
+SELECT CTE.EPAY_SEND, CTE.EPAY_LAST_SEND_DATE,CTE.EPAY_POST,CTE.EPAY_LAST_POST_DATE
+FROM CTE;
+
+---------------------------------------------------high response--------------------------------------------------------
+
+SELECT exp_ip,COUNT(1),
+SUM(CASE WHEN RESPONSE_STATUS in ('0','SUCCESS') THEN 1 ELSE 0 END) AS SUCCESS,
+SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') or error_code in('SI001','SI007','SI017','SI569','SI570','SI051','SI111','SI015')) and error_code<>'00014' THEN 1 ELSE 0 END) AS TD,
+ROUND((SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') or error_code in('SI001','SI007','SI017','SI569','SI570','SI051','SI111','SI015')) and error_code
+<>'00014' THEN 1 ELSE 0 END)*100)/COUNT(1),2) AS TD_PERCENT,
+SUM(CASE WHEN  error_code in('SI001','SI002','SI014','SI007','SI017','SI569','SI570','SI051','SI111','SI015') THEN 1 ELSE 0 END) AS EIS_TD,
+ROUND((SUM(CASE WHEN  error_code in('SI001','SI002','SI014','SI007','SI017','SI569','SI570','SI051','SI111','SI015') THEN 1 ELSE 0 END)*100)/COUNT(1),2) AS EIS_TD_PER,
+SUM(CASE  WHEN ((nvl( substr(error_code,3,3),'A') not in  ('002','014') and  error_code not in('SI001','SI007','SI017','SI569','SI570','SI051','SI111','SI015')) OR error_code IN ('00014','70007') ) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END) AS BD_new,
+ROUND((SUM(CASE  WHEN ((nvl( substr(error_code,3,3),'A') not in  ('002','014') and  error_code not in('SI001','SI007','SI017','SI569','SI570','SI051','SI111','SI015')) OR error_code IN ('00014','70007') ) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END)*100)/count(1),2) AS BD_per_new,
+sum(case when TO_NUMBER(SUBSTR(TO_CHAR(RESPONSE_DATE_TIME-dpg_request_date_time),18))< 0.1 then 1 else 0 end ) as BELOW_100MSEC ,
+sum(case when TO_NUMBER(SUBSTR(TO_CHAR(RESPONSE_DATE_TIME-dpg_request_date_time),18))between 0.1 AND 0.5 then 1 else 0 end ) as "between 100ms-500ms" ,
+sum(case when TO_NUMBER(SUBSTR(TO_CHAR(RESPONSE_DATE_TIME-dpg_request_date_time),18))between 0.5 AND 1 then 1 else 0 end ) as "between 500ms-1s" ,
+sum(case when TO_NUMBER(SUBSTR(TO_CHAR(RESPONSE_DATE_TIME-dpg_request_date_time),18)) between 1.001 and 5 then 1 else 0 end ) as ONE_TO_5_SEC,
+sum(case when TO_NUMBER(SUBSTR(TO_CHAR(RESPONSE_DATE_TIME-dpg_request_date_time),18))> 5 then 1 else 0 end ) as ABOVE_FIVE_SEC
+FROM EISAPP.API_LOG WHERE broker_name = 'LOGGING_EXP' and
+request_date_time>=SYSDATE-INTERVAL '02' MINUTE
+group by exp_ip;
+
+-----------------------------------------------------------------------------------------sys -----------------------------------------------------------------------------------
+SELECT b.sys_ip,COUNT(1),sum(case when TO_NUMBER(SUBSTR(TO_CHAR(b.request_DATE_TIME-a.request_DATE_TIME),18))< 0.1 then 1 else 0 end ) as BELOW_100MSEC ,
+sum(case when TO_NUMBER(SUBSTR(TO_CHAR(b.request_DATE_TIME-a.request_DATE_TIME),18))between 0.1 AND 0.5 then 1 else 0 end ) as "between 100ms-500ms" ,
+sum(case when TO_NUMBER(SUBSTR(TO_CHAR(b.request_DATE_TIME-a.request_DATE_TIME),18))between 0.5 AND 1 then 1 else 0 end ) as "between 500ms-1s" ,
+sum(case when TO_NUMBER(SUBSTR(TO_CHAR(b.request_DATE_TIME-a.request_DATE_TIME),18)) between 1.001 and 5 then 1 else 0 end ) as ONE_TO_5_SEC,
+sum(case when TO_NUMBER(SUBSTR(TO_CHAR(b.request_DATE_TIME-a.request_DATE_TIME),18))> 5 then 1 else 0 end ) as ABOVE_FIVE_SEC
+FROM  EISAPP.backend_log b , EISAPP.orch_api_log a WHERE a.urn=b.urn and b.sys_broker = 'LOGGING_SYS' and
+b.creation_date_time>=SYSDATE-INTERVAL '02' MINUTE
+group by b.sys_ip;
+
+--------------------------------------------------------------------------------------ACTIVE-ACTIVE QUERY----------------------------------------------------------------------------------------
+
+----SUCCESS in PR BUT TD / BD FAILURE in DR-----
+
+with PR_APIS as(select /*+parallel(08)*/ api_name, count(1) as success_hits  from eisapp.api_log
+where request_date_time BETWEEN TO_DATE ('24-NOV-2025 18:31:00', 'DD-MON-YYYY HH24:MI:SS') AND TO_DATE ('24-nov-2025 18:36:00', 'DD-MON-YYYY HH24:MI:SS')
+AND error_code is null
+group by api_name
+),
+
+DR_APIS as(select  /*+parallel(08)*/ api_name,count(1) AS HITS,
+SUM(case when error_code is null then 1 end) SUCCESS ,
+SUM(case when error_code is not null then 1 end) FAIL,
+SUM(CASE WHEN error_code='SI001' THEN 1 ELSE 0 END)   DR_SI001,
+SUM(CASE WHEN substr(error_code,3,3) ='002' then 1 else 0 end) DR_DYNMIC_002,
+SUM(CASE WHEN error_code='SI002' THEN 1 ELSE 0 END) DR_SI002,
+SUM(CASE WHEN substr(error_code,3,3) ='014' and error_code <> '00014' then 1 else 0 end) DR_DYNMIC_014,
+SUM(CASE WHEN error_code='SI014' THEN 1 ELSE 0 END) DR_SI014,
+SUM(CASE WHEN error_code='SI051' THEN 1 ELSE 0 END) DR_SI051,
+SUM(CASE WHEN error_code='SI569' THEN 1 ELSE 0 END) DR_SI569,
+SUM(CASE WHEN error_code='SI570' THEN 1 ELSE 0 END) DR_SI570,
+SUM(CASE WHEN error_code='SI111' THEN 1 ELSE 0 END) DR_SI111,
+SUM(CASE WHEN error_code='SI052' THEN 1 ELSE 0 END) DR_SI052,
+SUM(CASE WHEN ((nvl(substr(error_code,3,3),'A') not in ('002','014') and error_code not in('SI001','SI007','SI017','SI569','SI570','SI051','SI111','SI052','SI015')) OR error_code IN ('00014','70007')) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END) AS DR_BD,
+(count(1)/SUM(case when error_code is not null then 1 end)) AS NUMB
+from eisapp.api_log@form_hiDB
+where --trunc(request_date_time) = '25-APR-25'
+request_date_time BETWEEN TO_DATE ('24-NOV-2025 18:31:00', 'DD-MON-YYYY HH24:MI:SS') AND TO_DATE ('24-nov-2025 18:36:00', 'DD-MON-YYYY HH24:MI:SS')
+group by api_name
+HAVING (count(1)/SUM(case when error_code is not null then 1 end)) = 1
+)
+select /*+parallel(08)*/
+Dr.API_NAME AS FAILURE_DR_APIS,pr.success_hits as pr_success_hits ,dr.SUCCESS as DR_SUCCESS,DR.FAIL AS TOTAL_DR_FAILURE,DR.DR_SI001,dr.DR_DYNMIC_002,dr.DR_SI002, dr.DR_DYNMIC_014,dr.DR_SI014,dr.DR_SI051,dr.DR_SI569,dr.DR_SI570,dr.dr_SI111,dr.DR_SI052, dr.DR_BD as dr_TOTAL_BD
+from pr_apis pr left join   Dr_apis dr
+  on pr.api_name = dr.api_name
+WHERE DR.NUMB = 1
+order by TOTAL_DR_FAILURE desc
+;
+
+
+---------SUCCESS in PR BUT TD FAILURE in DR-----
+
+
+
+with PR_APIS as(select /*+parallel(04)*/ api_name, count(1) as success_hits  from eisapp.api_log
+where request_date_time BETWEEN TO_DATE ('24-NOV-2025 18:31:00', 'DD-MON-YYYY HH24:MI:SS') AND TO_DATE ('24-nov-2025 18:36:00', 'DD-MON-YYYY HH24:MI:SS')
+ AND error_code is null
+group by api_name
+),
+
+DR_APIS as(select  /*+parallel(04)*/ api_name,count(1) AS HITS,
+SUM(case when error_code is null then 1 end) SUCCESS ,
+SUM(case when ((substr(error_code,3,3) in ('002','014')) or error_code in('SI001','SI007','SI017','SI569','SI570','SI051','SI111','SI052')) and error_code<>'00014' then 1 end) FAIL,
+SUM(CASE WHEN error_code='SI001' THEN 1 ELSE 0 END)   DR_SI001,
+SUM(CASE WHEN substr(error_code,3,3) ='002' then 1 else 0 end) DR_DYNMIC_002,
+SUM(CASE WHEN error_code='SI002' THEN 1 ELSE 0 END) DR_SI002,
+SUM(CASE WHEN substr(error_code,3,3) ='014' and error_code <> '00014' then 1 else 0 end) DR_DYNMIC_014,
+SUM(CASE WHEN error_code='SI014' THEN 1 ELSE 0 END) DR_SI014,
+SUM(CASE WHEN error_code='SI051' THEN 1 ELSE 0 END) DR_SI051,
+SUM(CASE WHEN error_code='SI569' THEN 1 ELSE 0 END) DR_SI569,
+SUM(CASE WHEN error_code='SI570' THEN 1 ELSE 0 END) DR_SI570,
+SUM(CASE WHEN error_code='SI111' THEN 1 ELSE 0 END) DR_SI111,
+SUM(CASE WHEN error_code='SI052' THEN 1 ELSE 0 END) DR_SI052,
+(count(1)/SUM(case when ((substr(error_code,3,3) in ('002','014') )or error_code in('SI001','SI007','SI017','SI569','SI570','SI051','SI111','SI052','SI015')) and error_code<>'00014' then 1 end)) AS NUMB
+from eisapp.api_log@form_hiDB
+where --trunc(request_date_time) = '25-APR-25'
+request_date_time BETWEEN TO_DATE ('24-NOV-2025 18:31:00', 'DD-MON-YYYY HH24:MI:SS') AND TO_DATE ('24-nov-2025 18:36:00', 'DD-MON-YYYY HH24:MI:SS')
+group by api_name
+HAVING (count(1)/SUM(case when ((substr(error_code,3,3) in ('002','014')) or error_code in('SI001','SI007','SI017','SI569','SI570','SI051','SI111','SI052','SI015')) and error_code<>'00014' then 1 end)) = 1
+)
+select /*+parallel(04)*/ Dr.API_NAME AS FAILURE_DR_APIS,pr.success_hits as pr_success_hits ,dr.SUCCESS as DR_SUCCESS,DR.FAIL AS TOTAL_DR_FAILURE,DR.DR_SI001,dr.DR_DYNMIC_002,dr.DR_SI002, dr.DR_DYNMIC_014,dr.DR_SI014,dr.DR_SI051,dr.DR_SI569,dr.DR_SI570,dr.dr_SI111,dr.DR_SI052
+from pr_apis pr left join   Dr_apis dr
+on pr.api_name = dr.api_name
+WHERE DR.NUMB = 1
+order by TOTAL_DR_FAILURE desc
+;
+
+
+----------------------------MIN WISE EXP QUERY---------------------
+SELECT /*+ parallel(16)*/ API_NAME,to_char(request_date_time,'HH24:MI') AS MIN, COUNT(1),
+SUM(CASE WHEN RESPONSE_STATUS in ('0','SUCCESS') THEN 1 ELSE 0 END) AS SUCCESS,
+SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') or error_code in('SI001','SI007','SI017','SI569','SI570','SI051','SI111','SI015')) and error_code<>'00014' THEN 1 ELSE 0 END) AS TD,
+ROUND((SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') or error_code in('SI001','SI007','SI017','SI569','SI570','SI051','SI111','SI015')) and error_code<>'00014' THEN 1 ELSE 0 END)*100)/COUNT(1),2) AS TD_PERCENT,
+SUM(CASE WHEN error_code in('SI001','SI002','SI014','SI007','SI017','SI569','SI570','SI051','SI111') THEN 1 ELSE 0 END) AS EIS_TD,
+ROUND((SUM(CASE WHEN error_code in('SI001','SI002','SI014','SI007','SI017','SI569','SI570','SI051','SI111') THEN 1 ELSE 0 END)*100)/COUNT(1),2) AS EIS_TD_PER,
+SUM(CASE WHEN error_code='SI001' THEN 1 ELSE 0 END) "SI001",
+SUM(CASE WHEN substr(error_code,3,3) ='002' then 1 else 0 end) "002",
+SUM(CASE WHEN error_code='SI002' THEN 1 ELSE 0 END) "SI002",
+SUM(CASE WHEN error_code='CB002' THEN 1 ELSE 0 END) "CB002",
+SUM(CASE WHEN error_code='CB014' THEN 1 ELSE 0 END) "CB014",
+SUM(CASE WHEN substr(error_code,3,3) ='014' and error_code <> '00014' then 1 else 0 end) "014",
+SUM(CASE WHEN error_code='SI051' THEN 1 ELSE 0 END) "SI051",
+SUM(CASE WHEN error_code='SI569' THEN 1 ELSE 0 END) "SI569",
+SUM(CASE WHEN error_code='SI570' THEN 1 ELSE 0 END) "SI570",
+SUM(CASE WHEN ((nvl( substr(error_code,3,3),'A') not in ('002','014') and error_code not in('SI001','SI007','SI017','SI569','SI570','SI051','SI111','SI015')) OR error_code IN ('00014','70007') ) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END) AS BD_new,
+ROUND((SUM(CASE WHEN ((nvl( substr(error_code,3,3),'A') not in ('002','014') and error_code not in('SI001','SI007','SI017','SI569','SI570','SI051','SI111','SI015')) OR error_code IN ('00014','70007') ) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END)*100)/count(1),2) AS BD_per_new
+FROM EISAPP.API_LOG WHERE
+SOURCE_ID='Y2'
+AND API_NAME IN ('custEnquiryMicro_expDS','YONOLoginJourneyMicro_expDS','microserviceCIFEnquiry_expDS') AND
+----REQUEST_DATE_TIME between to_date('03-JUN-2025 00:00:00','DD-MON-YYYY HH24:MI:SS') and to_date('04-JUN-2025 23:59:59','DD-MON-YYYY HH24:MI:SS')
+request_date_time >= sysdate - INTERVAL '60' MINUTE
+group by API_NAME,to_char(request_date_time,'HH24:MI')
+ORDER BY 1;
+
+
+
+----------------------------HOUR WISE EXP QUERY---------------------
+SELECT /*+ parallel(16)*/ API_NAME,to_char(request_date_time,'HH24') AS HOUR, COUNT(1),
+SUM(CASE WHEN RESPONSE_STATUS in ('0','SUCCESS') THEN 1 ELSE 0 END) AS SUCCESS,
+SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') or error_code in('SI001','SI007','SI017','SI569','SI570','SI051','SI111','SI015')) and error_code<>'00014' THEN 1 ELSE 0 END) AS TD,
+ROUND((SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') or error_code in('SI001','SI007','SI017','SI569','SI570','SI051','SI111','SI015')) and error_code<>'00014' THEN 1 ELSE 0 END)*100)/COUNT(1),2) AS TD_PERCENT,
+SUM(CASE WHEN error_code in('SI001','SI002','SI014','SI007','SI017','SI569','SI570','SI051','SI111') THEN 1 ELSE 0 END) AS EIS_TD,
+ROUND((SUM(CASE WHEN error_code in('SI001','SI002','SI014','SI007','SI017','SI569','SI570','SI051','SI111') THEN 1 ELSE 0 END)*100)/COUNT(1),2) AS EIS_TD_PER,
+SUM(CASE WHEN error_code='SI001' THEN 1 ELSE 0 END) "SI001",
+SUM(CASE WHEN substr(error_code,3,3) ='002' then 1 else 0 end) "002",
+SUM(CASE WHEN error_code='SI002' THEN 1 ELSE 0 END) "SI002",
+SUM(CASE WHEN error_code='CB002' THEN 1 ELSE 0 END) "CB002",
+SUM(CASE WHEN error_code='CB014' THEN 1 ELSE 0 END) "CB014",
+SUM(CASE WHEN substr(error_code,3,3) ='014' and error_code <> '00014' then 1 else 0 end) "014",
+SUM(CASE WHEN error_code='SI051' THEN 1 ELSE 0 END) "SI051",
+SUM(CASE WHEN error_code='SI569' THEN 1 ELSE 0 END) "SI569",
+SUM(CASE WHEN error_code='SI570' THEN 1 ELSE 0 END) "SI570",
+SUM(CASE WHEN ((nvl( substr(error_code,3,3),'A') not in ('002','014') and error_code not in('SI001','SI007','SI017','SI569','SI570','SI051','SI111','SI015')) OR error_code IN ('00014','70007') ) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END) AS BD_new,
+ROUND((SUM(CASE WHEN ((nvl( substr(error_code,3,3),'A') not in ('002','014') and error_code not in('SI001','SI007','SI017','SI569','SI570','SI051','SI111','SI015')) OR error_code IN ('00014','70007') ) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END)*100)/count(1),2) AS BD_per_new
+FROM EISAPP.API_LOG WHERE
+SOURCE_ID='Y2'
+AND API_NAME IN ('custEnquiryMicro_expDS','YONOLoginJourneyMicro_expDS','microserviceCIFEnquiry_expDS') AND
+----REQUEST_DATE_TIME between to_date('03-JUN-2025 00:00:00','DD-MON-YYYY HH24:MI:SS') and to_date('04-JUN-2025 23:59:59','DD-MON-YYYY HH24:MI:SS')
+request_date_time >= sysdate - INTERVAL '60' MINUTE
+group by API_NAME, to_char(request_date_time,'HH24')
+ORDER BY 1;
+
+
+
+
+----------------------------MIN WISE SYS QUERY---------------------
+select to_char(request_date_time,'HH24:MI') AS MIN,
+COUNT(1) "TOTAL_HITS",
+SUM(CASE WHEN error_code is null THEN 1 ELSE 0 END) AS SUCCESS,
+SUM(CASE WHEN error_code ='SI001' then 1 else 0 end) As "SI001",
+SUM(CASE WHEN error_code ='SI002' then 1 else 0 end) As "SI002",
+SUM(CASE WHEN substr(error_code,3,3) ='002' AND error_code <>'SI002' then 1 else 0 end) As "DYNAMIC 002",
+SUM(CASE WHEN error_code ='SI007' and error_code<> '70007' then 1 else 0 end) As "SI007",
+SUM(CASE WHEN error_code ='SI051' then 1 else 0 end) As "SI051",
+SUM(CASE WHEN substr(error_code,3,3) ='014' and error_code <> '00014' then 1 else 0 end) AS "014",
+SUM(CASE WHEN error_code ='SI569' then 1 else 0 end) As "SI569",
+SUM(CASE WHEN error_code ='SI570' then 1 else 0 end) As "SI570",
+SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI569','SI570','SI015')) and error_code <> '00014' THEN 1 ELSE 0 END) AS TD,
+ROUND((SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI569','SI570','SI015')) and error_code <> '00014' THEN 1 ELSE 0 END)*100)/COUNT(1),2) AS TD_PERCENT,
+SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','051','014') OR error_code IN ('00014','70007') ) and error_code IS NOT NULL THEN 1 ELSE 0 END) AS BD,
+ROUND((SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','051','014') OR error_code IN ('00014','70007') ) and error_code IS NOT NULL THEN 1 ELSE 0 END)*100)/COUNT(1),2) AS BD_PERCENT
+from eisapp.BACKEND_LOG where
+REQUEST_DATE_TIME between to_date('03-JUN-2025 00:00:00','DD-MON-YYYY HH24:MI:SS') and to_date('04-JUN-2025 23:59:59','DD-MON-YYYY HH24:MI:SS')
+--request_date_time >= sysdate - INTERVAL '60' MINUTE
+GROUP BY to_char(request_date_time,'HH24:MI')
+ORDER BY 1;
+
+
+
+----------------------------HOUR WISE SYS QUERY---------------------
+select to_char(request_date_time,'HH24') AS HOUR,
+COUNT(1) "TOTAL_HITS",
+SUM(CASE WHEN error_code is null THEN 1 ELSE 0 END) AS SUCCESS,
+SUM(CASE WHEN error_code ='SI001' then 1 else 0 end) As "SI001",
+SUM(CASE WHEN error_code ='SI002' then 1 else 0 end) As "SI002",
+SUM(CASE WHEN substr(error_code,3,3) ='002' AND error_code <>'SI002' then 1 else 0 end) As "DYNAMIC 002",
+SUM(CASE WHEN error_code ='SI007' and error_code<> '70007' then 1 else 0 end) As "SI007",
+SUM(CASE WHEN error_code ='SI051' then 1 else 0 end) As "SI051",
+SUM(CASE WHEN substr(error_code,3,3) ='014' and error_code <> '00014' then 1 else 0 end) AS "014",
+SUM(CASE WHEN error_code ='SI569' then 1 else 0 end) As "SI569",
+SUM(CASE WHEN error_code ='SI570' then 1 else 0 end) As "SI570",
+SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI569','SI570','SI015')) and error_code <> '00014' THEN 1 ELSE 0 END) AS TD,
+ROUND((SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI569','SI570','SI015')) and error_code <> '00014' THEN 1 ELSE 0 END)*100)/COUNT(1),2) AS TD_PERCENT,
+SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','051','014') OR error_code IN ('00014','70007') ) and error_code IS NOT NULL THEN 1 ELSE 0 END) AS BD,
+ROUND((SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','051','014') OR error_code IN ('00014','70007') ) and error_code IS NOT NULL THEN 1 ELSE 0 END)*100)/COUNT(1),2) AS BD_PERCENT
+from eisapp.BACKEND_LOG where
+REQUEST_DATE_TIME between to_date('03-JUN-2025 00:00:00','DD-MON-YYYY HH24:MI:SS') and to_date('04-JUN-2025 23:59:59','DD-MON-YYYY HH24:MI:SS')
+--request_date_time >= sysdate - INTERVAL '60' MINUTE
+GROUP BY to_char(request_date_time,'HH24')
+ORDER BY 1;
+
+
+----------------------------------------------------------------------------------
+
