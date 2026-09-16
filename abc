@@ -1,100 +1,42 @@
-WITH gen5_base AS (
-    SELECT ip, type, route_url, lb_url AS gen5_lb_url
-    FROM daily_dpg_url_data
-    WHERE (UPPER(lb_url) LIKE 'GEN5/GATEWAY%'
-        OR UPPER(lb_url) LIKE 'GEN5%GATEWAY%'
-        OR UPPER(lb_url) LIKE '%GEN5/GETWAY%')
-      AND UPPER(lb_url) NOT LIKE '%SIAPP3%'
-),
-gen6_base AS (
-    SELECT ip, type, route_url, lb_url AS gen6_lb_url
-    FROM daily_dpg_url_data
-    WHERE UPPER(lb_url) NOT LIKE '%GEN5%'
-      AND UPPER(lb_url) NOT LIKE '%SIAPP3%'
-),
-gen5 AS (
-    SELECT 
-        a.ip,
-        a.type,
-        a.route_url,
-        a.gen5_lb_url,
-        b.gen6_lb_url
-    FROM gen5_base a
-    LEFT JOIN (
-        SELECT 
-            g6.ip,
-            g6.type,
-            g6.route_url,
-            g6.gen6_lb_url,
-            ROW_NUMBER() OVER (
-                PARTITION BY g6.ip, g6.type, g6.route_url
-                ORDER BY 
-                    CASE 
-                        WHEN REGEXP_SUBSTR(g6.gen6_lb_url, '[^/]+$') = 
-                             REGEXP_SUBSTR(g5.gen5_lb_url, '[^/]+$')
-                        THEN 1
-                        ELSE 2
-                    END,
-                    g6.gen6_lb_url
-            ) rn
-        FROM gen6_base g6
-        JOIN gen5_base g5
-          ON g5.ip = g6.ip
-         AND g5.type = g6.type
-         AND g5.route_url = g6.route_url
-    ) b
-    ON a.ip = b.ip
-    AND a.type = b.type
-    AND a.route_url = b.route_url
-    AND b.rn = 1
-),
-gen6_siapp3_base AS (
-    SELECT ip, type, route_url, lb_url AS gen5_lb_url
-    FROM daily_dpg_url_data
-    WHERE UPPER(lb_url) LIKE '%SIAPP3%GEN5%'
-),
-gen6_siapp3_target AS (
-    SELECT ip, type, route_url, lb_url AS gen6_lb_url
-    FROM daily_dpg_url_data
-    WHERE UPPER(lb_url) LIKE '%SIAPP3%'
-      AND UPPER(lb_url) NOT LIKE '%GEN5/GATEWAY%'
-),
-gen6 AS (
-    SELECT 
-        a.ip,
-        a.type,
-        a.route_url,
-        a.gen5_lb_url,
-        b.gen6_lb_url
-    FROM gen6_siapp3_base a
-    LEFT JOIN (
-        SELECT 
-            g6.ip,
-            g6.type,
-            g6.route_url,
-            g6.gen6_lb_url,
-            ROW_NUMBER() OVER (
-                PARTITION BY g6.ip, g6.type, g6.route_url
-                ORDER BY 
-                    CASE 
-                        WHEN REGEXP_SUBSTR(g6.gen6_lb_url, '[^/]+$') = 
-                             REGEXP_SUBSTR(g5.gen5_lb_url, '[^/]+$')
-                        THEN 1
-                        ELSE 2
-                    END,
-                    g6.gen6_lb_url
-            ) rn
-        FROM gen6_siapp3_target g6
-        JOIN gen6_siapp3_base g5
-          ON g5.ip = g6.ip
-         AND g5.type = g6.type
-         AND g5.route_url = g6.route_url
-    ) b
-    ON a.ip = b.ip
-    AND a.type = b.type
-    AND a.route_url = b.route_url
-    AND b.rn = 1
-)
-SELECT ip, type, gen5_lb_url, gen6_lb_url, route_url, SYSDATE FROM gen5
-UNION ALL
-SELECT ip, type, gen5_lb_url, gen6_lb_url, route_url, SYSDATE FROM gen6;
+115	MZ	gen5/getway/payment/SITransaction/GetDetails	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-2026
+115	MZ	gen5/gateway/TransactionAPI/GET_DETAILS	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-2026
+115	MZ	gen5/gateway/TransactionAPI/Api/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-2026
+116	MZ	misc/gen5/getway/payment/SITransaction/GetDetails	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-2026
+116	MZ	misc/gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-2026
+116	MZ	gen5/getway/payment/SITransaction/GetDetails	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-2026
+116	MZ	gen5/gateway/TransactionAPI/GET_DETAILS	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-2026
+116	MZ	gen5/gateway/TransactionAPI/Api/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-2026
+116	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-2026
+120	MZ	misc/gen5/getway/payment/SITransaction/GetDetails	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-2026
+120	MZ	misc/gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-2026
+120	MZ	gen5/getway/payment/SITransaction/GetDetails	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-2026
+120	MZ	gen5/gateway/TransactionAPI/GET_DETAILS	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-2026
+120	MZ	gen5/gateway/TransactionAPI/Api/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-2026
+120	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-2026
+123	MZ	misc/gen5/getway/payment/SITransaction/GetDetails	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-2026
+123	MZ	misc/gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-2026
+123	MZ	gen5/getway/payment/SITransaction/GetDetails	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-2026
+123	MZ	gen5/gateway/TransactionAPI/GET_DETAILS	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-2026
+123	MZ	gen5/gateway/TransactionAPI/Api/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-2026
+122	MZ	misc/gen5/getway/payment/SITransaction/GetDetails	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-2026
+122	MZ	misc/gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-2026
+123	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-2026
+122	MZ	gen5/getway/payment/SITransaction/GetDetails	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-2026
+122	MZ	gen5/gateway/TransactionAPI/GET_DETAILS	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-2026
+122	MZ	gen5/gateway/TransactionAPI/Api/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-2026
+122	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-2026
+121	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-2026
+121	MZ	misc/gen5/getway/payment/SITransaction/GetDetails	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-2026
+121	MZ	misc/gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-2026
+121	MZ	gen5/getway/payment/SITransaction/GetDetails	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-2026
+121	MZ	gen5/gateway/TransactionAPI/GET_DETAILS	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-2026
+121	MZ	gen5/gateway/TransactionAPI/Api/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-2026
+115	MZ	misc/gen5/getway/payment/SITransaction/GetDetails	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-2026
+115	MZ	misc/gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-2026
+115	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-2026
+115	MZ	https://siapp3.sbi.co.in:7443/gen6/gateway/gen5/getway/payment/SITransaction/UpdateTransaction	https://siapp3.sbi.co.in:7443/gen6/gateway/gen5/getway/payment/SITransaction/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-2026
+116	MZ	https://siapp3.sbi.co.in:7443/gen6/gateway/gen5/getway/payment/SITransaction/UpdateTransaction	https://siapp3.sbi.co.in:7443/gen6/gateway/gen5/getway/payment/SITransaction/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-2026
+120	MZ	https://siapp3.sbi.co.in:7443/gen6/gateway/gen5/getway/payment/SITransaction/UpdateTransaction	https://siapp3.sbi.co.in:7443/gen6/gateway/gen5/getway/payment/SITransaction/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-2026
+121	MZ	https://siapp3.sbi.co.in:7443/gen6/gateway/gen5/getway/payment/SITransaction/UpdateTransaction	https://siapp3.sbi.co.in:7443/gen6/gateway/gen5/getway/payment/SITransaction/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-2026
+122	MZ	https://siapp3.sbi.co.in:7443/gen6/gateway/gen5/getway/payment/SITransaction/UpdateTransaction	https://siapp3.sbi.co.in:7443/gen6/gateway/gen5/getway/payment/SITransaction/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-2026
+123	MZ	https://siapp3.sbi.co.in:7443/gen6/gateway/gen5/getway/payment/SITransaction/UpdateTransaction	https://siapp3.sbi.co.in:7443/gen6/gateway/gen5/getway/payment/SITransaction/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-2026
