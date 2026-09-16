@@ -1,34 +1,8 @@
-WITH base AS (
-    SELECT ip, type, route_url, lb_url,
-           CASE
-             WHEN UPPER(route_url) LIKE '%SIAPP3%GEN5%' THEN 'GEN6_SIAPP3'
-             WHEN UPPER(route_url) LIKE '%SIAPP3%'      THEN 'GEN6_SIAPP3'
-             WHEN UPPER(route_url) LIKE '%GEN5%GETWAY%'
-               OR UPPER(route_url) LIKE '%GEN5%GATEWAY%'
-               OR UPPER(route_url) LIKE 'GEN5/GATEWAY%'
-               OR UPPER(route_url) LIKE 'MISC/GEN5%'          THEN 'GEN5'
-             WHEN UPPER(route_url) NOT LIKE '%GEN5%'    THEN 'GEN6'
-           END AS route_class
-    FROM daily_dpg_url_data
-),
-gen5_data AS (
-    SELECT ip, type, lb_url AS gen5_lb_url, route_url AS gen5_route_url
-    FROM base
-    WHERE route_class = 'GEN5'
-),
-gen6_data AS (
-    SELECT ip, type, lb_url AS gen6_lb_url, route_url AS gen6_route_url
-    FROM base
-    WHERE route_class LIKE 'GEN6%'
-)
-SELECT NVL(g5.ip, g6.ip)               AS ip,
-       NVL(g5.type, g6.type)           AS type,
-       g5.gen5_route_url,
-       g6.gen6_route_url,
-       NVL(g5.gen5_lb_url, g6.gen6_lb_url) AS lb_url,
-       SYSDATE
-FROM gen5_data g5
-FULL OUTER JOIN gen6_data g6
-  ON g5.ip   = g6.ip
- AND g5.type = g6.type
- AND g5.gen5_lb_url = g6.gen6_lb_url;
+115	MZ	misc/gen5/getway/payment/SITransaction/GetDetails	misc/TransactionAPI/GET_DETAILS	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-26
+115	MZ	misc/gen5/getway/payment/SITransaction/GetDetails	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-26
+115	MZ	misc/gen5/getway/payment/SITransaction/GetDetails	payments/SITransaction/GetDetails	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-26
+115	MZ	misc/gen5/getway/payment/SITransaction/GetDetails	payments/SITransaction/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-26
+115	MZ	misc/gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/GET_DETAILS	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-26
+115	MZ	misc/gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-26
+115	MZ	misc/gen5/getway/payment/SITransaction/UpdateTransaction	payments/SITransaction/GetDetails	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-26
+115	MZ	misc/gen5/getway/payment/SITransaction/UpdateTransaction	payments/SITransaction/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-26
