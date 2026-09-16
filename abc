@@ -29,7 +29,7 @@
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
-        /* ==================== DARK THEME (default) ==================== */
+        /* ==================== DARK THEME ==================== */
         html[data-theme="dark"] {
             --bg-base: #070b14;
             --bg-grad-1: #0a0f1e;
@@ -56,6 +56,7 @@
             --cyan: #4fd1ff;
             --bg-scroll: rgba(120, 150, 210, 0.22);
             --bg-scroll-hover: rgba(120, 150, 210, 0.4);
+            --modal-backdrop: rgba(0, 0, 0, 0.75);
         }
 
         /* ==================== LIGHT THEME ==================== */
@@ -85,6 +86,7 @@
             --cyan: #0e9ec8;
             --bg-scroll: rgba(70, 100, 160, 0.28);
             --bg-scroll-hover: rgba(70, 100, 160, 0.5);
+            --modal-backdrop: rgba(20, 30, 50, 0.55);
         }
 
         html, body {
@@ -98,7 +100,6 @@
             transition: background 0.3s, color 0.3s;
         }
 
-        /* Animated gradient background */
         body::before {
             content: '';
             position: fixed;
@@ -433,7 +434,6 @@
             border: 1px solid var(--glass-border);
         }
 
-        /* Panel body — SCROLLABLE */
         .panel-body {
             flex: 1;
             min-height: 0;
@@ -466,15 +466,29 @@
             position: relative;
             overflow: hidden;
             min-height: 180px;
+            cursor: pointer;
         }
         .ip-card:hover {
             background: var(--glass-3);
             border-color: var(--glass-border-hi);
-            transform: translateY(-2px);
-            box-shadow: 0 10px 26px rgba(0,0,0,0.35);
+            transform: translateY(-3px);
+            box-shadow: 0 14px 34px rgba(0,0,0,0.4);
+        }
+        .ip-card::after {
+            content: '👁';
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-size: 12px;
+            opacity: 0;
+            transition: opacity 0.22s;
+            color: var(--text-2);
+            pointer-events: none;
+        }
+        .ip-card:hover::after {
+            opacity: 0.6;
         }
 
-        /* --- CRITICAL: TD error --> RED --- */
         .ip-card.critical-td {
             background: var(--red-dim);
             border: 2px solid rgba(255, 85, 119, 0.55);
@@ -493,7 +507,6 @@
             50%      { box-shadow: 0 0 24px 2px rgba(255, 85, 119, 0.35); }
         }
 
-        /* --- WARNING: BD error --> YELLOW --- */
         .ip-card.critical-bd {
             background: var(--amber-dim);
             border: 2px solid rgba(255, 184, 77, 0.55);
@@ -512,7 +525,6 @@
             50%      { box-shadow: 0 0 24px 2px rgba(255, 184, 77, 0.35); }
         }
 
-        /* --- Healthy --- */
         .ip-card.healthy {
             border-color: var(--glass-border);
         }
@@ -524,7 +536,6 @@
             background: var(--green);
         }
 
-        /* Head */
         .ip-head {
             display: flex;
             align-items: center;
@@ -560,7 +571,6 @@
             margin-top: -4px;
         }
 
-        /* Metrics */
         .ip-metrics {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -591,7 +601,6 @@
         .ip-metric-value.amber { color: var(--amber); }
         .ip-metric-value.red   { color: var(--red); }
 
-        /* Success bar */
         .succ-bar {
             height: 6px;
             background: var(--glass-3);
@@ -609,7 +618,6 @@
         .succ-bar-inner.warn { background: linear-gradient(90deg, var(--amber), #ff8a4d); box-shadow: 0 0 10px rgba(255,184,77,0.5); }
         .succ-bar-inner.bad  { background: linear-gradient(90deg, var(--red), #ff3d5f); box-shadow: 0 0 10px rgba(255,85,119,0.5); }
 
-        /* Error chips */
         .err-chips {
             display: flex;
             flex-wrap: wrap;
@@ -669,6 +677,360 @@
             margin-bottom: 16px;
         }
 
+        /* ==================== MODAL ==================== */
+        .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: var(--modal-backdrop);
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+            z-index: 1000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 30px;
+            animation: fadeIn 0.2s ease;
+        }
+        .modal-backdrop.active {
+            display: flex;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .modal {
+            background: var(--bg-base);
+            border: 1px solid var(--glass-border-hi);
+            border-radius: 18px;
+            box-shadow:
+                0 30px 80px rgba(0,0,0,0.6),
+                0 0 0 1px rgba(255,255,255,0.04) inset;
+            width: 100%;
+            max-width: 720px;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            animation: modalSlide 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        @keyframes modalSlide {
+            from { opacity: 0; transform: translateY(20px) scale(0.97); }
+            to   { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        html[data-theme="dark"] .modal {
+            background: linear-gradient(180deg, #0f1420 0%, #0a0e18 100%);
+        }
+        html[data-theme="light"] .modal {
+            background: linear-gradient(180deg, #ffffff 0%, #f7f9fc 100%);
+        }
+
+        .modal-head {
+            padding: 20px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            border-bottom: 1px solid var(--glass-border);
+            flex-shrink: 0;
+        }
+        .modal-head-left {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            min-width: 0;
+        }
+        .modal-icon {
+            width: 44px; height: 44px;
+            border-radius: 11px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 20px;
+            flex-shrink: 0;
+        }
+        .modal-icon.healthy    { background: var(--green-dim); color: var(--green); border: 1px solid rgba(34,230,164,0.35); }
+        .modal-icon.critical-td{ background: var(--red-dim);   color: var(--red);   border: 1px solid rgba(255,85,119,0.4); }
+        .modal-icon.critical-bd{ background: var(--amber-dim); color: var(--amber); border: 1px solid rgba(255,184,77,0.4); }
+
+        .modal-title {
+            font-size: 18px;
+            font-weight: 800;
+            color: var(--text-0);
+            font-family: 'JetBrains Mono', 'Consolas', monospace;
+            letter-spacing: 0.3px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .modal-subtitle {
+            font-size: 12px;
+            color: var(--text-2);
+            font-weight: 600;
+            margin-top: 3px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .modal-close {
+            width: 36px; height: 36px;
+            border-radius: 9px;
+            background: var(--glass-2);
+            border: 1px solid var(--glass-border);
+            color: var(--text-1);
+            font-size: 20px;
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: 0.2s;
+            flex-shrink: 0;
+            line-height: 1;
+            font-family: inherit;
+        }
+        .modal-close:hover {
+            background: var(--red-dim);
+            color: var(--red);
+            border-color: rgba(255,85,119,0.4);
+            transform: rotate(90deg);
+        }
+
+        .modal-body {
+            padding: 20px 24px;
+            overflow-y: auto;
+            flex: 1;
+        }
+        .modal-body::-webkit-scrollbar { width: 8px; }
+        .modal-body::-webkit-scrollbar-track { background: transparent; }
+        .modal-body::-webkit-scrollbar-thumb {
+            background: var(--bg-scroll);
+            border-radius: 4px;
+        }
+
+        .modal-section {
+            margin-bottom: 22px;
+        }
+        .modal-section:last-child {
+            margin-bottom: 0;
+        }
+        .modal-section-title {
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 1.4px;
+            text-transform: uppercase;
+            color: var(--text-3);
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .modal-section-title::before {
+            content: '';
+            width: 3px; height: 12px;
+            background: var(--accent);
+            border-radius: 2px;
+            box-shadow: 0 0 8px rgba(79,140,255,0.5);
+        }
+
+        /* Top metric tiles */
+        .tiles {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 10px;
+        }
+        .tile {
+            background: var(--glass-2);
+            border: 1px solid var(--glass-border);
+            border-radius: 11px;
+            padding: 12px 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .tile-label {
+            font-size: 10px;
+            color: var(--text-3);
+            font-weight: 800;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+        }
+        .tile-value {
+            font-size: 22px;
+            font-weight: 800;
+            color: var(--text-0);
+            font-variant-numeric: tabular-nums;
+            line-height: 1;
+        }
+        .tile-value.green { color: var(--green); }
+        .tile-value.amber { color: var(--amber); }
+        .tile-value.red   { color: var(--red); }
+
+        /* Progress bar in modal */
+        .modal-progress {
+            margin-top: 4px;
+            height: 8px;
+            background: var(--glass-3);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .modal-progress-inner {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.4s ease;
+            background: linear-gradient(90deg, var(--green), var(--cyan));
+            box-shadow: 0 0 12px rgba(34,230,164,0.5);
+        }
+        .modal-progress-inner.warn { background: linear-gradient(90deg, var(--amber), #ff8a4d); }
+        .modal-progress-inner.bad  { background: linear-gradient(90deg, var(--red), #ff3d5f); }
+
+        /* Error breakdown list */
+        .err-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .err-row {
+            display: grid;
+            grid-template-columns: 130px 1fr 80px;
+            gap: 14px;
+            align-items: center;
+            padding: 10px 14px;
+            background: var(--glass-2);
+            border: 1px solid var(--glass-border);
+            border-radius: 9px;
+            transition: 0.15s;
+        }
+        .err-row:hover {
+            background: var(--glass-3);
+            border-color: var(--glass-border-hi);
+        }
+        .err-code {
+            font-family: 'JetBrains Mono', 'Consolas', monospace;
+            font-size: 12.5px;
+            font-weight: 800;
+            padding: 4px 10px;
+            border-radius: 6px;
+            text-align: center;
+            letter-spacing: 0.5px;
+        }
+        .err-code.td {
+            background: var(--red-dim);
+            color: var(--red);
+            border: 1px solid rgba(255,85,119,0.4);
+        }
+        .err-code.bd {
+            background: var(--amber-dim);
+            color: var(--amber);
+            border: 1px solid rgba(255,184,77,0.4);
+        }
+        .err-code.other {
+            background: var(--glass-3);
+            color: var(--text-2);
+            border: 1px solid var(--glass-border);
+        }
+        .err-bar {
+            height: 22px;
+            background: var(--glass-3);
+            border-radius: 6px;
+            overflow: hidden;
+            position: relative;
+        }
+        .err-bar-fill {
+            height: 100%;
+            border-radius: 6px;
+            transition: width 0.5s ease;
+            display: flex;
+            align-items: center;
+            padding-left: 8px;
+            font-size: 11px;
+            font-weight: 800;
+            color: #fff;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.4);
+        }
+        .err-bar-fill.td {
+            background: linear-gradient(90deg, var(--red), #ff3d5f);
+            box-shadow: 0 0 12px rgba(255,85,119,0.5);
+        }
+        .err-bar-fill.bd {
+            background: linear-gradient(90deg, var(--amber), #ff8a4d);
+            box-shadow: 0 0 12px rgba(255,184,77,0.5);
+        }
+        .err-bar-fill.other {
+            background: linear-gradient(90deg, var(--accent), #6fa8ff);
+        }
+        .err-count {
+            text-align: right;
+            font-family: 'JetBrains Mono', 'Consolas', monospace;
+            font-size: 15px;
+            font-weight: 800;
+            color: var(--text-0);
+            font-variant-numeric: tabular-nums;
+        }
+        .err-count small {
+            display: block;
+            font-size: 10.5px;
+            color: var(--text-3);
+            font-weight: 700;
+            margin-top: 1px;
+        }
+
+        .err-empty {
+            padding: 24px 20px;
+            text-align: center;
+            background: var(--green-dim);
+            border: 1px solid rgba(34,230,164,0.3);
+            border-radius: 11px;
+            color: var(--green);
+            font-size: 13.5px;
+            font-weight: 700;
+        }
+        .err-empty .big-ic {
+            font-size: 32px;
+            display: block;
+            margin-bottom: 6px;
+        }
+
+        /* Health status banner */
+        .health-banner {
+            padding: 14px 20px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 20px;
+        }
+        .health-banner.healthy {
+            background: var(--green-dim);
+            border: 1px solid rgba(34,230,164,0.35);
+        }
+        .health-banner.critical-td {
+            background: var(--red-dim);
+            border: 1px solid rgba(255,85,119,0.4);
+        }
+        .health-banner.critical-bd {
+            background: var(--amber-dim);
+            border: 1px solid rgba(255,184,77,0.4);
+        }
+        .health-banner .hb-icon {
+            font-size: 26px;
+            flex-shrink: 0;
+        }
+        .health-banner .hb-text {
+            flex: 1;
+        }
+        .health-banner .hb-title {
+            font-size: 14px;
+            font-weight: 800;
+            letter-spacing: 0.3px;
+            margin-bottom: 2px;
+        }
+        .health-banner.healthy .hb-title    { color: var(--green); }
+        .health-banner.critical-td .hb-title{ color: var(--red); }
+        .health-banner.critical-bd .hb-title{ color: var(--amber); }
+        .health-banner .hb-sub {
+            font-size: 12px;
+            color: var(--text-2);
+            font-weight: 500;
+        }
+
         /* ==================== TOAST ==================== */
         .toast {
             position: fixed;
@@ -706,6 +1068,9 @@
             .kpis { grid-template-columns: repeat(2, 1fr); }
             .main { padding: 10px; }
             .header { padding: 0 12px; }
+            .modal-backdrop { padding: 12px; }
+            .modal { max-height: 95vh; }
+            .err-row { grid-template-columns: 100px 1fr 60px; gap: 8px; }
         }
     </style>
 </head>
@@ -751,7 +1116,6 @@
     <!-- ================= MAIN ================= -->
     <div class="main">
 
-        <!-- KPI ROW -->
         <div class="kpis">
             <div class="kpi green" id="kpiApiNHits">
                 <div class="kpi-label">NSE/INB Hits</div>
@@ -785,7 +1149,6 @@
             </div>
         </div>
 
-        <!-- PANELS (NSE/INB → BSE → BACKEND) -->
         <div class="panels">
 
             <!-- 1. NSE/INB -->
@@ -824,7 +1187,7 @@
                 </div>
             </div>
 
-            <!-- 3. BACKEND (last) -->
+            <!-- 3. BACKEND -->
             <div class="panel">
                 <div class="panel-head">
                     <div class="ph-icon green">&#9881;</div>
@@ -847,16 +1210,35 @@
     </div>
 </div>
 
+<!-- ==================== MODAL ==================== -->
+<div class="modal-backdrop" id="modalBackdrop" onclick="closeModalFromBackdrop(event)">
+    <div class="modal" onclick="event.stopPropagation()">
+        <div class="modal-head">
+            <div class="modal-head-left">
+                <div class="modal-icon" id="modalIcon">&#128225;</div>
+                <div style="min-width:0;">
+                    <div class="modal-title" id="modalTitle">—</div>
+                    <div class="modal-subtitle" id="modalSubtitle">—</div>
+                </div>
+            </div>
+            <button class="modal-close" onclick="closeModal()" title="Close (Esc)">&#215;</button>
+        </div>
+        <div class="modal-body" id="modalBody">
+            <!-- filled by JS -->
+        </div>
+    </div>
+</div>
+
 <script>
 /* ============================================================
- * IPO MONITORING DASHBOARD — v7.0
- * Theme toggle, Scroll bars, TD red / BD yellow, Smart sorting
+ * IPO MONITORING DASHBOARD — v8.0
  * ============================================================ */
 
 var REFRESH_INTERVAL_SEC = 300;
 var secondsLeft = 0;
 var countdownTimer = null;
 var isRefreshing = false;
+var CURRENT_DATA = null;  // last fetched data
 
 /* ============ THEME ============ */
 (function initTheme() {
@@ -937,6 +1319,7 @@ function refreshNow() {
         }
         try {
             var data = JSON.parse(xhr.responseText);
+            CURRENT_DATA = data;
             renderAll(data);
             toast('Data refreshed');
         } catch(e) {
@@ -969,7 +1352,7 @@ function renderAll(data) {
     document.getElementById('hdrCrit').textContent = s1.td + s2.td + s3.td;
 }
 
-/* ============ PANEL RENDER (with sorting) ============ */
+/* ============ PANEL RENDER ============ */
 function renderPanel(qr, bodyId, badgeId) {
     var body = document.getElementById(bodyId);
     var badge = document.getElementById(badgeId);
@@ -1013,7 +1396,6 @@ function renderPanel(qr, bodyId, badgeId) {
         errCols.push(c);
     });
 
-    // === PRE-COMPUTE per row + sorting ===
     var rows = qr.rows.map(function(row) {
         var ip    = row[ipCol] || '-';
         var api   = row[apiCol] || '';
@@ -1040,12 +1422,11 @@ function renderPanel(qr, bodyId, badgeId) {
         return {
             ip: ip, api: api, hits: hits, succ: succ,
             td: td, tdPct: tdPct, bd: bd, bdPct: bdPct,
-            category: category, errChips: errChips
+            category: category, errChips: errChips,
+            allData: row  // keep full row for modal
         };
     });
 
-    // Sort priority: critical-td (0) > critical-bd (1) > healthy (2)
-    // Within same category: higher hits first
     rows.sort(function(a, b) {
         var priority = { 'critical-td': 0, 'critical-bd': 1, 'healthy': 2 };
         var pa = priority[a.category], pb = priority[b.category];
@@ -1053,8 +1434,13 @@ function renderPanel(qr, bodyId, badgeId) {
         return b.hits - a.hits;
     });
 
+    // Save for modal lookup by IP + panel key
+    var panelKey = bodyId.replace('Body', '');  // apiN, apiB, backend
+    if (!window.__panelRows) window.__panelRows = {};
+    window.__panelRows[panelKey] = rows;
+
     var html = '';
-    rows.forEach(function(r) {
+    rows.forEach(function(r, idx) {
         if (r.category === 'critical-td') stats.td++;
         else if (r.category === 'critical-bd') stats.bd++;
         else stats.healthy++;
@@ -1063,10 +1449,6 @@ function renderPanel(qr, bodyId, badgeId) {
         var succCls = succPct >= 99 ? 'green' : succPct >= 95 ? 'amber' : 'red';
         var barCls  = succPct >= 99 ? '' : succPct >= 95 ? 'warn' : 'bad';
 
-        var tdCls = r.tdPct <= 1 ? 'green' : r.tdPct <= 5 ? 'amber' : 'red';
-        var bdCls = r.bdPct <= 1 ? 'green' : r.bdPct <= 5 ? 'amber' : 'red';
-
-        // For TD card → red colors; for BD card → yellow colors
         var tdColorCls = r.category === 'critical-td' ? 'red' : (r.tdPct > 0 ? 'red' : 'green');
         var bdColorCls = r.category === 'critical-bd' ? 'amber' : (r.bdPct > 0 ? 'amber' : 'green');
 
@@ -1075,7 +1457,7 @@ function renderPanel(qr, bodyId, badgeId) {
         var shortApi = r.api.replace('thirdParty', '').replace('_sys', '').replace('_expDS', '').replace('GenericRouting', '');
         if (shortApi.length > 26) shortApi = shortApi.substring(0, 24) + '…';
 
-        html += '<div class="ip-card ' + r.category + '">';
+        html += '<div class="ip-card ' + r.category + '" onclick="openIpModal(\'' + panelKey + '\',' + idx + ')">';
 
         html +=   '<div class="ip-head">';
         html +=     '<div class="ip-addr">' + escapeHtml(r.ip) + '</div>';
@@ -1114,6 +1496,170 @@ function findCol(cols, names) {
     }
     return null;
 }
+
+/* ============================================================
+ * MODAL — IP DETAIL
+ * ============================================================ */
+function openIpModal(panelKey, idx) {
+    var rows = window.__panelRows && window.__panelRows[panelKey];
+    if (!rows || !rows[idx]) return;
+    var r = rows[idx];
+    var row = r.allData;
+
+    var panelInfo = {
+        'apiN':    { title: 'API LOG · NSE/INB', sub: 'Routing Services', icon: '&#128225;' },
+        'apiB':    { title: 'API LOG · BSE',     sub: 'BSE IPO_ORDER',    icon: '&#128226;' },
+        'backend': { title: 'BACKEND LOG',       sub: 'IPO Auth Services', icon: '&#9881;' }
+    };
+    var pInfo = panelInfo[panelKey] || { title: 'IP Detail', sub: '', icon: '&#128225;' };
+
+    // Header
+    var iconEl = document.getElementById('modalIcon');
+    iconEl.className = 'modal-icon ' + r.category;
+    iconEl.innerHTML = r.category === 'critical-td' ? '&#9888;' :
+                       r.category === 'critical-bd' ? '&#9888;' :
+                       '&#10003;';
+
+    document.getElementById('modalTitle').textContent = r.ip;
+    document.getElementById('modalSubtitle').textContent = pInfo.title + ' · ' + (r.api || 'Unknown API');
+
+    // Body
+    var succPct = r.hits > 0 ? (r.succ * 100 / r.hits) : 100;
+    var barCls = succPct >= 99 ? '' : succPct >= 95 ? 'warn' : 'bad';
+
+    var html = '';
+
+    // Health banner
+    var bannerTitle = r.category === 'critical-td' ? 'Critical — Technical Decline Detected' :
+                      r.category === 'critical-bd' ? 'Warning — Business Decline Detected' :
+                      'All Good — No Errors';
+    var bannerSub = r.category === 'critical-td' ? 'This IP is experiencing TD errors and requires attention.' :
+                    r.category === 'critical-bd' ? 'This IP is experiencing BD errors.' :
+                    'This IP is operating normally.';
+
+    html += '<div class="health-banner ' + r.category + '">';
+    html +=   '<div class="hb-icon">' + (r.category === 'healthy' ? '&#9989;' : '&#9888;') + '</div>';
+    html +=   '<div class="hb-text">';
+    html +=     '<div class="hb-title">' + bannerTitle + '</div>';
+    html +=     '<div class="hb-sub">' + bannerSub + '</div>';
+    html +=   '</div>';
+    html += '</div>';
+
+    // ===== Top metrics =====
+    html += '<div class="modal-section">';
+    html +=   '<div class="modal-section-title">Performance Metrics</div>';
+    html +=   '<div class="tiles">';
+    html +=     '<div class="tile"><div class="tile-label">Total Hits</div><div class="tile-value">' + r.hits + '</div></div>';
+    html +=     '<div class="tile"><div class="tile-label">Success</div><div class="tile-value green">' + r.succ + '</div></div>';
+    html +=     '<div class="tile"><div class="tile-label">Success %</div><div class="tile-value ' + (succPct >= 99 ? 'green' : succPct >= 95 ? 'amber' : 'red') + '">' + succPct.toFixed(2) + '%</div></div>';
+    html +=     '<div class="tile"><div class="tile-label">TD %</div><div class="tile-value ' + (r.tdPct > 5 ? 'red' : r.tdPct > 0 ? 'amber' : 'green') + '">' + r.tdPct.toFixed(2) + '%</div></div>';
+    html +=     '<div class="tile"><div class="tile-label">BD %</div><div class="tile-value ' + (r.bdPct > 5 ? 'red' : r.bdPct > 0 ? 'amber' : 'green') + '">' + r.bdPct.toFixed(2) + '%</div></div>';
+    html +=     '<div class="tile"><div class="tile-label">TD Count</div><div class="tile-value ' + (r.td > 0 ? 'red' : 'green') + '">' + r.td + '</div></div>';
+    html +=     '<div class="tile"><div class="tile-label">BD Count</div><div class="tile-value ' + (r.bd > 0 ? 'amber' : 'green') + '">' + r.bd + '</div></div>';
+    html +=     '<div class="tile"><div class="tile-label">Errors</div><div class="tile-value ' + ((r.td + r.bd) > 0 ? 'red' : 'green') + '">' + (r.td + r.bd) + '</div></div>';
+    html +=   '</div>';
+
+    // Success bar
+    html +=   '<div class="modal-progress" style="margin-top:14px;">';
+    html +=     '<div class="modal-progress-inner ' + barCls + '" style="width:' + Math.min(100, Math.max(2, succPct)).toFixed(1) + '%"></div>';
+    html +=   '</div>';
+    html += '</div>';
+
+    // ===== Error breakdown =====
+    html += '<div class="modal-section">';
+    html +=   '<div class="modal-section-title">Error Code Breakdown</div>';
+
+    // Collect all error codes with counts
+    var errList = [];
+    var tdCodes = ['TD'];
+    var bdCodes = ['BD', 'BD_NEW'];
+
+    // Collect known column types
+    Object.keys(row).forEach(function(key) {
+        var upper = key.toUpperCase();
+        // Skip meta columns
+        if (upper === 'API_NAME' || upper === 'SYS_IP' || upper === 'EXP_IP' ||
+            upper === 'IP' || upper === 'TOTAL_HITS' || upper === 'SUCCESS' ||
+            upper === 'TD' || upper === 'TD_PERCENT' || upper === 'BD' ||
+            upper === 'BD_PERCENT') return;
+        var val = parseInt(row[key] || 0);
+        if (val > 0) {
+            var isBD = (upper === 'BD' || upper === 'BD_NEW');
+            errList.push({ code: key, count: val, isBD: isBD });
+        }
+    });
+
+    // Also include TD and BD summaries if present
+    if (r.td > 0 && !errList.some(function(e){ return e.code.toUpperCase() === 'TD'; })) {
+        errList.push({ code: 'TD', count: r.td, isBD: false, summary: true });
+    }
+    if (r.bd > 0 && !errList.some(function(e){ return e.code.toUpperCase() === 'BD'; })) {
+        errList.push({ code: 'BD', count: r.bd, isBD: true, summary: true });
+    }
+
+    // Sort by count desc
+    errList.sort(function(a, b) { return b.count - a.count; });
+
+    if (errList.length === 0) {
+        html += '<div class="err-empty"><span class="big-ic">&#10003;</span>No errors detected — 100% healthy</div>';
+    } else {
+        var maxCount = errList.reduce(function(m, e){ return Math.max(m, e.count); }, 1);
+
+        html += '<div class="err-list">';
+        errList.forEach(function(e) {
+            var pct = (e.count / maxCount) * 100;
+            var chipClass = e.isBD ? 'bd' : (e.summary ? 'td' : 'td');
+            var barClass  = e.isBD ? 'bd' : 'td';
+            var pctOfTotal = r.hits > 0 ? ((e.count / r.hits) * 100).toFixed(2) : '0.00';
+
+            html += '<div class="err-row">';
+            html +=   '<div class="err-code ' + chipClass + '">' + escapeHtml(e.code) + '</div>';
+            html +=   '<div class="err-bar">';
+            html +=     '<div class="err-bar-fill ' + barClass + '" style="width:' + Math.max(8, pct).toFixed(1) + '%">' + e.count + '</div>';
+            html +=   '</div>';
+            html +=   '<div class="err-count">' + e.count + '<small>' + pctOfTotal + '%</small></div>';
+            html += '</div>';
+        });
+        html += '</div>';
+    }
+
+    html += '</div>';
+
+    // ===== Raw data (all columns) =====
+    html += '<div class="modal-section">';
+    html +=   '<div class="modal-section-title">Raw Data (All Columns)</div>';
+    html +=   '<div class="err-list">';
+    Object.keys(row).forEach(function(key) {
+        var v = row[key];
+        var display = (v === null || v === undefined || v === '') ? '—' : String(v);
+        html += '<div class="err-row" style="grid-template-columns: 1fr 1fr;">';
+        html +=   '<div style="font-family: \'JetBrains Mono\',monospace; font-size: 12px; font-weight: 700; color: var(--text-2);">' + escapeHtml(key) + '</div>';
+        html +=   '<div style="text-align: right; font-family: \'JetBrains Mono\',monospace; font-size: 13px; font-weight: 700; color: var(--text-0);">' + escapeHtml(display) + '</div>';
+        html += '</div>';
+    });
+    html +=   '</div>';
+    html += '</div>';
+
+    document.getElementById('modalBody').innerHTML = html;
+
+    // Show modal
+    document.getElementById('modalBackdrop').classList.add('active');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeModal() {
+    document.getElementById('modalBackdrop').classList.remove('active');
+    document.body.style.overflow = '';
+}
+
+function closeModalFromBackdrop(e) {
+    if (e.target.id === 'modalBackdrop') closeModal();
+}
+
+// ESC key to close
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeModal();
+});
 
 /* ============ KPIS ============ */
 function updateKpis(data) {
