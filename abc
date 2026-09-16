@@ -1,58 +1,970 @@
-backed log
+<%@ page language="java" contentType="text/html; charset=UTF-8" pageEncoding="UTF-8" isELIgnored="true"%>
+<%@ page import="com.jdbc.IPOMonitorService" %>
+<%@ page import="com.jdbc.IPOMonitorService.QueryResult" %>
+<%@ page import="java.util.*" %>
+<%
+    String ajax = request.getParameter("ajax");
+    if ("fetch".equals(ajax)) {
+        Map<String, QueryResult> results = IPOMonitorService.runAll();
+        StringBuilder sb = new StringBuilder("{");
+        int i = 0;
+        for (Map.Entry<String, QueryResult> e : results.entrySet()) {
+            if (i++ > 0) sb.append(",");
+            sb.append("\"").append(IPOMonitorService.esc(e.getKey())).append("\":");
+            sb.append(IPOMonitorService.toJson(e.getValue()));
+        }
+        sb.append("}");
+        response.setContentType("application/json");
+        response.setCharacterEncoding("UTF-8");
+        out.print(sb.toString()); out.flush();
+        return;
+    }
+%>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>IPO Monitoring Dashboard</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        :root {
+            --bg-0: #06090f;
+            --bg-1: #0c1119;
+            --bg-2: #121a26;
+            --bg-3: #1a2330;
+            --border: #1c2735;
+            --border-2: #293849;
+            --text-0: #ffffff;
+            --text-1: #dfe6f0;
+            --text-2: #9aa5b5;
+            --text-3: #62708a;
+            --accent: #2e7fff;
+            --accent-2: #60a5fa;
+            --green: #00d68f;
+            --green-bg: rgba(0,214,143,0.10);
+            --amber: #ffb020;
+            --amber-bg: rgba(255,176,32,0.10);
+            --red: #ff4d4f;
+            --red-bg: rgba(255,77,79,0.10);
+            --purple: #a855f7;
+            --cyan: #22d3ee;
+        }
 
-API_NAME	SYS_IP	TOTAL_HITS	SUCCESS	SI001	SI002	DYNAMIC_002	SI007	SI051	SI052	DYNAMIC_052	DYNAMIC_014	SI569	SI570	TD	TD_PERCENT	BD	BD_PERCENT
-thirdPartyBSEAuth_sys	10.188.24.167	16	16	0	0	0	0	0	0	0	0	0	0	0	0	0	0
-thirdPartyBSEAuth_sys	10.188.24.168	17	17	0	0	0	0	0	0	0	0	0	0	0	0	0	0
-thirdPartyBSEAuth_sys	10.188.24.169	22	22	0	0	0	0	0	0	0	0	0	0	0	0	0	0
-thirdPartyBSEAuth_sys	10.188.24.170	24	24	0	0	0	0	0	0	0	0	0	0	0	0	0	0
-thirdPartyBSEAuth_sys	10.188.24.171	19	19	0	0	0	0	0	0	0	0	0	0	0	0	0	0
-thirdPartyBSEAuth_sys	10.188.24.172	23	23	0	0	0	0	0	0	0	0	0	0	0	0	0	0
-thirdPartyBSEAuth_sys	10.188.25.167	14	14	0	0	0	0	0	0	0	0	0	0	0	0	0	0
-thirdPartyBSEAuth_sys	10.188.25.168	19	19	0	0	0	0	0	0	0	0	0	0	0	0	0	0
-thirdPartyBSEAuth_sys	10.188.25.169	12	12	0	0	0	0	0	0	0	0	0	0	0	0	0	0
-thirdPartyBSEAuth_sys	10.188.25.170	18	18	0	0	0	0	0	0	0	0	0	0	0	0	0	0
-thirdPartyBSEAuth_sys	10.188.25.171	22	22	0	0	0	0	0	0	0	0	0	0	0	0	0	0
-thirdPartyBSEAuth_sys	10.188.25.172	17	17	0	0	0	0	0	0	0	0	0	0	0	0	0	0
-thirdPartyINBIpo_sys	10.188.24.167	23	23	0	0	0	0	0	0	0	0	0	0	0	0	0	0
-thirdPartyINBIpo_sys	10.188.24.168	23	23	0	0	0	0	0	0	0	0	0	0	0	0	0	0
-thirdPartyINBIpo_sys	10.188.24.169	20	20	0	0	0	0	0	0	0	0	0	0	0	0	0	0
-thirdPartyINBIpo_sys	10.188.24.170	19	19	0	0	0	0	0	0	0	0	0	0	0	0	0	0
-thirdPartyINBIpo_sys	10.188.24.171	21	21	0	0	0	0	0	0	0	0	0	0	0	0	0	0
-thirdPartyINBIpo_sys	10.188.24.172	19	19	0	0	0	0	0	0	0	0	0	0	0	0	0	0
-thirdPartyINBIpo_sys	10.188.25.167	25	25	0	0	0	0	0	0	0	0	0	0	0	0	0	0
-thirdPartyINBIpo_sys	10.188.25.168	18	18	0	0	0	0	0	0	0	0	0	0	0	0	0	0
-thirdPartyINBIpo_sys	10.188.25.169	26	26	0	0	0	0	0	0	0	0	0	0	0	0	0	0
-thirdPartyINBIpo_sys	10.188.25.170	19	19	0	0	0	0	0	0	0	0	0	0	0	0	0	0
-thirdPartyINBIpo_sys	10.188.25.171	17	17	0	0	0	0	0	0	0	0	0	0	0	0	0	0
-thirdPartyINBIpo_sys	10.188.25.172	1
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            height: 100vh;
+            overflow: hidden;
+            font-family: 'Inter', 'Segoe UI', -apple-system, Roboto, sans-serif;
+            background: var(--bg-0);
+            color: var(--text-1);
+            font-size: 13px;
+            -webkit-font-smoothing: antialiased;
+        }
 
+        .app {
+            display: grid;
+            grid-template-rows: 60px 1fr;
+            height: 100vh;
+        }
 
-API LOG · NSE/INB
-Routing Services
-8 rows · 26328 ms
-API_NAME	EXP_IP	TOTAL_HITS	SUCCESS	SI001	DYNAMIC_002	SI007	SI051	DYNAMIC_014	SI569	SI570	SI052	SI005	SI077	SI003	SI017	SI015	TD	TD_PERCENT	BD	BD_PERCENT
-thirdPartyGenericRouting_INB_expDS	10.188.24.63	20	20	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
-thirdPartyGenericRouting_INB_expDS	10.188.24.64	34	34	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
-thirdPartyGenericRouting_INB_expDS	10.188.24.65	31	31	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
-thirdPartyGenericRouting_INB_expDS	10.188.24.66	27	27	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
-thirdPartyGenericRouting_INB_expDS	10.188.25.63	28	28	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
-thirdPartyGenericRouting_INB_expDS	10.188.25.64	25	25	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
-thirdPartyGenericRouting_INB_expDS	10.188.25.65	37	37	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
-thirdPartyGenericRouting_INB_expDS	10.188.25.66	31	31	0	0	0	
+        /* ================= HEADER ================= */
+        .header {
+            background: linear-gradient(90deg, #080d15 0%, #0f1826 100%);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            padding: 0 24px;
+            gap: 18px;
+            box-shadow: 0 2px 20px rgba(0,0,0,0.7);
+            z-index: 100;
+        }
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 18px;
+            font-weight: 800;
+            color: #fff;
+            letter-spacing: -0.3px;
+        }
+        .logo-mark {
+            width: 36px; height: 36px;
+            background: linear-gradient(135deg, #2e7fff, #1a5ecc);
+            border-radius: 9px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 17px;
+            box-shadow: 0 4px 16px rgba(46,127,255,0.5);
+        }
+        .logo-sub {
+            font-size: 10.5px;
+            font-weight: 700;
+            color: var(--text-3);
+            padding: 3px 9px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 7px;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
 
-API LOG · BSE
-BSE IPO_ORDER
-12 rows · 26418 ms
-API_NAME	EXP_IP	TOTAL_HITS	SUCCESS	SI001	DYNAMIC_002	SI007	SI051	DYNAMIC_014	SI569	SI570	SI052	SI005	SI077	SI003	SI017	SI015	TD	TD_PERCENT	BD	BD_PERCENT
-thirdPartyGenericRouting_expDS	10.188.24.61	14	14	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
-thirdPartyGenericRouting_expDS	10.188.24.62	19	19	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
-thirdPartyGenericRouting_expDS	10.188.24.63	9	9	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
-thirdPartyGenericRouting_expDS	10.188.24.64	20	20	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
-thirdPartyGenericRouting_expDS	10.188.24.65	20	20	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
-thirdPartyGenericRouting_expDS	10.188.24.66	12	12	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
-thirdPartyGenericRouting_expDS	10.188.25.61	17	17	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
-thirdPartyGenericRouting_expDS	10.188.25.62	23	23	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
-thirdPartyGenericRouting_expDS	10.188.25.63	18	18	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
-thirdPartyGenericRouting_expDS	10.188.25.64	23	23	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
-thirdPartyGenericRouting_expDS	10.188.25.65	26	26	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0	0
-thirdPartyGenericRouting_expDS	10.188.25.66	13	13	0	0	0	0	0	
+        .header-spacer { flex: 1; }
+
+        .hdr-stats {
+            display: flex;
+            gap: 8px;
+            font-size: 11.5px;
+        }
+        .hdr-stat {
+            padding: 7px 13px;
+            background: var(--bg-2);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: var(--text-2);
+        }
+        .hdr-stat b { color: var(--text-0); font-weight: 800; }
+        .hdr-stat .dot { width: 6px; height: 6px; border-radius: 50%; }
+        .hdr-stat .dot.g { background: var(--green); box-shadow: 0 0 8px var(--green); }
+        .hdr-stat .dot.a { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+        .hdr-stat .dot.r { background: var(--red); box-shadow: 0 0 8px var(--red); }
+
+        .live-badge {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            padding: 7px 13px;
+            background: rgba(0,214,143,0.08);
+            border: 1px solid rgba(0,214,143,0.3);
+            border-radius: 8px;
+            font-size: 11.5px;
+            font-weight: 800;
+            color: var(--green);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .live-dot {
+            width: 7px; height: 7px; border-radius: 50%;
+            background: var(--green);
+            box-shadow: 0 0 10px var(--green);
+            animation: pulse 1.4s infinite;
+        }
+        @keyframes pulse {
+            0%,100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(1.3); }
+        }
+
+        .countdown {
+            font-size: 12px;
+            color: var(--text-2);
+            font-weight: 700;
+            padding: 7px 14px;
+            background: var(--bg-1);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-variant-numeric: tabular-nums;
+            min-width: 135px;
+            text-align: center;
+        }
+        .countdown b { color: var(--accent); font-weight: 800; }
+
+        .btn-icon {
+            width: 36px; height: 36px;
+            background: var(--bg-2);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-1);
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 15px;
+            transition: 0.2s;
+        }
+        .btn-icon:hover { background: var(--bg-3); border-color: var(--accent); color: var(--accent); }
+        .btn-icon:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-icon.spinning { animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ================= MAIN ================= */
+        .main {
+            padding: 14px 18px;
+            display: grid;
+            grid-template-rows: 92px 1fr;
+            gap: 12px;
+            overflow: hidden;
+            min-height: 0;
+        }
+
+        /* ================= KPI ROW ================= */
+        .kpi-row {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 10px;
+        }
+        .kpi {
+            background: linear-gradient(135deg, var(--bg-1) 0%, var(--bg-2) 100%);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 12px 16px;
+            position: relative;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            transition: 0.2s;
+        }
+        .kpi:hover { transform: translateY(-2px); border-color: var(--border-2); }
+        .kpi::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; bottom: 0;
+            width: 3px;
+            background: var(--accent);
+        }
+        .kpi.ok::before   { background: var(--green); }
+        .kpi.warn::before { background: var(--amber); }
+        .kpi.err::before  { background: var(--red); }
+
+        .kpi-label {
+            font-size: 10px;
+            font-weight: 800;
+            color: var(--text-3);
+            text-transform: uppercase;
+            letter-spacing: 1.1px;
+            margin-bottom: 3px;
+        }
+        .kpi-value {
+            font-size: 22px;
+            font-weight: 800;
+            color: var(--text-0);
+            line-height: 1;
+            font-variant-numeric: tabular-nums;
+            letter-spacing: -0.5px;
+        }
+        .kpi-value.ok   { color: var(--green); }
+        .kpi-value.warn { color: var(--amber); }
+        .kpi-value.err  { color: var(--red); }
+        .kpi-sub {
+            font-size: 10px;
+            color: var(--text-3);
+            font-weight: 600;
+            margin-top: 2px;
+        }
+
+        /* ================= PANELS GRID ================= */
+        .panels {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            overflow: hidden;
+            min-height: 0;
+        }
+        .panel {
+            background: var(--bg-1);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            min-height: 0;
+        }
+        .panel-head {
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: linear-gradient(90deg, var(--bg-2), var(--bg-1));
+            flex-shrink: 0;
+        }
+        .ph-icon {
+            width: 26px; height: 26px;
+            border-radius: 7px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 13px;
+            flex-shrink: 0;
+        }
+        .ph-icon.green  { background: rgba(0,214,143,0.15); color: var(--green); }
+        .ph-icon.blue   { background: rgba(46,127,255,0.15); color: var(--accent); }
+        .ph-icon.purple { background: rgba(168,85,247,0.15); color: var(--purple); }
+
+        .ph-text { flex: 1; min-width: 0; }
+        .ph-title {
+            font-size: 12.5px;
+            font-weight: 800;
+            color: var(--text-0);
+            letter-spacing: -0.1px;
+            white-space: nowrap;
+        }
+        .ph-sub {
+            font-size: 10px;
+            color: var(--text-3);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 1px;
+        }
+        .ph-badge {
+            font-size: 10px;
+            font-weight: 800;
+            padding: 3px 8px;
+            border-radius: 6px;
+            background: var(--bg-3);
+            color: var(--text-3);
+            letter-spacing: 0.4px;
+            white-space: nowrap;
+        }
+
+        /* ================= CARD GRID (IP cards) ================= */
+        .card-grid {
+            flex: 1;
+            overflow: auto;
+            padding: 10px;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            gap: 8px;
+            align-content: start;
+            min-height: 0;
+        }
+        .card-grid::-webkit-scrollbar { width: 6px; }
+        .card-grid::-webkit-scrollbar-track { background: transparent; }
+        .card-grid::-webkit-scrollbar-thumb { background: var(--border-2); border-radius: 3px; }
+        .card-grid::-webkit-scrollbar-thumb:hover { background: #3a4a5e; }
+
+        /* IP CARD */
+        .ip-card {
+            background: var(--bg-2);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            transition: 0.15s;
+            position: relative;
+            overflow: hidden;
+        }
+        .ip-card:hover {
+            border-color: var(--border-2);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+        }
+        .ip-card.healthy { border-left: 3px solid var(--green); }
+        .ip-card.warning { border-left: 3px solid var(--amber); }
+        .ip-card.critical { border-left: 3px solid var(--red); background: linear-gradient(135deg, var(--bg-2), rgba(255,77,79,0.05)); }
+
+        .ip-card-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+        .ip-name {
+            font-family: 'JetBrains Mono', 'Consolas', monospace;
+            font-size: 12.5px;
+            font-weight: 800;
+            color: var(--text-0);
+            letter-spacing: 0.2px;
+        }
+        .ip-status {
+            font-size: 9.5px;
+            font-weight: 800;
+            padding: 2px 7px;
+            border-radius: 5px;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+        }
+        .ip-status.healthy { background: var(--green-bg); color: var(--green); }
+        .ip-status.warning { background: var(--amber-bg); color: var(--amber); }
+        .ip-status.critical { background: var(--red-bg); color: var(--red); }
+
+        /* hits and success row */
+        .ip-row-main {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+        .ip-metric {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .ip-metric-label {
+            font-size: 9.5px;
+            color: var(--text-3);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+        }
+        .ip-metric-value {
+            font-size: 15px;
+            font-weight: 800;
+            color: var(--text-0);
+            font-variant-numeric: tabular-nums;
+            line-height: 1;
+        }
+        .ip-metric-value.green { color: var(--green); }
+        .ip-metric-value.amber { color: var(--amber); }
+        .ip-metric-value.red   { color: var(--red); }
+
+        /* error codes row */
+        .ip-codes {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            padding-top: 6px;
+            border-top: 1px dashed var(--border-2);
+            min-height: 26px;
+        }
+        .ip-code {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 4px;
+            letter-spacing: 0.2px;
+            white-space: nowrap;
+        }
+        .ip-code.td {
+            background: rgba(255,176,32,0.15);
+            color: var(--amber);
+            border: 1px solid rgba(255,176,32,0.3);
+        }
+        .ip-code.bd {
+            background: rgba(255,77,79,0.15);
+            color: var(--red);
+            border: 1px solid rgba(255,77,79,0.3);
+        }
+        .ip-code.ok {
+            background: rgba(0,214,143,0.10);
+            color: var(--green);
+            border: 1px solid rgba(0,214,143,0.25);
+        }
+
+        /* ================= STATES ================= */
+        .empty-state, .loader-state {
+            grid-column: 1 / -1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            min-height: 200px;
+            padding: 30px 20px;
+            text-align: center;
+            color: var(--text-3);
+        }
+        .empty-icon { font-size: 34px; opacity: 0.35; margin-bottom: 10px; }
+        .empty-text { font-size: 12px; font-weight: 600; }
+
+        .loader-spinner {
+            width: 36px; height: 36px;
+            border: 3px solid var(--bg-3);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.9s linear infinite;
+        }
+        .loader-text {
+            margin-top: 12px;
+            font-size: 11.5px;
+            color: var(--text-3);
+            font-weight: 600;
+            letter-spacing: 0.4px;
+        }
+
+        /* ================= TOAST ================= */
+        .toast {
+            position: fixed;
+            bottom: 20px; right: 20px;
+            padding: 11px 16px;
+            background: var(--bg-2);
+            border-left: 3px solid var(--green);
+            border-radius: 8px;
+            color: var(--text-0);
+            font-size: 12.5px;
+            font-weight: 700;
+            box-shadow: 0 8px 28px rgba(0,0,0,0.8);
+            z-index: 9999;
+            animation: slideIn 0.25s ease;
+        }
+        .toast.err { border-left-color: var(--red); }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(24px); }
+            to   { opacity: 1; transform: translateX(0); }
+        }
+
+        /* ================= RESPONSIVE ================= */
+        @media (max-width: 1500px) {
+            .kpi-row { grid-template-columns: repeat(3, 1fr); }
+        }
+        @media (max-width: 1200px) {
+            .panels { grid-template-columns: 1fr; }
+            .main { grid-template-rows: auto 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="app">
+
+    <!-- ================= HEADER ================= -->
+    <div class="header">
+        <div class="logo">
+            <div class="logo-mark">&#128200;</div>
+            IPO Monitor
+            <span class="logo-sub">Live</span>
+        </div>
+        <div class="header-spacer"></div>
+
+        <div class="hdr-stats">
+            <div class="hdr-stat">
+                <span class="dot g"></span> Healthy <b id="hdrHealthy">0</b>
+            </div>
+            <div class="hdr-stat">
+                <span class="dot a"></span> Warn <b id="hdrWarn">0</b>
+            </div>
+            <div class="hdr-stat">
+                <span class="dot r"></span> Critical <b id="hdrCritical">0</b>
+            </div>
+        </div>
+
+        <div class="live-badge">
+            <span class="live-dot"></span> Live
+        </div>
+        <div class="countdown" id="countdown">Initializing...</div>
+        <button class="btn-icon" id="refreshBtn" onclick="refreshNow()" title="Refresh now">&#8635;</button>
+    </div>
+
+    <!-- ================= MAIN ================= -->
+    <div class="main">
+
+        <!-- KPI ROW -->
+        <div class="kpi-row">
+            <div class="kpi ok" id="kpiBackendHits">
+                <div class="kpi-label">Backend Hits</div>
+                <div class="kpi-value">—</div>
+                <div class="kpi-sub">NSE+BSE+INB Auth · 5m</div>
+            </div>
+            <div class="kpi ok" id="kpiBackendTD">
+                <div class="kpi-label">Backend TD%</div>
+                <div class="kpi-value">—</div>
+                <div class="kpi-sub">Technical Decline</div>
+            </div>
+            <div class="kpi ok" id="kpiApiNHits">
+                <div class="kpi-label">NSE/INB Hits</div>
+                <div class="kpi-value">—</div>
+                <div class="kpi-sub">Routing · 5m</div>
+            </div>
+            <div class="kpi ok" id="kpiApiNTD">
+                <div class="kpi-label">NSE/INB TD%</div>
+                <div class="kpi-value">—</div>
+                <div class="kpi-sub">Technical Decline</div>
+            </div>
+            <div class="kpi ok" id="kpiApiBHits">
+                <div class="kpi-label">BSE Hits</div>
+                <div class="kpi-value">—</div>
+                <div class="kpi-sub">IPO_ORDER · 5m</div>
+            </div>
+            <div class="kpi ok" id="kpiApiBTD">
+                <div class="kpi-label">BSE TD%</div>
+                <div class="kpi-value">—</div>
+                <div class="kpi-sub">Technical Decline</div>
+            </div>
+        </div>
+
+        <!-- PANELS -->
+        <div class="panels">
+
+            <!-- BACKEND -->
+            <div class="panel">
+                <div class="panel-head">
+                    <div class="ph-icon green">&#9881;</div>
+                    <div class="ph-text">
+                        <div class="ph-title">BACKEND LOG</div>
+                        <div class="ph-sub">IPO Auth · NSE+BSE+INB</div>
+                    </div>
+                    <div class="ph-badge" id="backendBadge">—</div>
+                </div>
+                <div class="card-grid" id="backendBody">
+                    <div class="loader-state">
+                        <div class="loader-spinner"></div>
+                        <div class="loader-text">Loading...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- NSE / INB -->
+            <div class="panel">
+                <div class="panel-head">
+                    <div class="ph-icon blue">&#128225;</div>
+                    <div class="ph-text">
+                        <div class="ph-title">API LOG · NSE/INB</div>
+                        <div class="ph-sub">Routing Services</div>
+                    </div>
+                    <div class="ph-badge" id="apiNBadge">—</div>
+                </div>
+                <div class="card-grid" id="apiNBody">
+                    <div class="loader-state">
+                        <div class="loader-spinner"></div>
+                        <div class="loader-text">Loading...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- BSE -->
+            <div class="panel">
+                <div class="panel-head">
+                    <div class="ph-icon purple">&#128226;</div>
+                    <div class="ph-text">
+                        <div class="ph-title">API LOG · BSE</div>
+                        <div class="ph-sub">BSE IPO_ORDER</div>
+                    </div>
+                    <div class="ph-badge" id="apiBBadge">—</div>
+                </div>
+                <div class="card-grid" id="apiBBody">
+                    <div class="loader-state">
+                        <div class="loader-spinner"></div>
+                        <div class="loader-text">Loading...</div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+</div>
+
+<script>
+/* ============================================================
+ * IPO MONITORING DASHBOARD — v4.0 (IP Card Based)
+ * ============================================================ */
+
+var REFRESH_INTERVAL_SEC = 300;
+var secondsLeft = 0;
+var countdownTimer = null;
+var isRefreshing = false;
+
+/* ============ COUNTDOWN ============ */
+function startCountdown() {
+    if (countdownTimer) clearInterval(countdownTimer);
+    secondsLeft = REFRESH_INTERVAL_SEC;
+    updateCountdownUI();
+    countdownTimer = setInterval(function() {
+        secondsLeft--;
+        if (secondsLeft <= 0) { secondsLeft = REFRESH_INTERVAL_SEC; refreshNow(); }
+        updateCountdownUI();
+    }, 1000);
+}
+
+function stopCountdown() {
+    if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+}
+
+function updateCountdownUI() {
+    var el = document.getElementById('countdown');
+    if (!el) return;
+    if (isRefreshing) { el.innerHTML = '<span style="color:#ffb020;">&#8635; Refreshing...</span>'; return; }
+    var m = Math.floor(secondsLeft / 60);
+    var s = secondsLeft % 60;
+    el.innerHTML = 'Next in <b>' + (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s + '</b>';
+}
+
+/* ============ REFRESH ============ */
+function refreshNow() {
+    if (isRefreshing) return;
+    isRefreshing = true;
+    stopCountdown();
+    updateCountdownUI();
+
+    var btn = document.getElementById('refreshBtn');
+    btn.classList.add('spinning');
+    btn.disabled = true;
+
+    showLoader('backendBody', 'Loading backend...');
+    showLoader('apiNBody', 'Loading NSE/INB...');
+    showLoader('apiBBody', 'Loading BSE...');
+
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', 'ipo-monitor.jsp?ajax=fetch&_=' + Date.now(), true);
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState !== 4) return;
+        btn.classList.remove('spinning');
+        btn.disabled = false;
+        isRefreshing = false;
+
+        if (xhr.status !== 200) {
+            toast('HTTP ' + xhr.status + ' — failed', true);
+            startCountdown();
+            updateCountdownUI();
+            return;
+        }
+        try {
+            var data = JSON.parse(xhr.responseText);
+            renderAll(data);
+            toast('Refreshed');
+        } catch(e) {
+            toast('Parse error', true);
+            console.error(e);
+        }
+        startCountdown();
+        updateCountdownUI();
+    };
+    xhr.send();
+}
+
+function showLoader(panelId, text) {
+    var el = document.getElementById(panelId);
+    if (!el) return;
+    el.innerHTML = '<div class="loader-state">' +
+                       '<div class="loader-spinner"></div>' +
+                       '<div class="loader-text">' + escapeHtml(text) + '</div>' +
+                   '</div>';
+}
+
+/* ============ RENDER ALL ============ */
+function renderAll(data) {
+    var s1 = renderCardGrid(data.BACKEND_LOG, 'backendBody', 'backendBadge');
+    var s2 = renderCardGrid(data.API_NSE_INB, 'apiNBody', 'apiNBadge');
+    var s3 = renderCardGrid(data.API_BSE, 'apiBBody', 'apiBBadge');
+    updateKpis(data);
+    updateHeaderStats(s1, s2, s3);
+}
+
+/* ============ RENDER CARD GRID ============ */
+function renderCardGrid(qr, bodyId, badgeId) {
+    var body = document.getElementById(bodyId);
+    var badge = document.getElementById(badgeId);
+    var stats = { healthy: 0, warning: 0, critical: 0 };
+
+    if (!qr || !qr.success) {
+        body.innerHTML = '<div class="empty-state"><div class="empty-icon">&#9888;</div><div class="empty-text">' +
+                         escapeHtml(qr ? qr.message : 'No data') + '</div></div>';
+        badge.textContent = 'ERR';
+        return stats;
+    }
+
+    badge.textContent = qr.rows.length + ' IPs · ' + qr.executionTimeMs + ' ms';
+
+    if (!qr.rows || qr.rows.length === 0) {
+        body.innerHTML = '<div class="empty-state"><div class="empty-icon">&#128269;</div><div class="empty-text">No hits in last 5 min</div></div>';
+        return stats;
+    }
+
+    // Detect column names flexibly
+    var cols = qr.columns;
+    var ipCol     = findCol(cols, ['SYS_IP', 'EXP_IP', 'IP']);
+    var apiCol    = findCol(cols, ['API_NAME']);
+    var hitsCol   = findCol(cols, ['TOTAL_HITS', 'HITS']);
+    var succCol   = findCol(cols, ['SUCCESS']);
+    var tdCol     = findCol(cols, ['TD']);
+    var tdpCol    = findCol(cols, ['TD_PERCENT']);
+    var bdCol     = findCol(cols, ['BD']);
+    var bdpCol    = findCol(cols, ['BD_PERCENT']);
+
+    // Collect all error code columns (SI001, SI002, DYNAMIC_002, etc.)
+    var errorCols = [];
+    cols.forEach(function(c) {
+        if (c === ipCol || c === apiCol || c === hitsCol || c === succCol ||
+            c === tdCol || c === tdpCol || c === bdCol || c === bdpCol) return;
+        errorCols.push(c);
+    });
+
+    var html = '';
+    qr.rows.forEach(function(row) {
+        var ip = row[ipCol] || '-';
+        var apiName = row[apiCol] || '';
+        var hits = parseInt(row[hitsCol] || 0);
+        var success = parseInt(row[succCol] || 0);
+        var td = parseInt(row[tdCol] || 0);
+        var tdPct = parseFloat(row[tdpCol] || 0);
+        var bd = parseInt(row[bdCol] || 0);
+        var bdPct = parseFloat(row[bdpCol] || 0);
+
+        // Determine health status
+        var status = 'healthy';
+        if (tdPct > 5 || bdPct > 5) status = 'critical';
+        else if (tdPct > 1 || bdPct > 1 || td > 0 || bd > 0) status = 'warning';
+
+        stats[status]++;
+
+        // Collect non-zero error codes
+        var errorChips = [];
+        errorCols.forEach(function(c) {
+            var v = parseInt(row[c] || 0);
+            if (v > 0) {
+                var isBD = (c === 'BD' || c === 'BD_NEW');
+                var chipClass = isBD ? 'bd' : 'td';
+                errorChips.push('<span class="ip-code ' + chipClass + '">' + escapeHtml(c) + ' · ' + v + '</span>');
+            }
+        });
+
+        // Determine success color
+        var succPct = hits > 0 ? (success * 100 / hits) : 100;
+        var succClass = succPct >= 99 ? 'green' : (succPct >= 95 ? 'amber' : 'red');
+        var tdClass = tdPct <= 1 ? '' : (tdPct <= 5 ? 'amber' : 'red');
+
+        // Short API name for card title
+        var shortApi = apiName.replace('thirdParty', '').replace('_sys', '').replace('_expDS', '');
+        if (shortApi.length > 20) shortApi = shortApi.substring(0, 18) + '…';
+
+        html += '<div class="ip-card ' + status + '">';
+
+        // Head — IP + status badge
+        html += '<div class="ip-card-head">';
+        html += '<div class="ip-name">' + escapeHtml(ip) + '</div>';
+        html += '<div class="ip-status ' + status + '">' + status + '</div>';
+        html += '</div>';
+
+        // API name subtitle (small)
+        if (shortApi) {
+            html += '<div style="font-size:10px;color:var(--text-3);font-weight:600;margin-top:-4px;">' +
+                    escapeHtml(shortApi) + '</div>';
+        }
+
+        // Main metrics — Hits & Success
+        html += '<div class="ip-row-main">';
+        html += '<div class="ip-metric">';
+        html +=   '<div class="ip-metric-label">Hits</div>';
+        html +=   '<div class="ip-metric-value">' + hits + '</div>';
+        html += '</div>';
+        html += '<div class="ip-metric">';
+        html +=   '<div class="ip-metric-label">Success</div>';
+        html +=   '<div class="ip-metric-value ' + succClass + '">' + success + '</div>';
+        html += '</div>';
+        html += '</div>';
+
+        // TD / BD row (only if any)
+        if (td > 0 || bd > 0 || tdPct > 0 || bdPct > 0) {
+            html += '<div class="ip-row-main">';
+            html += '<div class="ip-metric">';
+            html +=   '<div class="ip-metric-label">TD%</div>';
+            html +=   '<div class="ip-metric-value ' + tdClass + '">' + tdPct.toFixed(2) + '%</div>';
+            html += '</div>';
+            html += '<div class="ip-metric">';
+            html +=   '<div class="ip-metric-label">BD%</div>';
+            html +=   '<div class="ip-metric-value ' + (bdPct > 1 ? 'red' : '') + '">' + bdPct.toFixed(2) + '%</div>';
+            html += '</div>';
+            html += '</div>';
+        }
+
+        // Error code chips
+        html += '<div class="ip-codes">';
+        if (errorChips.length > 0) {
+            html += errorChips.join('');
+        } else {
+            html += '<span class="ip-code ok">&#10003; No errors</span>';
+        }
+        html += '</div>';
+
+        html += '</div>';
+    });
+
+    body.innerHTML = html;
+    return stats;
+}
+
+function findCol(cols, names) {
+    for (var i = 0; i < names.length; i++) {
+        var n = names[i].toUpperCase();
+        for (var j = 0; j < cols.length; j++) {
+            if (cols[j].toUpperCase() === n) return cols[j];
+        }
+    }
+    return null;
+}
+
+/* ============ HEADER STATS ============ */
+function updateHeaderStats(s1, s2, s3) {
+    var healthy = s1.healthy + s2.healthy + s3.healthy;
+    var warn = s1.warning + s2.warning + s3.warning;
+    var crit = s1.critical + s2.critical + s3.critical;
+    document.getElementById('hdrHealthy').textContent = healthy;
+    document.getElementById('hdrWarn').textContent = warn;
+    document.getElementById('hdrCritical').textContent = crit;
+}
+
+/* ============ KPI CARDS ============ */
+function updateKpis(data) {
+    var b = data.BACKEND_LOG;
+    var n = data.API_NSE_INB;
+    var x = data.API_BSE;
+
+    var bHits = 0, bTD = 0, bCount = 0;
+    if (b && b.success && b.rows) {
+        b.rows.forEach(function(r) {
+            bHits += parseInt(r.TOTAL_HITS || 0);
+            bTD += parseFloat(r.TD_PERCENT || 0);
+            bCount++;
+        });
+    }
+    setKpi('kpiBackendHits', bHits, null);
+    setKpi('kpiBackendTD', bCount > 0 ? (bTD/bCount).toFixed(2) + '%' : '—', bCount > 0 ? bTD/bCount : null);
+
+    var nHits = 0, nTD = 0, nCount = 0;
+    if (n && n.success && n.rows) {
+        n.rows.forEach(function(r) {
+            nHits += parseInt(r.TOTAL_HITS || 0);
+            nTD += parseFloat(r.TD_PERCENT || 0);
+            nCount++;
+        });
+    }
+    setKpi('kpiApiNHits', nHits, null);
+    setKpi('kpiApiNTD', nCount > 0 ? (nTD/nCount).toFixed(2) + '%' : '—', nCount > 0 ? nTD/nCount : null);
+
+    var xHits = 0, xTD = 0, xCount = 0;
+    if (x && x.success && x.rows) {
+        x.rows.forEach(function(r) {
+            xHits += parseInt(r.TOTAL_HITS || 0);
+            xTD += parseFloat(r.TD_PERCENT || 0);
+            xCount++;
+        });
+    }
+    setKpi('kpiApiBHits', xHits, null);
+    setKpi('kpiApiBTD', xCount > 0 ? (xTD/xCount).toFixed(2) + '%' : '—', xCount > 0 ? xTD/xCount : null);
+}
+
+function setKpi(id, value, pct) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    var valEl = el.querySelector('.kpi-value');
+    valEl.textContent = value;
+    el.classList.remove('ok', 'warn', 'err');
+    valEl.classList.remove('ok', 'warn', 'err');
+
+    if (pct !== null && pct !== undefined && !isNaN(pct)) {
+        if (pct <= 1) { el.classList.add('ok'); valEl.classList.add('ok'); }
+        else if (pct <= 5) { el.classList.add('warn'); valEl.classList.add('warn'); }
+        else { el.classList.add('err'); valEl.classList.add('err'); }
+    } else {
+        el.classList.add('ok');
+        valEl.classList.add('ok');
+    }
+}
+
+/* ============ HELPERS ============ */
+function escapeHtml(s) {
+    if (s == null) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+            .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function toast(msg, isErr) {
+    var el = document.createElement('div');
+    el.className = 'toast' + (isErr ? ' err' : '');
+    el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(function(){
+        el.style.transition = 'opacity .3s, transform .3s';
+        el.style.opacity = '0';
+        el.style.transform = 'translateX(24px)';
+        setTimeout(function(){ el.remove(); }, 320);
+    }, 2000);
+}
+
+/* ============ INIT ============ */
+window.addEventListener('load', function() {
+    refreshNow();
+});
+</script>
+</body>
+</html>
