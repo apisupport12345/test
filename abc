@@ -1,254 +1,3 @@
-IPOMonitorService.java
-
-package com.jdbc;
-
-import java.sql.Connection;
-import java.sql.ResultSet;
-import java.sql.ResultSetMetaData;
-import java.sql.Statement;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-
-public class IPOMonitorService {
-
-    public static class QueryResult {
-        public boolean success;
-        public String message;
-        public List<String> columns = new ArrayList<>();
-        public List<Map<String, Object>> rows = new ArrayList<>();
-        public long executionTimeMs;
-        public String queryName;
-    }
-
-    // ============================================================
-    // THREE QUERIES — Last 5 minutes only
-    // ============================================================
-
-    // 1. BACKEND_LOG — IPO third party (NSE Auth, BSE Auth, INB IPO)
-    public static final String Q_BACKEND = ""
-        + "select trim(api_name) API_NAME, TRIM(sys_ip) SYS_IP, "
-        + "COUNT(1) TOTAL_HITS, "
-        + "SUM(CASE WHEN error_code is null or error_code = 'CK001' THEN 1 ELSE 0 END) SUCCESS, "
-        + "SUM(CASE WHEN error_code ='SI001' then 1 else 0 end) SI001, "
-        + "SUM(CASE WHEN error_code ='SI002' then 1 else 0 end) SI002, "
-        + "SUM(CASE WHEN substr(error_code,3,3) ='002' AND error_code <>'SI002' then 1 else 0 end) DYNAMIC_002, "
-        + "SUM(CASE WHEN error_code ='SI007' and error_code<> '70007' then 1 else 0 end) SI007, "
-        + "SUM(CASE WHEN error_code ='SI051' then 1 else 0 end) SI051, "
-        + "SUM(CASE WHEN error_code ='SI052' then 1 else 0 end) SI052, "
-        + "SUM(CASE WHEN substr(error_code,3,3) ='052' AND error_code <>'SI052' then 1 else 0 end) DYNAMIC_052, "
-        + "SUM(CASE WHEN substr(error_code,3,3) ='014' and error_code <> '00014' then 1 else 0 end) DYNAMIC_014, "
-        + "SUM(CASE WHEN error_code ='SI569' then 1 else 0 end) SI569, "
-        + "SUM(CASE WHEN error_code ='SI570' then 1 else 0 end) SI570, "
-        + "SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') or error_code in('SI001','SI007','SI017','SI569','SI570','SI052','SI077','SI051','SI111')) and error_code<>'00014' THEN 1 ELSE 0 END) TD, "
-        + "ROUND((SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI052','SI077','SI569','SI570')) and error_code <> '00014' THEN 1 ELSE 0 END)*100)/COUNT(1),2) TD_PERCENT, "
-        + "SUM(CASE WHEN ((nvl( substr(error_code,3,3),'A') not in ('002','014') and error_code not in('SI001','SI007','SI017','SI569','SI570','SI052','SI077','SI051','SI111')) AND error_code <> 'CK001' OR error_code IN ('00014','70007')) THEN 1 ELSE 0 END) BD, "
-        + "ROUND((SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','052','051','014') OR error_code IN ('00014','70007')) AND error_code <> 'CK001' and error_code IS NOT NULL THEN 1 ELSE 0 END)*100)/COUNT(1),2) BD_PERCENT "
-        + "from eisapp.BACKEND_LOG where "
-        + "api_name in ('thirdPartyINBIpo_sys','thirdPartyNSEAuth_sys','thirdPartyBSEAuth_sys') and "
-        + "creation_date_time >= sysdate - interval '5' minute "
-        + "GROUP BY trim(api_name),TRIM(sys_ip) "
-        + "ORDER BY 1,2";
-
-    // 2. API_LOG — NSE / INB
-    public static final String Q_API_NSE_INB = ""
-        + "select trim(API_NAME) API_NAME, trim(exp_ip) EXP_IP, "
-        + "COUNT(1) TOTAL_HITS, "
-        + "SUM(CASE WHEN RESPONSE_STATUS in ('0','SUCCESS') THEN 1 ELSE 0 END) SUCCESS, "
-        + "SUM(CASE WHEN error_code ='SI001' then 1 else 0 end) SI001, "
-        + "SUM(CASE WHEN substr(error_code,3,3) ='002'then 1 else 0 end) DYNAMIC_002, "
-        + "SUM(CASE WHEN error_code ='SI007' and error_code<> '70007' then 1 else 0 end) SI007, "
-        + "SUM(CASE WHEN error_code ='SI051' then 1 else 0 end) SI051, "
-        + "SUM(CASE WHEN substr(error_code,3,3) ='014' and error_code <> '00014' then 1 else 0 end) DYNAMIC_014, "
-        + "SUM(CASE WHEN error_code ='SI569' then 1 else 0 end) SI569, "
-        + "SUM(CASE WHEN error_code ='SI570' then 1 else 0 end) SI570, "
-        + "SUM(CASE WHEN error_code ='SI052' then 1 else 0 end) SI052, "
-        + "SUM(CASE WHEN error_code ='SI005' then 1 else 0 end) SI005, "
-        + "SUM(CASE WHEN error_code ='SI077' then 1 else 0 end) SI077, "
-        + "SUM(CASE WHEN error_code ='SI003' then 1 else 0 end) SI003, "
-        + "SUM(CASE WHEN error_code ='SI017' then 1 else 0 end) SI017, "
-        + "SUM(CASE WHEN error_code ='SI015' then 1 else 0 end) SI015, "
-        + "SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI569','SI570','SI052','SI005','SI077','SI003','SI017','SI015')) and error_code <> '00014' THEN 1 ELSE 0 END) TD, "
-        + "ROUND((SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI569','SI570','SI052','SI005','SI077','SI003','SI017','SI015')) and error_code <> '00014' THEN 1 ELSE 0 END)*100)/COUNT(1),2) TD_PERCENT, "
-        + "SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','051','014','015') OR error_code IN ('00014','70007')) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END) BD, "
-        + "ROUND((SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','051','014','015') OR error_code IN ('00014','70007')) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END)*100)/COUNT(1),2) BD_PERCENT "
-        + "from eisapp.api_log where "
-        + "creation_date_time >= sysdate - interval '5' minute "
-        + "and api_name in ('thirdPartyGenericRouting_NSE_expDS','thirdPartyGenericRouting_INB_expDS') "
-        + "GROUP BY trim(API_NAME),trim(exp_ip) "
-        + "ORDER BY 1,2";
-
-    // 3. API_LOG — BSE
-    public static final String Q_API_BSE = ""
-        + "select trim(API_NAME) API_NAME, trim(exp_ip) EXP_IP, "
-        + "COUNT(1) TOTAL_HITS, "
-        + "SUM(CASE WHEN RESPONSE_STATUS in ('0','SUCCESS') THEN 1 ELSE 0 END) SUCCESS, "
-        + "SUM(CASE WHEN error_code ='SI001' then 1 else 0 end) SI001, "
-        + "SUM(CASE WHEN substr(error_code,3,3) ='002'then 1 else 0 end) DYNAMIC_002, "
-        + "SUM(CASE WHEN error_code ='SI007' and error_code<> '70007' then 1 else 0 end) SI007, "
-        + "SUM(CASE WHEN error_code ='SI051' then 1 else 0 end) SI051, "
-        + "SUM(CASE WHEN substr(error_code,3,3) ='014' and error_code <> '00014' then 1 else 0 end) DYNAMIC_014, "
-        + "SUM(CASE WHEN error_code ='SI569' then 1 else 0 end) SI569, "
-        + "SUM(CASE WHEN error_code ='SI570' then 1 else 0 end) SI570, "
-        + "SUM(CASE WHEN error_code ='SI052' then 1 else 0 end) SI052, "
-        + "SUM(CASE WHEN error_code ='SI005' then 1 else 0 end) SI005, "
-        + "SUM(CASE WHEN error_code ='SI077' then 1 else 0 end) SI077, "
-        + "SUM(CASE WHEN error_code ='SI003' then 1 else 0 end) SI003, "
-        + "SUM(CASE WHEN error_code ='SI017' then 1 else 0 end) SI017, "
-        + "SUM(CASE WHEN error_code ='SI015' then 1 else 0 end) SI015, "
-        + "SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI569','SI570','SI052','SI005','SI077','SI003','SI017','SI015')) and error_code <> '00014' THEN 1 ELSE 0 END) TD, "
-        + "ROUND((SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI569','SI570','SI052','SI005','SI077','SI003','SI017','SI015')) and error_code <> '00014' THEN 1 ELSE 0 END)*100)/COUNT(1),2) TD_PERCENT, "
-        + "SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','051','014','015') OR error_code IN ('00014','70007')) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END) BD, "
-        + "ROUND((SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','051','014','015') OR error_code IN ('00014','70007')) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END)*100)/COUNT(1),2) BD_PERCENT "
-        + "from eisapp.api_log where "
-        + "creation_date_time >= sysdate - interval '5' minute "
-        + "and api_name = 'thirdPartyGenericRouting_expDS' "
-        + "and sup_url = 'BSE' "
-        + "and ORIGINAL_URN = 'IPO_ORDER' "
-        + "and transaction_urn = 'IPO_SERVICE' "
-        + "GROUP BY trim(API_NAME),trim(exp_ip) "
-        + "ORDER BY 1,2";
-
-    // ============================================================
-    // RUN ALL 3 IN PARALLEL
-    // ============================================================
-    public static Map<String, QueryResult> runAll() {
-        Map<String, QueryResult> results = new LinkedHashMap<>();
-        ExecutorService pool = Executors.newFixedThreadPool(3);
-
-        try {
-            Future<QueryResult> f1 = pool.submit(new QueryTask("BACKEND_LOG", Q_BACKEND));
-            Future<QueryResult> f2 = pool.submit(new QueryTask("API_NSE_INB", Q_API_NSE_INB));
-            Future<QueryResult> f3 = pool.submit(new QueryTask("API_BSE", Q_API_BSE));
-
-            results.put("BACKEND_LOG", safeGet(f1));
-            results.put("API_NSE_INB", safeGet(f2));
-            results.put("API_BSE", safeGet(f3));
-        } catch (Exception e) {
-            QueryResult err = new QueryResult();
-            err.success = false;
-            err.message = "Pool error: " + e.getMessage();
-            results.put("ERROR", err);
-        } finally {
-            pool.shutdown();
-            try { pool.awaitTermination(3, TimeUnit.SECONDS); } catch (InterruptedException ignored) {}
-        }
-        return results;
-    }
-
-    private static QueryResult safeGet(Future<QueryResult> f) {
-        try { return f.get(30, TimeUnit.SECONDS); }
-        catch (Exception e) {
-            QueryResult r = new QueryResult();
-            r.success = false;
-            r.message = "Timeout/Error: " + e.getMessage();
-            return r;
-        }
-    }
-
-    // ============================================================
-    // SINGLE QUERY TASK
-    // ============================================================
-    private static class QueryTask implements Callable<QueryResult> {
-        private final String name;
-        private final String sql;
-        QueryTask(String name, String sql) { this.name = name; this.sql = sql; }
-
-        @Override
-        public QueryResult call() {
-            QueryResult r = new QueryResult();
-            r.queryName = name;
-            long t0 = System.currentTimeMillis();
-            Connection conn = null;
-            Statement stmt = null;
-            ResultSet rs = null;
-            try {
-                conn = DBUtilityAuto.getIIBDBConnection();
-                if (conn == null) {
-                    r.success = false;
-                    r.message = "Could not obtain IIB connection.";
-                    return r;
-                }
-                stmt = conn.createStatement();
-                stmt.setQueryTimeout(25);
-                rs = stmt.executeQuery(sql);
-                ResultSetMetaData md = rs.getMetaData();
-                int colCount = md.getColumnCount();
-                for (int i = 1; i <= colCount; i++) r.columns.add(md.getColumnLabel(i));
-                while (rs.next()) {
-                    Map<String, Object> row = new LinkedHashMap<>();
-                    for (int i = 1; i <= colCount; i++) {
-                        row.put(md.getColumnLabel(i), rs.getObject(i));
-                    }
-                    r.rows.add(row);
-                }
-                r.success = true;
-                r.message = r.rows.size() + " rows";
-            } catch (Exception e) {
-                r.success = false;
-                r.message = "Error: " + e.getMessage();
-            } finally {
-                if (rs != null) try { rs.close(); } catch (Exception ignored) {}
-                if (stmt != null) try { stmt.close(); } catch (Exception ignored) {}
-                if (conn != null) try { conn.close(); } catch (Exception ignored) {}
-                r.executionTimeMs = System.currentTimeMillis() - t0;
-            }
-            return r;
-        }
-    }
-
-    // ============================================================
-    // JSON HELPERS
-    // ============================================================
-    public static String esc(String s) {
-        if (s == null) return "";
-        return s.replace("\\", "\\\\").replace("\"", "\\\"")
-                .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
-    }
-
-    public static String toJson(QueryResult qr) {
-        StringBuilder sb = new StringBuilder("{");
-        sb.append("\"name\":\"").append(esc(qr.queryName)).append("\",");
-        sb.append("\"success\":").append(qr.success).append(",");
-        sb.append("\"message\":\"").append(esc(qr.message)).append("\",");
-        sb.append("\"executionTimeMs\":").append(qr.executionTimeMs).append(",");
-        sb.append("\"columns\":[");
-        for (int i = 0; i < qr.columns.size(); i++) {
-            if (i > 0) sb.append(",");
-            sb.append("\"").append(esc(qr.columns.get(i))).append("\"");
-        }
-        sb.append("],\"rows\":[");
-        for (int r = 0; r < qr.rows.size(); r++) {
-            if (r > 0) sb.append(",");
-            sb.append("{");
-            Map<String, Object> row = qr.rows.get(r);
-            int c = 0;
-            for (String col : qr.columns) {
-                if (c++ > 0) sb.append(",");
-                Object v = row.get(col);
-                sb.append("\"").append(esc(col)).append("\":");
-                if (v == null) sb.append("null");
-                else sb.append("\"").append(esc(v.toString())).append("\"");
-            }
-            sb.append("}");
-        }
-        sb.append("]}");
-        return sb.toString();
-    }
-}
-
-
----------------------------------------------------------------
-
-ipo-monitor.jsp
-
-
 <%@ page language="java" contentType="text/html; charset=UTF-8" pageEncoding="UTF-8" isELIgnored="true"%>
 <%@ page import="com.jdbc.IPOMonitorService" %>
 <%@ page import="com.jdbc.IPOMonitorService.QueryResult" %>
@@ -343,11 +92,6 @@ ipo-monitor.jsp
             display: flex; align-items: center; justify-content: center;
             font-size: 20px;
             box-shadow: 0 6px 20px rgba(59,130,246,0.5);
-            animation: logosmooth 3s ease infinite;
-        }
-        @keyframes logosmooth {
-            0%,100% { box-shadow: 0 6px 20px rgba(59,130,246,0.5); }
-            50% { box-shadow: 0 6px 28px rgba(59,130,246,0.85); }
         }
         .logo-sub {
             font-size: 12px;
@@ -413,7 +157,6 @@ ipo-monitor.jsp
         }
         .btn-refresh .spin-icon {
             display: inline-block;
-            transition: transform 0.6s;
         }
         .btn-refresh.spinning .spin-icon {
             animation: spin 1s linear infinite;
@@ -429,7 +172,7 @@ ipo-monitor.jsp
             border: 1px solid var(--border);
             border-radius: 8px;
             font-variant-numeric: tabular-nums;
-            min-width: 130px;
+            min-width: 160px;
             text-align: center;
         }
         .countdown b { color: var(--accent); }
@@ -534,7 +277,6 @@ ipo-monitor.jsp
             color: var(--accent);
         }
         .panel-icon.green  { background: rgba(34,197,94,0.15); color: var(--green); }
-        .panel-icon.amber  { background: rgba(245,158,11,0.15); color: var(--amber); }
         .panel-icon.purple { background: rgba(168,85,247,0.15); color: var(--purple); }
 
         .panel-meta {
@@ -626,7 +368,6 @@ ipo-monitor.jsp
         }
         .empty-icon { font-size: 42px; opacity: 0.4; margin-bottom: 12px; }
 
-        /* Loader overlay */
         .loader {
             padding: 80px 20px;
             text-align: center;
@@ -646,7 +387,6 @@ ipo-monitor.jsp
             font-weight: 600;
         }
 
-        /* Toast */
         .toast {
             position: fixed;
             bottom: 30px; right: 30px;
@@ -689,7 +429,7 @@ ipo-monitor.jsp
         <span class="live-dot"></span> LIVE
     </div>
     <div class="countdown" id="countdown">
-        Next refresh in <b>05:00</b>
+        Initializing...
     </div>
     <button class="btn-refresh" id="refreshBtn" onclick="refreshNow()">
         <span class="spin-icon">&#8635;</span> Refresh Now
@@ -797,20 +537,21 @@ ipo-monitor.jsp
 
 <script>
 /* ============================================================
- * IPO MONITORING DASHBOARD
+ * IPO MONITORING DASHBOARD — v2.0
  * Auto-refresh every 5 minutes
+ * Timer starts AFTER response arrives (not before)
  * ============================================================ */
 
 var REFRESH_INTERVAL_SEC = 300;   // 5 minutes
-var secondsLeft = REFRESH_INTERVAL_SEC;
+var secondsLeft = 0;
 var countdownTimer = null;
 var isRefreshing = false;
 
-/* ============ START COUNTDOWN ============ */
+/* ============ TIMER — starts only after response ============ */
 function startCountdown() {
+    if (countdownTimer) clearInterval(countdownTimer);
     secondsLeft = REFRESH_INTERVAL_SEC;
     updateCountdownUI();
-    if (countdownTimer) clearInterval(countdownTimer);
     countdownTimer = setInterval(function() {
         secondsLeft--;
         if (secondsLeft <= 0) {
@@ -821,13 +562,22 @@ function startCountdown() {
     }, 1000);
 }
 
+function stopCountdown() {
+    if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+}
+
 function updateCountdownUI() {
+    var el = document.getElementById('countdown');
+    if (!el) return;
+    if (isRefreshing) {
+        el.innerHTML = '<span style="color:#f59e0b;">Refreshing...</span>';
+        return;
+    }
     var m = Math.floor(secondsLeft / 60);
     var s = secondsLeft % 60;
     var mm = (m < 10 ? '0' : '') + m;
     var ss = (s < 10 ? '0' : '') + s;
-    var el = document.getElementById('countdown');
-    if (el) el.innerHTML = 'Next refresh in <b>' + mm + ':' + ss + '</b>';
+    el.innerHTML = 'Next refresh in <b>' + mm + ':' + ss + '</b>';
 }
 
 /* ============ MANUAL REFRESH ============ */
@@ -835,23 +585,35 @@ function refreshNow() {
     if (isRefreshing) return;
     isRefreshing = true;
 
+    // Stop timer while query runs
+    stopCountdown();
+    updateCountdownUI();
+
     var btn = document.getElementById('refreshBtn');
     btn.classList.add('spinning');
     btn.disabled = true;
 
-    // Reset countdown after manual click
-    secondsLeft = REFRESH_INTERVAL_SEC;
+    // Show loaders in each panel
+    showPanelLoader('backendBody', 'Loading backend data...');
+    showPanelLoader('apiNBody', 'Loading NSE/INB data...');
+    showPanelLoader('apiBBody', 'Loading BSE data...');
 
     var xhr = new XMLHttpRequest();
+    // No client-side timeout — allow slow queries
     xhr.open('GET', 'ipo-monitor.jsp?ajax=fetch&_=' + Date.now(), true);
+
     xhr.onreadystatechange = function() {
         if (xhr.readyState !== 4) return;
+
         btn.classList.remove('spinning');
         btn.disabled = false;
         isRefreshing = false;
 
         if (xhr.status !== 200) {
             toast('HTTP ' + xhr.status + ' — refresh failed', true);
+            // Still restart timer so it retries
+            startCountdown();
+            updateCountdownUI();
             return;
         }
         try {
@@ -862,8 +624,21 @@ function refreshNow() {
             console.error('Parse error:', e);
             toast('Parse error: ' + e.message, true);
         }
+
+        // ===== TIMER STARTS HERE — after response =====
+        startCountdown();
+        updateCountdownUI();
     };
     xhr.send();
+}
+
+function showPanelLoader(panelId, text) {
+    var el = document.getElementById(panelId);
+    if (!el) return;
+    el.innerHTML = '<div class="loader">' +
+                       '<div class="loader-spinner"></div>' +
+                       '<div class="loader-text">' + escapeHtml(text) + '</div>' +
+                   '</div>';
 }
 
 /* ============ RENDER ALL ============ */
@@ -940,14 +715,14 @@ function renderApiB(qr) {
 /* ============ BUILD TABLE ============ */
 function buildTable(qr, tableId) {
     var html = '<table class="dt" id="' + tableId + '"><thead><tr>';
-    qr.columns.forEach(function(c, i) {
+    qr.columns.forEach(function(c) {
         html += '<th>' + escapeHtml(c) + '</th>';
     });
     html += '</tr></thead><tbody>';
 
     qr.rows.forEach(function(row) {
         html += '<tr>';
-        qr.columns.forEach(function(c, ci) {
+        qr.columns.forEach(function(c) {
             var v = row[c];
             var cls = '';
             if (v === null || v === undefined || v === '' || v === '0') {
@@ -957,7 +732,6 @@ function buildTable(qr, tableId) {
                 if (n === 0) cls = 'zero';
                 else cls = 'num-hi';
             }
-            // Highlight TD_PERCENT / BD_PERCENT columns
             if (c === 'TD_PERCENT' || c === 'BD_PERCENT') {
                 var pct = parseFloat(v);
                 if (!isNaN(pct)) {
@@ -966,19 +740,12 @@ function buildTable(qr, tableId) {
                     else cls = 'pct-bad';
                 }
             }
-            // Highlight TD / BD counts
             if (c === 'TD' || c === 'BD') {
                 var num = parseInt(v);
                 if (num > 0) cls = (c === 'TD') ? 'num-warn' : 'num-err';
             }
-            // Highlight SUCCESS
-            if (c === 'SUCCESS') {
-                cls = 'num-ok';
-            }
-            // TOTAL_HITS
-            if (c === 'TOTAL_HITS') {
-                cls = 'num-hi';
-            }
+            if (c === 'SUCCESS') cls = 'num-ok';
+            if (c === 'TOTAL_HITS') cls = 'num-hi';
 
             html += '<td class="' + cls + '" title="' + escapeHtml(String(v || '')) + '">' +
                     escapeHtml(v === null || v === undefined ? '' : String(v)) +
@@ -1079,9 +846,264 @@ function toast(msg, isErr) {
 
 /* ============ INIT ============ */
 window.addEventListener('load', function() {
-    refreshNow();          // Initial load
-    startCountdown();      // Start 5-min countdown
+    // Only trigger initial load — timer starts AFTER response arrives
+    refreshNow();
 });
 </script>
 </body>
 </html>
+
+---------------------------------------------------------
+
+
+package com.jdbc;
+
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+
+public class IPOMonitorService {
+
+    public static class QueryResult {
+        public boolean success;
+        public String message;
+        public List<String> columns = new ArrayList<>();
+        public List<Map<String, Object>> rows = new ArrayList<>();
+        public long executionTimeMs;
+        public String queryName;
+    }
+
+    // ============================================================
+    // QUERY 1 — BACKEND LOG (IPO auth services)
+    // Last 5 minutes
+    // ============================================================
+    public static final String Q_BACKEND = ""
+        + "select trim(api_name) API_NAME, TRIM(sys_ip) SYS_IP, "
+        + "COUNT(1) TOTAL_HITS, "
+        + "SUM(CASE WHEN error_code is null or error_code = 'CK001' THEN 1 ELSE 0 END) SUCCESS, "
+        + "SUM(CASE WHEN error_code ='SI001' then 1 else 0 end) SI001, "
+        + "SUM(CASE WHEN error_code ='SI002' then 1 else 0 end) SI002, "
+        + "SUM(CASE WHEN substr(error_code,3,3) ='002' AND error_code <>'SI002' then 1 else 0 end) DYNAMIC_002, "
+        + "SUM(CASE WHEN error_code ='SI007' and error_code<> '70007' then 1 else 0 end) SI007, "
+        + "SUM(CASE WHEN error_code ='SI051' then 1 else 0 end) SI051, "
+        + "SUM(CASE WHEN error_code ='SI052' then 1 else 0 end) SI052, "
+        + "SUM(CASE WHEN substr(error_code,3,3) ='052' AND error_code <>'SI052' then 1 else 0 end) DYNAMIC_052, "
+        + "SUM(CASE WHEN substr(error_code,3,3) ='014' and error_code <> '00014' then 1 else 0 end) DYNAMIC_014, "
+        + "SUM(CASE WHEN error_code ='SI569' then 1 else 0 end) SI569, "
+        + "SUM(CASE WHEN error_code ='SI570' then 1 else 0 end) SI570, "
+        + "SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') or error_code in('SI001','SI007','SI017','SI569','SI570','SI052','SI077','SI051','SI111')) and error_code<>'00014' THEN 1 ELSE 0 END) TD, "
+        + "ROUND((SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI052','SI077','SI569','SI570')) and error_code <> '00014' THEN 1 ELSE 0 END)*100)/COUNT(1),2) TD_PERCENT, "
+        + "SUM(CASE WHEN ((nvl( substr(error_code,3,3),'A') not in ('002','014') and error_code not in('SI001','SI007','SI017','SI569','SI570','SI052','SI077','SI051','SI111')) AND error_code <> 'CK001' OR error_code IN ('00014','70007')) THEN 1 ELSE 0 END) BD, "
+        + "ROUND((SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','052','051','014') OR error_code IN ('00014','70007')) AND error_code <> 'CK001' and error_code IS NOT NULL THEN 1 ELSE 0 END)*100)/COUNT(1),2) BD_PERCENT "
+        + "from eisapp.BACKEND_LOG where "
+        + "api_name in ('thirdPartyINBIpo_sys','thirdPartyNSEAuth_sys','thirdPartyBSEAuth_sys') and "
+        + "creation_date_time >= sysdate - interval '5' minute "
+        + "GROUP BY trim(api_name),TRIM(sys_ip) "
+        + "ORDER BY 1,2";
+
+    // ============================================================
+    // QUERY 2 — API LOG (NSE / INB)
+    // Last 5 minutes
+    // ============================================================
+    public static final String Q_API_NSE_INB = ""
+        + "select trim(API_NAME) API_NAME, trim(exp_ip) EXP_IP, "
+        + "COUNT(1) TOTAL_HITS, "
+        + "SUM(CASE WHEN RESPONSE_STATUS in ('0','SUCCESS') THEN 1 ELSE 0 END) SUCCESS, "
+        + "SUM(CASE WHEN error_code ='SI001' then 1 else 0 end) SI001, "
+        + "SUM(CASE WHEN substr(error_code,3,3) ='002'then 1 else 0 end) DYNAMIC_002, "
+        + "SUM(CASE WHEN error_code ='SI007' and error_code<> '70007' then 1 else 0 end) SI007, "
+        + "SUM(CASE WHEN error_code ='SI051' then 1 else 0 end) SI051, "
+        + "SUM(CASE WHEN substr(error_code,3,3) ='014' and error_code <> '00014' then 1 else 0 end) DYNAMIC_014, "
+        + "SUM(CASE WHEN error_code ='SI569' then 1 else 0 end) SI569, "
+        + "SUM(CASE WHEN error_code ='SI570' then 1 else 0 end) SI570, "
+        + "SUM(CASE WHEN error_code ='SI052' then 1 else 0 end) SI052, "
+        + "SUM(CASE WHEN error_code ='SI005' then 1 else 0 end) SI005, "
+        + "SUM(CASE WHEN error_code ='SI077' then 1 else 0 end) SI077, "
+        + "SUM(CASE WHEN error_code ='SI003' then 1 else 0 end) SI003, "
+        + "SUM(CASE WHEN error_code ='SI017' then 1 else 0 end) SI017, "
+        + "SUM(CASE WHEN error_code ='SI015' then 1 else 0 end) SI015, "
+        + "SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI569','SI570','SI052','SI005','SI077','SI003','SI017','SI015')) and error_code <> '00014' THEN 1 ELSE 0 END) TD, "
+        + "ROUND((SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI569','SI570','SI052','SI005','SI077','SI003','SI017','SI015')) and error_code <> '00014' THEN 1 ELSE 0 END)*100)/COUNT(1),2) TD_PERCENT, "
+        + "SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','051','014','015') OR error_code IN ('00014','70007')) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END) BD, "
+        + "ROUND((SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','051','014','015') OR error_code IN ('00014','70007')) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END)*100)/COUNT(1),2) BD_PERCENT "
+        + "from eisapp.api_log where "
+        + "creation_date_time >= sysdate - interval '5' minute "
+        + "and api_name in ('thirdPartyGenericRouting_NSE_expDS','thirdPartyGenericRouting_INB_expDS') "
+        + "GROUP BY trim(API_NAME),trim(exp_ip) "
+        + "ORDER BY 1,2";
+
+    // ============================================================
+    // QUERY 3 — API LOG (BSE)
+    // Last 5 minutes
+    // ============================================================
+    public static final String Q_API_BSE = ""
+        + "select trim(API_NAME) API_NAME, trim(exp_ip) EXP_IP, "
+        + "COUNT(1) TOTAL_HITS, "
+        + "SUM(CASE WHEN RESPONSE_STATUS in ('0','SUCCESS') THEN 1 ELSE 0 END) SUCCESS, "
+        + "SUM(CASE WHEN error_code ='SI001' then 1 else 0 end) SI001, "
+        + "SUM(CASE WHEN substr(error_code,3,3) ='002'then 1 else 0 end) DYNAMIC_002, "
+        + "SUM(CASE WHEN error_code ='SI007' and error_code<> '70007' then 1 else 0 end) SI007, "
+        + "SUM(CASE WHEN error_code ='SI051' then 1 else 0 end) SI051, "
+        + "SUM(CASE WHEN substr(error_code,3,3) ='014' and error_code <> '00014' then 1 else 0 end) DYNAMIC_014, "
+        + "SUM(CASE WHEN error_code ='SI569' then 1 else 0 end) SI569, "
+        + "SUM(CASE WHEN error_code ='SI570' then 1 else 0 end) SI570, "
+        + "SUM(CASE WHEN error_code ='SI052' then 1 else 0 end) SI052, "
+        + "SUM(CASE WHEN error_code ='SI005' then 1 else 0 end) SI005, "
+        + "SUM(CASE WHEN error_code ='SI077' then 1 else 0 end) SI077, "
+        + "SUM(CASE WHEN error_code ='SI003' then 1 else 0 end) SI003, "
+        + "SUM(CASE WHEN error_code ='SI017' then 1 else 0 end) SI017, "
+        + "SUM(CASE WHEN error_code ='SI015' then 1 else 0 end) SI015, "
+        + "SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI569','SI570','SI052','SI005','SI077','SI003','SI017','SI015')) and error_code <> '00014' THEN 1 ELSE 0 END) TD, "
+        + "ROUND((SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI569','SI570','SI052','SI005','SI077','SI003','SI017','SI015')) and error_code <> '00014' THEN 1 ELSE 0 END)*100)/COUNT(1),2) TD_PERCENT, "
+        + "SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','051','014','015') OR error_code IN ('00014','70007')) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END) BD, "
+        + "ROUND((SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','051','014','015') OR error_code IN ('00014','70007')) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END)*100)/COUNT(1),2) BD_PERCENT "
+        + "from eisapp.api_log where "
+        + "creation_date_time >= sysdate - interval '5' minute "
+        + "and api_name = 'thirdPartyGenericRouting_expDS' "
+        + "and sup_url = 'BSE' "
+        + "and ORIGINAL_URN = 'IPO_ORDER' "
+        + "and transaction_urn = 'IPO_SERVICE' "
+        + "GROUP BY trim(API_NAME),trim(exp_ip) "
+        + "ORDER BY 1,2";
+
+    // ============================================================
+    // RUN ALL 3 IN PARALLEL
+    // ============================================================
+    public static Map<String, QueryResult> runAll() {
+        Map<String, QueryResult> results = new LinkedHashMap<>();
+        ExecutorService pool = Executors.newFixedThreadPool(3);
+
+        try {
+            Future<QueryResult> f1 = pool.submit(new QueryTask("BACKEND_LOG", Q_BACKEND));
+            Future<QueryResult> f2 = pool.submit(new QueryTask("API_NSE_INB", Q_API_NSE_INB));
+            Future<QueryResult> f3 = pool.submit(new QueryTask("API_BSE", Q_API_BSE));
+
+            results.put("BACKEND_LOG", safeGet(f1));
+            results.put("API_NSE_INB", safeGet(f2));
+            results.put("API_BSE", safeGet(f3));
+        } catch (Exception e) {
+            QueryResult err = new QueryResult();
+            err.success = false;
+            err.message = "Pool error: " + e.getMessage();
+            results.put("ERROR", err);
+        } finally {
+            pool.shutdown();
+            try { pool.awaitTermination(3, TimeUnit.SECONDS); } catch (InterruptedException ignored) {}
+        }
+        return results;
+    }
+
+    private static QueryResult safeGet(Future<QueryResult> f) {
+        try {
+            return f.get(30, TimeUnit.MINUTES);
+        } catch (Exception e) {
+            QueryResult r = new QueryResult();
+            r.success = false;
+            r.message = "Timeout/Error: " + e.getMessage();
+            return r;
+        }
+    }
+
+    // ============================================================
+    // SINGLE QUERY TASK
+    // ============================================================
+    private static class QueryTask implements Callable<QueryResult> {
+        private final String name;
+        private final String sql;
+        QueryTask(String name, String sql) { this.name = name; this.sql = sql; }
+
+        @Override
+        public QueryResult call() {
+            QueryResult r = new QueryResult();
+            r.queryName = name;
+            long t0 = System.currentTimeMillis();
+            Connection conn = null;
+            Statement stmt = null;
+            ResultSet rs = null;
+            try {
+                conn = DBUtilityAuto.getIIBDBConnection();
+                if (conn == null) {
+                    r.success = false;
+                    r.message = "Could not obtain IIB connection.";
+                    return r;
+                }
+                stmt = conn.createStatement();
+                // NO setQueryTimeout — queries may take 10-12 minutes
+                stmt.setFetchSize(500);
+                rs = stmt.executeQuery(sql);
+
+                ResultSetMetaData md = rs.getMetaData();
+                int colCount = md.getColumnCount();
+                for (int i = 1; i <= colCount; i++) r.columns.add(md.getColumnLabel(i));
+
+                while (rs.next()) {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    for (int i = 1; i <= colCount; i++) {
+                        row.put(md.getColumnLabel(i), rs.getObject(i));
+                    }
+                    r.rows.add(row);
+                }
+                r.success = true;
+                r.message = r.rows.size() + " rows";
+            } catch (Exception e) {
+                r.success = false;
+                r.message = "Error: " + e.getMessage();
+            } finally {
+                if (rs != null) try { rs.close(); } catch (Exception ignored) {}
+                if (stmt != null) try { stmt.close(); } catch (Exception ignored) {}
+                if (conn != null) try { conn.close(); } catch (Exception ignored) {}
+                r.executionTimeMs = System.currentTimeMillis() - t0;
+            }
+            return r;
+        }
+    }
+
+    // ============================================================
+    // JSON HELPERS
+    // ============================================================
+    public static String esc(String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\").replace("\"", "\\\"")
+                .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
+    }
+
+    public static String toJson(QueryResult qr) {
+        StringBuilder sb = new StringBuilder("{");
+        sb.append("\"name\":\"").append(esc(qr.queryName)).append("\",");
+        sb.append("\"success\":").append(qr.success).append(",");
+        sb.append("\"message\":\"").append(esc(qr.message)).append("\",");
+        sb.append("\"executionTimeMs\":").append(qr.executionTimeMs).append(",");
+        sb.append("\"columns\":[");
+        for (int i = 0; i < qr.columns.size(); i++) {
+            if (i > 0) sb.append(",");
+            sb.append("\"").append(esc(qr.columns.get(i))).append("\"");
+        }
+        sb.append("],\"rows\":[");
+        for (int r = 0; r < qr.rows.size(); r++) {
+            if (r > 0) sb.append(",");
+            sb.append("{");
+            Map<String, Object> row = qr.rows.get(r);
+            int c = 0;
+            for (String col : qr.columns) {
+                if (c++ > 0) sb.append(",");
+                Object v = row.get(col);
+                sb.append("\"").append(esc(col)).append("\":");
+                if (v == null) sb.append("null");
+                else sb.append("\"").append(esc(v.toString())).append("\"");
+            }
+            sb.append("}");
+        }
+        sb.append("]}");
+        return sb.toString();
+    }
+}
