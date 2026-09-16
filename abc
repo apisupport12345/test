@@ -1,54 +1,50 @@
 WITH gen5 AS (
     SELECT 
-        a.ip,
-        a.type,
-        a.route_url,
-        a.lb_url AS gen5_lb_url,
-        b.lb_url AS gen6_lb_url
+        NVL(a.ip, b.ip) AS ip,
+        NVL(a.type, b.type) AS type,
+        NVL(a.route_url, b.route_url) AS route_url,
+        a.gen5_lb_url,
+        b.gen6_lb_url
     FROM (
-        SELECT ip, type, route_url, lb_url
+        SELECT ip, type, route_url, lb_url AS gen5_lb_url
         FROM daily_dpg_url_data d
         WHERE (UPPER(lb_url) LIKE 'GEN5/GATEWAY%' 
-               OR UPPER(lb_url) LIKE 'GEN5%GATEWAY%' 
-               OR UPPER(lb_url) LIKE '%GEN5/GETWAY%')
+            OR UPPER(lb_url) LIKE 'GEN5%GATEWAY%' 
+            OR UPPER(lb_url) LIKE '%GEN5/GETWAY%')
           AND UPPER(lb_url) NOT LIKE '%SIAPP3%'
     ) a
-    LEFT JOIN (
-        SELECT ip, type, lb_url
+    FULL OUTER JOIN (
+        SELECT ip, type, route_url, lb_url AS gen6_lb_url
         FROM daily_dpg_url_data d
         WHERE UPPER(lb_url) NOT LIKE '%GEN5%'
           AND UPPER(lb_url) NOT LIKE '%SIAPP3%'
     ) b
     ON a.ip = b.ip 
     AND a.type = b.type
-    -- Match based on lb_url operation suffix
-    AND REGEXP_SUBSTR(a.lb_url, '[^/]+$') = REGEXP_SUBSTR(b.lb_url, '[^/]+$')
-    AND REGEXP_REPLACE(a.lb_url, '^(.*?/)?gen5/(getway/)?', '', 1, 0, 'i') = 
-        REGEXP_REPLACE(b.lb_url, '^(.*?/)?gen6/', '', 1, 0, 'i')
+    -- ONLY match on last segment (operation name) - 100% generic
+    AND REGEXP_SUBSTR(a.gen5_lb_url, '[^/]+$') = REGEXP_SUBSTR(b.gen6_lb_url, '[^/]+$')
 ),
 gen6 AS (
     SELECT 
-        a.ip,
-        a.type,
-        a.route_url,
-        a.lb_url AS gen5_lb_url,
-        b.lb_url AS gen6_lb_url
+        NVL(a.ip, b.ip) AS ip,
+        NVL(a.type, b.type) AS type,
+        NVL(a.route_url, b.route_url) AS route_url,
+        a.gen5_lb_url,
+        b.gen6_lb_url
     FROM (
-        SELECT ip, type, route_url, lb_url
+        SELECT ip, type, route_url, lb_url AS gen5_lb_url
         FROM daily_dpg_url_data d
         WHERE UPPER(lb_url) LIKE '%SIAPP3%GEN5%'
     ) a
-    LEFT JOIN (
-        SELECT ip, type, lb_url
+    FULL OUTER JOIN (
+        SELECT ip, type, route_url, lb_url AS gen6_lb_url
         FROM daily_dpg_url_data d
         WHERE UPPER(lb_url) LIKE '%SIAPP3%'
           AND UPPER(lb_url) NOT LIKE '%GEN5/GATEWAY%'
     ) b
     ON a.ip = b.ip 
     AND a.type = b.type
-    AND REGEXP_SUBSTR(a.lb_url, '[^/]+$') = REGEXP_SUBSTR(b.lb_url, '[^/]+$')
-    AND REGEXP_REPLACE(a.lb_url, '^(.*?/)?gen5/', '', 1, 0, 'i') = 
-        REGEXP_REPLACE(b.lb_url, '^(.*?/)?gen6/', '', 1, 0, 'i')
+    AND REGEXP_SUBSTR(a.gen5_lb_url, '[^/]+$') = REGEXP_SUBSTR(b.gen6_lb_url, '[^/]+$')
 )
 SELECT ip, type, gen5_lb_url, gen6_lb_url, route_url, SYSDATE FROM gen5
 UNION ALL
