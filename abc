@@ -1,9 +1,11 @@
 WITH 
 gen5_data AS (
-    SELECT /*+ MATERIALIZE */
-        ip, type, route_url, 
+    SELECT 
+        ip, 
+        type, 
+        route_url, 
         lb_url AS gen5_lb_url,
-        SUBSTR(lb_url, INSTR(lb_url, '/', -1) + 1) AS op
+        REGEXP_SUBSTR(lb_url, '[^/]+$') AS op
     FROM daily_dpg_url_data
     WHERE (UPPER(lb_url) LIKE 'GEN5/GATEWAY%'
         OR UPPER(lb_url) LIKE 'GEN5%GATEWAY%'
@@ -11,12 +13,13 @@ gen5_data AS (
       AND UPPER(lb_url) NOT LIKE '%SIAPP3%'
 ),
 gen6_data AS (
-    SELECT /*+ MATERIALIZE */
-        ip, type, 
+    SELECT 
+        ip, 
+        type, 
         lb_url AS gen6_lb_url,
-        SUBSTR(lb_url, INSTR(lb_url, '/', -1) + 1) AS op,
+        REGEXP_SUBSTR(lb_url, '[^/]+$') AS op,
         ROW_NUMBER() OVER (
-            PARTITION BY ip, type, SUBSTR(lb_url, INSTR(lb_url, '/', -1) + 1) 
+            PARTITION BY ip, type, REGEXP_SUBSTR(lb_url, '[^/]+$') 
             ORDER BY lb_url
         ) rn
     FROM daily_dpg_url_data
@@ -28,17 +31,25 @@ gen6_best AS (
     FROM gen6_data
     WHERE rn = 1
 ),
--- Fallback: agar op match nahi mila to koi bhi gen6
 gen6_fallback AS (
     SELECT 
-        ip, type, gen6_lb_url,
-        ROW_NUMBER() OVER (PARTITION BY ip, type ORDER BY gen6_lb_url) rn
+        ip, 
+        type, 
+        lb_url AS gen6_lb_url,
+        ROW_NUMBER() OVER (PARTITION BY ip, type ORDER BY lb_url) rn
     FROM daily_dpg_url_data
     WHERE UPPER(lb_url) NOT LIKE '%GEN5%'
       AND UPPER(lb_url) NOT LIKE '%SIAPP3%'
+),
+gen6_fb AS (
+    SELECT ip, type, gen6_lb_url
+    FROM gen6_fallback
+    WHERE rn = 1
 )
 SELECT 
-    g5.ip, g5.type, g5.gen5_lb_url,
+    g5.ip, 
+    g5.type, 
+    g5.gen5_lb_url,
     COALESCE(g6.gen6_lb_url, gf.gen6_lb_url) AS gen6_lb_url,
     g5.route_url,
     SYSDATE
@@ -47,7 +58,6 @@ LEFT JOIN gen6_best g6
   ON g5.ip = g6.ip
  AND g5.type = g6.type
  AND g5.op = g6.op
-LEFT JOIN gen6_fallback gf
+LEFT JOIN gen6_fb gf
   ON g5.ip = gf.ip
- AND g5.type = gf.type
- AND gf.rn = 1;
+ AND g5.type = gf.type;
