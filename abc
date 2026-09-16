@@ -1,95 +1,53 @@
-WITH gen5_base AS (
-    SELECT ip, type, route_url, lb_url AS gen5_lb_url
+WITH 
+gen5_data AS (
+    SELECT /*+ MATERIALIZE */
+        ip, type, route_url, 
+        lb_url AS gen5_lb_url,
+        SUBSTR(lb_url, INSTR(lb_url, '/', -1) + 1) AS op
     FROM daily_dpg_url_data
     WHERE (UPPER(lb_url) LIKE 'GEN5/GATEWAY%'
         OR UPPER(lb_url) LIKE 'GEN5%GATEWAY%'
-        OR UPPER(lb_url) LIKE '%GEN5/GETWAY%'
         OR UPPER(lb_url) LIKE '%GEN5/GETWAY%')
       AND UPPER(lb_url) NOT LIKE '%SIAPP3%'
 ),
-gen6_base AS (
-    SELECT ip, type, route_url, lb_url AS gen6_lb_url
+gen6_data AS (
+    SELECT /*+ MATERIALIZE */
+        ip, type, 
+        lb_url AS gen6_lb_url,
+        SUBSTR(lb_url, INSTR(lb_url, '/', -1) + 1) AS op,
+        ROW_NUMBER() OVER (
+            PARTITION BY ip, type, SUBSTR(lb_url, INSTR(lb_url, '/', -1) + 1) 
+            ORDER BY lb_url
+        ) rn
     FROM daily_dpg_url_data
     WHERE UPPER(lb_url) NOT LIKE '%GEN5%'
       AND UPPER(lb_url) NOT LIKE '%SIAPP3%'
 ),
-gen5 AS (
+gen6_best AS (
+    SELECT ip, type, gen6_lb_url, op
+    FROM gen6_data
+    WHERE rn = 1
+),
+-- Fallback: agar op match nahi mila to koi bhi gen6
+gen6_fallback AS (
     SELECT 
-        a.ip,
-        a.type,
-        a.route_url,
-        a.gen5_lb_url,
-        b.gen6_lb_url
-    FROM gen5_base a
-    LEFT JOIN (
-        SELECT 
-            g6.ip,
-            g6.type,
-            g6.gen6_lb_url,
-            ROW_NUMBER() OVER (
-                PARTITION BY g6.ip, g6.type
-                ORDER BY 
-                    CASE 
-                        WHEN REGEXP_SUBSTR(g6.gen6_lb_url, '[^/]+$') = 
-                             REGEXP_SUBSTR(g5.gen5_lb_url, '[^/]+$')
-                        THEN 1
-                        ELSE 2
-                    END,
-                    g6.gen6_lb_url
-            ) rn
-        FROM gen6_base g6
-        JOIN gen5_base g5
-          ON g5.ip = g6.ip
-         AND g5.type = g6.type
-    ) b
-    ON a.ip = b.ip
-    AND a.type = b.type
-    AND b.rn = 1
-),
-gen6_siapp3_base AS (
-    SELECT ip, type, route_url, lb_url AS gen5_lb_url
+        ip, type, gen6_lb_url,
+        ROW_NUMBER() OVER (PARTITION BY ip, type ORDER BY gen6_lb_url) rn
     FROM daily_dpg_url_data
-    WHERE UPPER(lb_url) LIKE '%SIAPP3%GEN5%'
-),
-gen6_siapp3_target AS (
-    SELECT ip, type, route_url, lb_url AS gen6_lb_url
-    FROM daily_dpg_url_data
-    WHERE UPPER(lb_url) LIKE '%SIAPP3%'
-      AND UPPER(lb_url) NOT LIKE '%GEN5/GATEWAY%'
-),
-gen6 AS (
-    SELECT 
-        a.ip,
-        a.type,
-        a.route_url,
-        a.gen5_lb_url,
-        b.gen6_lb_url
-    FROM gen6_siapp3_base a
-    LEFT JOIN (
-        SELECT 
-            g6.ip,
-            g6.type,
-            g6.gen6_lb_url,
-            ROW_NUMBER() OVER (
-                PARTITION BY g6.ip, g6.type
-                ORDER BY 
-                    CASE 
-                        WHEN REGEXP_SUBSTR(g6.gen6_lb_url, '[^/]+$') = 
-                             REGEXP_SUBSTR(g5.gen5_lb_url, '[^/]+$')
-                        THEN 1
-                        ELSE 2
-                    END,
-                    g6.gen6_lb_url
-            ) rn
-        FROM gen6_siapp3_target g6
-        JOIN gen6_siapp3_base g5
-          ON g5.ip = g6.ip
-         AND g5.type = g6.type
-    ) b
-    ON a.ip = b.ip
-    AND a.type = b.type
-    AND b.rn = 1
+    WHERE UPPER(lb_url) NOT LIKE '%GEN5%'
+      AND UPPER(lb_url) NOT LIKE '%SIAPP3%'
 )
-SELECT ip, type, gen5_lb_url, gen6_lb_url, route_url, SYSDATE FROM gen5
-UNION ALL
-SELECT ip, type, gen5_lb_url, gen6_lb_url, route_url, SYSDATE FROM gen6;
+SELECT 
+    g5.ip, g5.type, g5.gen5_lb_url,
+    COALESCE(g6.gen6_lb_url, gf.gen6_lb_url) AS gen6_lb_url,
+    g5.route_url,
+    SYSDATE
+FROM gen5_data g5
+LEFT JOIN gen6_best g6
+  ON g5.ip = g6.ip
+ AND g5.type = g6.type
+ AND g5.op = g6.op
+LEFT JOIN gen6_fallback gf
+  ON g5.ip = gf.ip
+ AND g5.type = gf.type
+ AND gf.rn = 1;
