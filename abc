@@ -257,10 +257,10 @@
         .btn-refresh.spinning { animation: spin 1s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        /* MAIN LAYOUT — Info | Content */
+        /* MAIN LAYOUT — Info | Content (COMPACT INFO PANEL) */
         .main-wrap {
             display: grid;
-            grid-template-columns: 300px 1fr;
+            grid-template-columns: 240px 1fr;
             gap: 12px;
             padding: 12px 16px;
             min-height: 0;
@@ -268,67 +268,61 @@
         }
 
         /* ============================================================
-         * INFO PANEL — Compact + Short Lists
+         * INFO PANEL — Compact
          * ============================================================ */
         .info-panel {
             background: var(--glass);
             border: 1px solid var(--glass-border);
             border-radius: 14px;
-            padding: 12px;
+            padding: 10px;
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
             display: flex; flex-direction: column;
-            gap: 10px;
+            gap: 8px;
             overflow-y: auto;
             box-shadow: 0 4px 22px rgba(0,0,0,0.2);
         }
-        .info-panel::-webkit-scrollbar { width: 6px; }
+        .info-panel::-webkit-scrollbar { width: 5px; }
         .info-panel::-webkit-scrollbar-thumb {
             background: var(--bg-scroll);
             border-radius: 3px;
         }
 
-        /* Compact top info row */
         .info-top-row {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 8px;
+            gap: 6px;
         }
         .info-mini {
             background: var(--glass-2);
             border: 1px solid var(--glass-border);
-            border-radius: 9px;
-            padding: 8px 10px;
-            display: flex; flex-direction: column; gap: 3px;
+            border-radius: 8px;
+            padding: 6px 8px;
+            display: flex; flex-direction: column; gap: 2px;
         }
         .info-mini-label {
-            font-size: 9.5px;
+            font-size: 9px;
             font-weight: 800;
-            letter-spacing: 0.9px;
+            letter-spacing: 0.8px;
             text-transform: uppercase;
             color: var(--text-3);
         }
         .info-mini-value {
-            font-size: 15px;
+            font-size: 13px;
             font-weight: 800;
             color: var(--text-0);
             font-variant-numeric: tabular-nums;
             line-height: 1.1;
         }
-        .info-mini-value.small { font-size: 12.5px; }
-        .info-mini-value.green { color: var(--green); }
-        .info-mini-value.amber { color: var(--amber); }
-        .info-mini-value.red   { color: var(--red); }
-        .info-mini-value.purple{ color: var(--purple); }
+        .info-mini-value.small { font-size: 11px; }
 
-        /* Live status bar */
         .info-status {
-            display: flex; align-items: center; gap: 8px;
-            padding: 8px 11px;
+            display: flex; align-items: center; gap: 7px;
+            padding: 7px 10px;
             background: var(--green-dim);
             border: 1px solid rgba(34,230,164,0.3);
-            border-radius: 9px;
-            font-size: 12px;
+            border-radius: 8px;
+            font-size: 11.5px;
             font-weight: 700;
             color: var(--green);
         }
@@ -338,26 +332,26 @@
             color: var(--amber);
         }
         .info-status-dot {
-            width: 8px; height: 8px;
+            width: 7px; height: 7px;
             border-radius: 50%;
             background: currentColor;
             box-shadow: 0 0 8px currentColor;
             animation: pulse 1.5s ease-in-out infinite;
         }
 
-        /* Section titles */
         .info-section-title {
-            font-size: 10.5px;
+            font-size: 10px;
             font-weight: 800;
-            letter-spacing: 1.2px;
+            letter-spacing: 1.1px;
             text-transform: uppercase;
             color: var(--text-3);
-            display: flex; align-items: center; gap: 8px;
-            padding: 4px 0 2px;
+            display: flex; align-items: center; gap: 6px;
+            padding: 3px 0 2px;
+            margin-top: 4px;
         }
         .info-section-title::before {
             content: '';
-            width: 3px; height: 11px;
+            width: 3px; height: 10px;
             background: var(--accent);
             border-radius: 2px;
             box-shadow: 0 0 8px rgba(79,140,255,0.5);
@@ -365,13 +359,12 @@
         .info-section-title.red::before    { background: var(--red);    box-shadow: 0 0 8px rgba(255,85,119,0.6); }
         .info-section-title.amber::before  { background: var(--amber);  box-shadow: 0 0 8px rgba(255,184,77,0.6); }
         .info-section-title.purple::before { background: var(--purple); box-shadow: 0 0 8px rgba(180,124,255,0.6); }
-        .info-section-title.green::before  { background: var(--green);  box-shadow: 0 0 8px rgba(34,230,164,0.6); }
 
         .info-section-title .count-pill {
             margin-left: auto;
-            font-size: 10.5px;
-            padding: 2px 8px;
-            border-radius: 6px;
+            font-size: 10px;
+            padding: 1px 7px;
+            border-radius: 5px;
             background: var(--glass-2);
             border: 1px solid var(--glass-border);
             color: var(--text-1);
@@ -380,23 +373,21 @@
         .info-section-title.red .count-pill    { background: var(--red-dim); color: var(--red); border-color: rgba(255,85,119,0.35); }
         .info-section-title.amber .count-pill  { background: var(--amber-dim); color: var(--amber); border-color: rgba(255,184,77,0.35); }
         .info-section-title.purple .count-pill { background: var(--purple-dim); color: var(--purple); border-color: rgba(180,124,255,0.35); }
-        .info-section-title.green .count-pill  { background: var(--green-dim); color: var(--green); border-color: rgba(34,230,164,0.35); }
 
-        /* Short list */
+        /* Short list — IP on top, service name below */
         .short-list {
-            display: flex; flex-direction: column; gap: 5px;
+            display: flex; flex-direction: column; gap: 4px;
         }
         .short-item {
-            display: grid;
-            grid-template-columns: 1fr auto;
-            gap: 6px;
-            padding: 7px 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+            padding: 6px 9px;
             background: var(--glass-2);
             border: 1px solid var(--glass-border);
-            border-radius: 8px;
+            border-radius: 7px;
             border-left: 3px solid var(--glass-border);
             transition: 0.15s;
-            font-size: 12px;
         }
         .short-item:hover {
             background: var(--glass-3);
@@ -406,12 +397,9 @@
         .short-item.amber  { border-left-color: var(--amber);  background: var(--amber-dim); }
         .short-item.purple { border-left-color: var(--purple); background: var(--purple-dim); }
 
-        .short-item .text {
-            min-width: 0;
-        }
         .short-item .ip-line {
             font-family: 'JetBrains Mono', 'Consolas', monospace;
-            font-size: 12.5px;
+            font-size: 12px;
             font-weight: 800;
             color: var(--text-0);
             letter-spacing: 0.2px;
@@ -420,33 +408,25 @@
             white-space: nowrap;
         }
         .short-item .api-line {
-            font-size: 10.5px;
+            font-size: 10px;
             color: var(--text-2);
-            font-weight: 600;
-            margin-top: 2px;
+            font-weight: 700;
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
+            font-family: 'JetBrains Mono', 'Consolas', monospace;
         }
-        .short-item .value {
-            font-size: 14px;
-            font-weight: 800;
-            align-self: center;
-            font-variant-numeric: tabular-nums;
-            padding: 3px 8px;
-            border-radius: 6px;
-        }
-        .short-item.red .value    { color: var(--red);    background: var(--red-dim); }
-        .short-item.amber .value  { color: var(--amber);  background: var(--amber-dim); }
-        .short-item.purple .value { color: var(--purple); background: var(--purple-dim); }
+        .short-item .api-line.red    { color: var(--red); }
+        .short-item .api-line.amber  { color: var(--amber); }
+        .short-item .api-line.purple { color: var(--purple); }
 
         .short-empty {
-            padding: 12px 10px;
+            padding: 8px 10px;
             text-align: center;
             background: var(--green-dim);
             border: 1px solid rgba(34,230,164,0.25);
-            border-radius: 8px;
-            font-size: 11.5px;
+            border-radius: 7px;
+            font-size: 11px;
             font-weight: 700;
             color: var(--green);
             letter-spacing: 0.3px;
@@ -464,7 +444,6 @@
             min-width: 0;
         }
 
-        /* KPIs */
         .kpis {
             display: grid;
             grid-template-columns: repeat(6, 1fr);
@@ -518,7 +497,6 @@
             font-weight: 600; margin-top: 3px;
         }
 
-        /* PANELS */
         .panels {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
@@ -583,7 +561,7 @@
             overflow-y: auto; overflow-x: hidden;
             padding: 12px;
             display: grid;
-            grid-template-columns: repeat(2, 1fr);
+            grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 12px;
             align-content: start;
         }
@@ -594,16 +572,16 @@
             border-radius: 4px;
         }
 
-        /* IP CARD — bigger */
+        /* IP CARD */
         .ip-card {
             background: var(--glass-2);
             border: 1px solid var(--glass-border);
             border-radius: 12px;
-            padding: 14px 16px;
-            display: flex; flex-direction: column; gap: 12px;
+            padding: 12px 14px;
+            display: flex; flex-direction: column; gap: 10px;
             transition: 0.22s;
             position: relative; overflow: hidden;
-            min-height: 220px;
+            min-height: 205px;
             cursor: pointer;
         }
         .ip-card:hover {
@@ -702,6 +680,7 @@
             border-radius: 7px;
             letter-spacing: 1.3px;
             text-transform: uppercase;
+            flex-shrink: 0;
         }
         .ip-badge.healthy-card { background: var(--green-dim); color: var(--green); border: 1px solid rgba(34,230,164,0.4); }
         .ip-badge.td-card      { background: var(--red-dim);   color: var(--red);   border: 1px solid rgba(255,85,119,0.45); }
@@ -724,28 +703,37 @@
             font-family: 'JetBrains Mono', 'Consolas', monospace;
         }
 
+        /* FIXED 4-BOX GRID */
         .ip-metrics {
             display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
         }
         .ip-metric {
             background: var(--glass-3);
-            border-radius: 9px;
-            padding: 10px 12px;
+            border-radius: 8px;
+            padding: 8px 10px;
             border: 1px solid var(--glass-border);
+            min-width: 0;
+            overflow: hidden;
         }
         .ip-metric-label {
-            font-size: 11px; color: var(--text-3);
+            font-size: 10px; color: var(--text-3);
             font-weight: 800;
-            letter-spacing: 0.9px; text-transform: uppercase;
-            margin-bottom: 5px;
+            letter-spacing: 0.7px; text-transform: uppercase;
+            margin-bottom: 4px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         .ip-metric-value {
-            font-size: 20px; font-weight: 800;
+            font-size: 17px; font-weight: 800;
             color: var(--text-0);
             font-variant-numeric: tabular-nums;
             line-height: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         .ip-metric-value.green { color: var(--green); }
         .ip-metric-value.amber { color: var(--amber); }
@@ -757,7 +745,7 @@
             background: var(--glass-3);
             border-radius: 4px;
             overflow: hidden;
-            margin-top: 4px;
+            margin-top: 2px;
         }
         .succ-bar-inner {
             height: 100%;
@@ -771,16 +759,16 @@
         .succ-bar-inner.zero { background: linear-gradient(90deg, var(--purple), #c4a6ff); box-shadow: 0 0 12px rgba(180,124,255,0.5); }
 
         .err-chips {
-            display: flex; flex-wrap: wrap; gap: 6px;
-            padding-top: 10px;
+            display: flex; flex-wrap: wrap; gap: 5px;
+            padding-top: 8px;
             border-top: 1px dashed var(--glass-border);
-            min-height: 30px;
+            min-height: 28px;
         }
         .err-chip {
             font-family: 'JetBrains Mono', 'Consolas', monospace;
-            font-size: 11.5px; font-weight: 800;
-            padding: 4px 10px;
-            border-radius: 6px;
+            font-size: 11px; font-weight: 800;
+            padding: 3px 9px;
+            border-radius: 5px;
             letter-spacing: 0.3px;
             white-space: nowrap;
         }
@@ -1286,10 +1274,10 @@
         @media (max-width: 1500px) {
             .kpis { grid-template-columns: repeat(3, 1fr); }
             .main-content { grid-template-rows: 200px 1fr; }
-            .panel-body { grid-template-columns: 1fr; } /* 1 card per row on small */
+            .panel-body { grid-template-columns: 1fr; }
         }
         @media (max-width: 1300px) {
-            .main-wrap { grid-template-columns: 260px 1fr; }
+            .main-wrap { grid-template-columns: 220px 1fr; }
             .panel-body { grid-template-columns: 1fr; }
         }
         @media (max-width: 1100px) {
@@ -1350,7 +1338,7 @@
 
     <div class="main-wrap">
 
-        <!-- INFO PANEL — Compact + Short Lists -->
+        <!-- INFO PANEL — Compact -->
         <div class="info-panel">
             <div class="info-status" id="infoStatus">
                 <span class="info-status-dot"></span>
@@ -1359,7 +1347,7 @@
 
             <div class="info-top-row">
                 <div class="info-mini">
-                    <div class="info-mini-label">Last Refresh</div>
+                    <div class="info-mini-label">Last</div>
                     <div class="info-mini-value small" id="infoLastRefresh">—</div>
                 </div>
                 <div class="info-mini">
@@ -1376,21 +1364,18 @@
                 </div>
             </div>
 
-            <!-- TD List -->
             <div class="info-section-title red">
-                TD Servers <span class="count-pill" id="tdListCount">0</span>
+                TD <span class="count-pill" id="tdListCount">0</span>
             </div>
             <div class="short-list" id="tdList"></div>
 
-            <!-- BD List -->
             <div class="info-section-title amber">
-                BD Servers <span class="count-pill" id="bdListCount">0</span>
+                BD <span class="count-pill" id="bdListCount">0</span>
             </div>
             <div class="short-list" id="bdList"></div>
 
-            <!-- Zero List -->
             <div class="info-section-title purple">
-                Zero-Hit Combos <span class="count-pill" id="zeroListCount">0</span>
+                Zero <span class="count-pill" id="zeroListCount">0</span>
             </div>
             <div class="short-list" id="zeroList"></div>
         </div>
@@ -1500,8 +1485,8 @@
 
 <script>
 /* ============================================================
- * IPO MONITORING DASHBOARD — v12.0
- * 2 cards per row, info panel with short lists, bigger fonts
+ * IPO MONITORING DASHBOARD — v12.1
+ * Compact info panel + fixed 4-box grid
  * ============================================================ */
 
 var REFRESH_INTERVAL_SEC = 300;
@@ -1567,25 +1552,26 @@ function renderShortList(containerId, countId, items, type) {
     }
     var html = '';
     items.slice(0, 20).forEach(function(it) {
-        var shortApi = it.api.replace('thirdParty', '').replace('_sys','').replace('_expDS','').replace('GenericRouting','');
-        if (shortApi.length > 28) shortApi = shortApi.substring(0, 26) + '…';
+        var shortApi = it.api
+            .replace('thirdParty', '')
+            .replace('_sys', '')
+            .replace('_expDS', '')
+            .replace('GenericRouting', '');
+        if (shortApi.length > 22) shortApi = shortApi.substring(0, 20) + '…';
+        var cls = type;
         var valueText = '';
         if (type === 'td') valueText = it.tdPct.toFixed(1) + '%';
         else if (type === 'bd') valueText = it.bdPct.toFixed(1) + '%';
         else valueText = '0';
-        html += '<div class="short-item ' + type + '">';
-        html +=   '<div class="text">';
-        html +=     '<div class="ip-line">' + escapeHtml(it.ip) + '</div>';
-        html +=     '<div class="api-line">' + escapeHtml(shortApi) + '</div>';
-        html +=   '</div>';
-        html +=   '<div class="value">' + valueText + '</div>';
+        html += '<div class="short-item ' + cls + '" title="' + escapeHtml(it.ip) + ' · ' + escapeHtml(it.api) + '">';
+        html +=   '<div class="ip-line">' + escapeHtml(it.ip) + '</div>';
+        html +=   '<div class="api-line ' + cls + '">' + escapeHtml(shortApi) + ' · ' + valueText + '</div>';
         html += '</div>';
     });
     container.innerHTML = html;
 }
 
 function updateInfoPanel(allRows, elapsed) {
-    // Collect TD, BD, Zero combos across all panels
     var tdItems = [];
     var bdItems = [];
     var zeroItems = [];
@@ -1598,6 +1584,7 @@ function updateInfoPanel(allRows, elapsed) {
     }
     tdItems.sort(function(a, b) { return b.tdPct - a.tdPct; });
     bdItems.sort(function(a, b) { return b.bdPct - a.bdPct; });
+    zeroItems.sort(function(a, b) { return String(a.ip).localeCompare(String(b.ip)); });
 
     renderShortList('tdList', 'tdListCount', tdItems, 'td');
     renderShortList('bdList', 'bdListCount', bdItems, 'bd');
