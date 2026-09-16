@@ -3,9 +3,6 @@
 <%@ page import="com.jdbc.IPOMonitorService.QueryResult" %>
 <%@ page import="java.util.*" %>
 <%
-    // ============================================================
-    // AJAX endpoint — returns all 3 query results as JSON
-    // ============================================================
     String ajax = request.getParameter("ajax");
     if ("fetch".equals(ajax)) {
         Map<String, QueryResult> results = IPOMonitorService.runAll();
@@ -31,505 +28,540 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         :root {
-            --bg-0: #0b0e14;
-            --bg-1: #12161f;
-            --bg-2: #1a1f2e;
-            --bg-3: #0e1219;
-            --border: #232b3d;
-            --border-2: #2d3648;
+            --bg-0: #070a0f;
+            --bg-1: #0d1219;
+            --bg-2: #131a24;
+            --bg-3: #1a2230;
+            --border: #1f2a3a;
+            --border-2: #2a3849;
             --text-0: #ffffff;
-            --text-1: #e4e7ee;
-            --text-2: #b8bfcd;
-            --text-3: #8890a3;
-            --text-4: #5c6478;
-            --accent: #3b82f6;
-            --green: #22c55e;
-            --green-dim: rgba(34,197,94,0.15);
-            --amber: #f59e0b;
-            --amber-dim: rgba(245,158,11,0.15);
-            --red: #ef4444;
-            --red-dim: rgba(239,68,68,0.15);
+            --text-1: #dfe5ee;
+            --text-2: #9aa5b5;
+            --text-3: #5e6b7e;
+            --accent: #2e7fff;
+            --green: #00d68f;
+            --amber: #ffb020;
+            --red: #ff4d4f;
             --purple: #a855f7;
-            --cyan: #06b6d4;
+            --cyan: #22d3ee;
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; }
         html, body {
-            height: 100%;
+            height: 100vh;
+            overflow: hidden;
             font-family: 'Inter', 'Segoe UI', -apple-system, Roboto, sans-serif;
             background: var(--bg-0);
             color: var(--text-1);
-            font-size: 15px;
-            overflow-x: hidden;
+            font-size: 14px;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* ================= APP GRID ================= */
+        .app {
+            display: grid;
+            grid-template-rows: 64px 1fr;
+            height: 100vh;
+            width: 100vw;
         }
 
         /* ================= HEADER ================= */
         .header {
-            background: linear-gradient(90deg, #0f1729 0%, #1a2540 100%);
+            background: linear-gradient(90deg, #0a0f18 0%, #101827 100%);
             border-bottom: 1px solid var(--border);
-            padding: 18px 32px;
             display: flex;
             align-items: center;
+            padding: 0 28px;
             gap: 20px;
-            position: sticky;
-            top: 0;
+            box-shadow: 0 2px 20px rgba(0,0,0,0.6);
             z-index: 100;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
         }
         .logo {
             display: flex;
             align-items: center;
-            gap: 14px;
-            font-size: 22px;
+            gap: 12px;
+            font-size: 19px;
             font-weight: 800;
             color: #fff;
             letter-spacing: -0.3px;
         }
         .logo-mark {
-            width: 44px; height: 44px;
-            background: linear-gradient(135deg, #3b82f6, #1d4ed8);
-            border-radius: 12px;
+            width: 38px; height: 38px;
+            background: linear-gradient(135deg, #2e7fff, #1a5ecc);
+            border-radius: 10px;
             display: flex; align-items: center; justify-content: center;
-            font-size: 20px;
-            box-shadow: 0 6px 20px rgba(59,130,246,0.5);
+            font-size: 18px;
+            box-shadow: 0 4px 16px rgba(46,127,255,0.5);
         }
         .logo-sub {
-            font-size: 12px;
-            font-weight: 500;
+            font-size: 11px;
+            font-weight: 600;
             color: var(--text-3);
-            padding: 4px 12px;
-            background: rgba(255,255,255,0.05);
-            border-radius: 12px;
-            letter-spacing: 0.5px;
+            padding: 3px 10px;
+            background: rgba(255,255,255,0.04);
+            border-radius: 8px;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+            margin-left: 4px;
         }
 
         .header-spacer { flex: 1; }
 
-        .header-badge {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 10px 18px;
-            background: rgba(34,197,94,0.08);
-            border: 1px solid rgba(34,197,94,0.25);
-            border-radius: 10px;
-            font-size: 13px;
-            font-weight: 700;
-            color: var(--green);
-            text-transform: uppercase;
-            letter-spacing: 0.8px;
-        }
-        .live-dot {
-            width: 10px; height: 10px; border-radius: 50%;
-            background: var(--green);
-            box-shadow: 0 0 12px var(--green);
-            animation: pulse 1.5s infinite;
-        }
-        @keyframes pulse {
-            0%,100% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.5; transform: scale(1.2); }
-        }
-
-        .btn-refresh {
-            padding: 11px 22px;
-            background: linear-gradient(135deg, #3b82f6, #1d4ed8);
-            color: #fff;
-            border: none;
-            border-radius: 10px;
-            font-size: 14px;
-            font-weight: 700;
-            cursor: pointer;
+        .live-badge {
             display: flex;
             align-items: center;
             gap: 8px;
-            transition: 0.2s;
-            box-shadow: 0 4px 14px rgba(59,130,246,0.4);
-            font-family: inherit;
+            padding: 8px 14px;
+            background: rgba(0,214,143,0.08);
+            border: 1px solid rgba(0,214,143,0.3);
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 800;
+            color: var(--green);
+            text-transform: uppercase;
+            letter-spacing: 1px;
         }
-        .btn-refresh:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 6px 20px rgba(59,130,246,0.6);
+        .live-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--green);
+            box-shadow: 0 0 10px var(--green);
+            animation: pulse 1.4s infinite;
         }
-        .btn-refresh:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-            transform: none;
+        @keyframes pulse {
+            0%,100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(1.3); }
         }
-        .btn-refresh .spin-icon {
-            display: inline-block;
-        }
-        .btn-refresh.spinning .spin-icon {
-            animation: spin 1s linear infinite;
-        }
-        @keyframes spin { to { transform: rotate(360deg); } }
 
         .countdown {
-            font-size: 13px;
-            color: var(--text-3);
+            font-size: 12.5px;
+            color: var(--text-2);
             font-weight: 600;
-            padding: 8px 14px;
+            padding: 8px 16px;
             background: var(--bg-1);
             border: 1px solid var(--border);
             border-radius: 8px;
             font-variant-numeric: tabular-nums;
-            min-width: 160px;
+            min-width: 150px;
             text-align: center;
+            letter-spacing: 0.3px;
         }
-        .countdown b { color: var(--accent); }
+        .countdown b { color: var(--accent); font-weight: 800; }
 
-        /* ================= MAIN ================= */
+        .btn-icon {
+            width: 38px; height: 38px;
+            background: var(--bg-2);
+            border: 1px solid var(--border);
+            border-radius: 9px;
+            color: var(--text-1);
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 16px;
+            transition: 0.2s;
+        }
+        .btn-icon:hover { background: var(--bg-3); border-color: var(--accent); color: var(--accent); }
+        .btn-icon:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-icon.spinning { animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .btn-primary {
+            padding: 9px 18px;
+            background: linear-gradient(135deg, #2e7fff, #1a5ecc);
+            color: #fff;
+            border: none;
+            border-radius: 9px;
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex; align-items: center; gap: 7px;
+            transition: 0.2s;
+            box-shadow: 0 4px 12px rgba(46,127,255,0.35);
+            font-family: inherit;
+            letter-spacing: 0.3px;
+        }
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 18px rgba(46,127,255,0.55);
+        }
+        .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+
+        /* ================= MAIN LAYOUT ================= */
         .main {
-            padding: 24px 32px 40px 32px;
-            max-width: 1920px;
-            margin: 0 auto;
+            padding: 16px 20px;
+            display: grid;
+            grid-template-rows: 108px 1fr;
+            gap: 14px;
+            overflow: hidden;
+            min-height: 0;
         }
 
-        /* ================= STAT CARDS ================= */
-        .cards {
+        /* ================= KPI ROW ================= */
+        .kpi-row {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-            gap: 18px;
-            margin-bottom: 26px;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 12px;
+            min-height: 0;
         }
-        .card {
+        .kpi {
             background: linear-gradient(135deg, var(--bg-1) 0%, var(--bg-2) 100%);
             border: 1px solid var(--border);
-            border-radius: 14px;
-            padding: 22px 24px;
+            border-radius: 12px;
+            padding: 14px 18px;
             position: relative;
             overflow: hidden;
-            transition: 0.25s;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            transition: 0.2s;
         }
-        .card:hover {
-            transform: translateY(-3px);
-            border-color: var(--border-2);
-            box-shadow: 0 12px 32px rgba(0,0,0,0.4);
-        }
-        .card::before {
+        .kpi::before {
             content: '';
             position: absolute;
-            top: 0; left: 0; right: 0;
-            height: 3px;
+            top: 0; left: 0; bottom: 0;
+            width: 3px;
             background: var(--accent);
         }
-        .card.ok::before { background: var(--green); }
-        .card.warn::before { background: var(--amber); }
-        .card.err::before { background: var(--red); }
+        .kpi.ok::before   { background: var(--green); }
+        .kpi.warn::before { background: var(--amber); }
+        .kpi.err::before  { background: var(--red); }
 
-        .card-label {
-            font-size: 12px;
-            font-weight: 700;
-            color: var(--text-4);
+        .kpi-label {
+            font-size: 10.5px;
+            font-weight: 800;
+            color: var(--text-3);
             text-transform: uppercase;
             letter-spacing: 1px;
-            margin-bottom: 10px;
+            margin-bottom: 4px;
         }
-        .card-value {
-            font-size: 32px;
+        .kpi-value {
+            font-size: 26px;
             font-weight: 800;
             color: var(--text-0);
-            line-height: 1.1;
+            line-height: 1;
             font-variant-numeric: tabular-nums;
-            margin-bottom: 6px;
+            letter-spacing: -0.5px;
         }
-        .card-value.ok   { color: var(--green); }
-        .card-value.warn { color: var(--amber); }
-        .card-value.err  { color: var(--red); }
-        .card-sub {
-            font-size: 12.5px;
+        .kpi-value.ok   { color: var(--green); }
+        .kpi-value.warn { color: var(--amber); }
+        .kpi-value.err  { color: var(--red); }
+        .kpi-sub {
+            font-size: 10.5px;
             color: var(--text-3);
             font-weight: 500;
+            margin-top: 3px;
         }
 
-        /* ================= PANELS ================= */
+        /* ================= PANELS ROW ================= */
+        .panels {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 14px;
+            overflow: hidden;
+            min-height: 0;
+        }
         .panel {
             background: var(--bg-1);
             border: 1px solid var(--border);
-            border-radius: 14px;
-            margin-bottom: 24px;
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
             overflow: hidden;
-            box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+            min-height: 0;
         }
-        .panel-header {
+        .panel-head {
             background: linear-gradient(90deg, var(--bg-2) 0%, var(--bg-1) 100%);
-            padding: 16px 24px;
+            padding: 12px 16px;
             border-bottom: 1px solid var(--border);
             display: flex;
             align-items: center;
-            gap: 16px;
-            flex-wrap: wrap;
+            gap: 12px;
+            flex-shrink: 0;
         }
-        .panel-title {
-            font-size: 17px;
-            font-weight: 800;
-            color: var(--text-0);
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            letter-spacing: -0.2px;
-        }
-        .panel-icon {
-            width: 32px; height: 32px;
+        .panel-head-icon {
+            width: 30px; height: 30px;
             border-radius: 8px;
             display: flex; align-items: center; justify-content: center;
-            font-size: 16px;
-            background: rgba(59,130,246,0.15);
-            color: var(--accent);
+            font-size: 15px;
+            flex-shrink: 0;
         }
-        .panel-icon.green  { background: rgba(34,197,94,0.15); color: var(--green); }
-        .panel-icon.purple { background: rgba(168,85,247,0.15); color: var(--purple); }
+        .icon-green  { background: rgba(0,214,143,0.15); color: var(--green); }
+        .icon-blue   { background: rgba(46,127,255,0.15); color: var(--accent); }
+        .icon-purple { background: rgba(168,85,247,0.15); color: var(--purple); }
 
-        .panel-meta {
-            display: flex;
-            gap: 16px;
-            font-size: 13px;
-            color: var(--text-3);
-        }
-        .panel-meta b { color: var(--text-1); }
-        .panel-spacer { flex: 1; }
-
-        .panel-search {
-            padding: 8px 14px;
-            background: var(--bg-0);
-            border: 1px solid var(--border-2);
-            border-radius: 8px;
-            color: var(--text-1);
+        .panel-head-text { flex: 1; min-width: 0; }
+        .panel-title {
             font-size: 13.5px;
-            outline: none;
-            width: 240px;
-            font-family: inherit;
+            font-weight: 800;
+            color: var(--text-0);
+            letter-spacing: -0.1px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
-        .panel-search:focus { border-color: var(--accent); }
+        .panel-sub {
+            font-size: 10.5px;
+            color: var(--text-3);
+            font-weight: 600;
+            margin-top: 1px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .panel-badge {
+            font-size: 10.5px;
+            font-weight: 800;
+            padding: 3px 9px;
+            border-radius: 6px;
+            background: var(--bg-3);
+            color: var(--text-3);
+            letter-spacing: 0.4px;
+            white-space: nowrap;
+        }
 
-        .panel-body { max-height: 500px; overflow: auto; position: relative; }
-        .panel-body::-webkit-scrollbar { width: 12px; height: 12px; }
-        .panel-body::-webkit-scrollbar-track { background: var(--bg-3); }
+        .panel-body {
+            flex: 1;
+            overflow: auto;
+            position: relative;
+            min-height: 0;
+        }
+        .panel-body::-webkit-scrollbar { width: 8px; height: 8px; }
+        .panel-body::-webkit-scrollbar-track { background: var(--bg-1); }
         .panel-body::-webkit-scrollbar-thumb {
             background: var(--border-2);
-            border-radius: 6px;
-            border: 3px solid var(--bg-3);
+            border-radius: 4px;
         }
+        .panel-body::-webkit-scrollbar-thumb:hover { background: #3a4a5e; }
 
+        /* ================= TABLE ================= */
         table.dt {
             width: 100%;
             border-collapse: separate;
             border-spacing: 0;
-            font-size: 13.5px;
-            font-family: 'JetBrains Mono', 'Consolas', monospace;
+            font-size: 12px;
+            font-family: 'JetBrains Mono', 'SF Mono', 'Consolas', monospace;
         }
-        table.dt th {
+        table.dt thead th {
             background: var(--bg-2);
             color: var(--cyan);
-            padding: 12px 14px;
+            padding: 9px 10px;
             text-align: right;
             position: sticky;
             top: 0;
-            z-index: 5;
+            z-index: 10;
             font-weight: 800;
-            font-size: 12.5px;
+            font-size: 10.5px;
             white-space: nowrap;
             border-bottom: 2px solid var(--border-2);
-            border-right: 1px solid var(--border);
             text-transform: uppercase;
-            letter-spacing: 0.4px;
+            letter-spacing: 0.6px;
         }
-        table.dt th:first-child,
-        table.dt th:nth-child(2) { text-align: left; }
+        table.dt thead th:first-child,
+        table.dt thead th:nth-child(2) { text-align: left; }
 
-        table.dt td {
-            padding: 11px 14px;
+        table.dt tbody td {
+            padding: 8px 10px;
             border-bottom: 1px solid var(--border);
-            border-right: 1px solid var(--border);
             color: var(--text-2);
             white-space: nowrap;
             text-align: right;
             font-variant-numeric: tabular-nums;
+            font-size: 12px;
         }
-        table.dt td:first-child,
-        table.dt td:nth-child(2) { text-align: left; color: var(--text-1); font-weight: 600; }
+        table.dt tbody td:first-child,
+        table.dt tbody td:nth-child(2) {
+            text-align: left;
+            color: var(--text-1);
+            font-weight: 700;
+            max-width: 140px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        table.dt tbody tr:nth-child(even) td { background: rgba(255,255,255,0.012); }
+        table.dt tbody tr:hover td { background: rgba(46,127,255,0.07); }
 
-        table.dt tr:nth-child(even) td { background: rgba(255,255,255,0.015); }
-        table.dt tr:hover td { background: rgba(59,130,246,0.08); }
+        td.zero   { color: var(--text-3); opacity: 0.35; }
+        td.hi     { color: var(--text-0); font-weight: 700; }
+        td.success{ color: var(--green); font-weight: 700; }
+        td.td-cnt { color: var(--amber); font-weight: 700; }
+        td.bd-cnt { color: var(--red); font-weight: 700; }
+        td.pct-ok { color: var(--green); font-weight: 700; }
+        td.pct-mid{ color: var(--amber); font-weight: 700; }
+        td.pct-bad{ color: var(--red); font-weight: 700; background: rgba(255,77,79,0.08); }
 
-        table.dt td.zero { color: var(--text-4); opacity: 0.5; }
-        table.dt td.num-hi { color: var(--text-1); font-weight: 700; }
-        table.dt td.num-ok { color: var(--green); font-weight: 700; }
-        table.dt td.num-warn { color: var(--amber); font-weight: 700; }
-        table.dt td.num-err { color: var(--red); font-weight: 700; }
-        table.dt td.pct-ok  { color: var(--green); }
-        table.dt td.pct-mid { color: var(--amber); }
-        table.dt td.pct-bad { color: var(--red); }
-
-        .empty {
-            padding: 60px 20px;
+        /* ================= STATES ================= */
+        .empty-state, .loader-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            padding: 30px 20px;
             text-align: center;
-            color: var(--text-4);
-            font-size: 14px;
+            color: var(--text-3);
         }
-        .empty-icon { font-size: 42px; opacity: 0.4; margin-bottom: 12px; }
+        .empty-icon { font-size: 36px; opacity: 0.35; margin-bottom: 10px; }
+        .empty-text { font-size: 12.5px; font-weight: 600; }
 
-        .loader {
-            padding: 80px 20px;
-            text-align: center;
-        }
         .loader-spinner {
-            display: inline-block;
-            width: 52px; height: 52px;
-            border: 4px solid var(--bg-2);
+            width: 40px; height: 40px;
+            border: 3px solid var(--bg-3);
             border-top-color: var(--accent);
             border-radius: 50%;
             animation: spin 0.9s linear infinite;
         }
         .loader-text {
-            margin-top: 20px;
-            font-size: 15px;
+            margin-top: 14px;
+            font-size: 12px;
             color: var(--text-3);
             font-weight: 600;
+            letter-spacing: 0.4px;
         }
 
+        /* ================= TOAST ================= */
         .toast {
             position: fixed;
-            bottom: 30px; right: 30px;
-            padding: 14px 22px;
-            background: var(--bg-1);
-            border-left: 4px solid var(--green);
+            bottom: 22px; right: 22px;
+            padding: 12px 18px;
+            background: var(--bg-2);
+            border-left: 3px solid var(--green);
             border-radius: 8px;
-            color: var(--text-1);
-            font-size: 14px;
+            color: var(--text-0);
+            font-size: 13px;
             font-weight: 600;
-            box-shadow: 0 8px 28px rgba(0,0,0,0.6);
+            box-shadow: 0 8px 28px rgba(0,0,0,0.7);
             z-index: 9999;
             animation: slideIn 0.25s ease;
         }
         .toast.err { border-left-color: var(--red); }
         @keyframes slideIn {
-            from { opacity: 0; transform: translateX(30px); }
+            from { opacity: 0; transform: translateX(24px); }
             to   { opacity: 1; transform: translateX(0); }
         }
 
-        @media (max-width: 900px) {
-            .main { padding: 16px 14px 30px; }
-            .header { padding: 14px 16px; flex-wrap: wrap; }
-            .logo { font-size: 18px; }
-            .cards { grid-template-columns: 1fr 1fr; }
+        /* ================= RESPONSIVE ================= */
+        @media (max-width: 1400px) {
+            .kpi-row { grid-template-columns: repeat(3, 1fr); }
+        }
+        @media (max-width: 1100px) {
+            .panels { grid-template-columns: 1fr; }
+            .main { grid-template-rows: auto 1fr; }
         }
     </style>
 </head>
-<body>
+<body data-theme="dark">
 
-<!-- ================= HEADER ================= -->
-<div class="header">
-    <div class="logo">
-        <div class="logo-mark">&#128200;</div>
-        IPO Monitoring
-        <span class="logo-sub">Live Dashboard</span>
-    </div>
-    <div class="header-spacer"></div>
-    <div class="header-badge">
-        <span class="live-dot"></span> LIVE
-    </div>
-    <div class="countdown" id="countdown">
-        Initializing...
-    </div>
-    <button class="btn-refresh" id="refreshBtn" onclick="refreshNow()">
-        <span class="spin-icon">&#8635;</span> Refresh Now
-    </button>
-</div>
+<div class="app">
 
-<!-- ================= MAIN ================= -->
-<div class="main">
-
-    <!-- SUMMARY CARDS -->
-    <div class="cards" id="cards">
-        <div class="card ok">
-            <div class="card-label">Backend Hits (5m)</div>
-            <div class="card-value" id="cardBackendHits">—</div>
-            <div class="card-sub">NSE Auth + BSE Auth + INB IPO</div>
+    <!-- ================= HEADER ================= -->
+    <div class="header">
+        <div class="logo">
+            <div class="logo-mark">&#128200;</div>
+            IPO Monitor
+            <span class="logo-sub">Live</span>
         </div>
-        <div class="card ok">
-            <div class="card-label">Backend TD%</div>
-            <div class="card-value" id="cardBackendTD">—</div>
-            <div class="card-sub">Technical Decline avg</div>
+        <div class="header-spacer"></div>
+        <div class="live-badge">
+            <span class="live-dot"></span> Live
         </div>
-        <div class="card ok">
-            <div class="card-label">API Hits — NSE/INB (5m)</div>
-            <div class="card-value" id="cardApiNHits">—</div>
-            <div class="card-sub">Routing NSE + INB</div>
-        </div>
-        <div class="card ok">
-            <div class="card-label">API TD% — NSE/INB</div>
-            <div class="card-value" id="cardApiNTD">—</div>
-            <div class="card-sub">Technical Decline avg</div>
-        </div>
-        <div class="card ok">
-            <div class="card-label">API Hits — BSE (5m)</div>
-            <div class="card-value" id="cardApiBHits">—</div>
-            <div class="card-sub">BSE IPO_ORDER</div>
-        </div>
-        <div class="card ok">
-            <div class="card-label">API TD% — BSE</div>
-            <div class="card-value" id="cardApiBTD">—</div>
-            <div class="card-sub">Technical Decline avg</div>
-        </div>
+        <div class="countdown" id="countdown">Initializing...</div>
+        <button class="btn-icon" id="refreshBtn" onclick="refreshNow()" title="Refresh now">
+            &#8635;
+        </button>
     </div>
 
-    <!-- PANEL 1: BACKEND LOG -->
-    <div class="panel">
-        <div class="panel-header">
-            <div class="panel-icon green">&#9881;</div>
-            <div class="panel-title">BACKEND LOG — IPO Auth Services</div>
-            <div class="panel-meta">
-                <span>Rows: <b id="backendRows">—</b></span>
-                <span>Time: <b id="backendTime">—</b></span>
-            </div>
-            <div class="panel-spacer"></div>
-            <input type="text" class="panel-search" placeholder="Filter rows..." oninput="filterTable('backendTable', this.value)">
-        </div>
-        <div class="panel-body" id="backendBody">
-            <div class="loader">
-                <div class="loader-spinner"></div>
-                <div class="loader-text">Loading backend data...</div>
-            </div>
-        </div>
-    </div>
+    <!-- ================= MAIN ================= -->
+    <div class="main">
 
-    <!-- PANEL 2: API NSE/INB -->
-    <div class="panel">
-        <div class="panel-header">
-            <div class="panel-icon">&#128225;</div>
-            <div class="panel-title">API LOG — NSE / INB Routing</div>
-            <div class="panel-meta">
-                <span>Rows: <b id="apiNRows">—</b></span>
-                <span>Time: <b id="apiNTime">—</b></span>
+        <!-- KPI ROW -->
+        <div class="kpi-row">
+            <div class="kpi ok" id="kpiBackendHits">
+                <div class="kpi-label">Backend Hits</div>
+                <div class="kpi-value">—</div>
+                <div class="kpi-sub">NSE+BSE+INB Auth · 5m</div>
             </div>
-            <div class="panel-spacer"></div>
-            <input type="text" class="panel-search" placeholder="Filter rows..." oninput="filterTable('apiNTable', this.value)">
-        </div>
-        <div class="panel-body" id="apiNBody">
-            <div class="loader">
-                <div class="loader-spinner"></div>
-                <div class="loader-text">Loading NSE/INB data...</div>
+            <div class="kpi ok" id="kpiBackendTD">
+                <div class="kpi-label">Backend TD%</div>
+                <div class="kpi-value">—</div>
+                <div class="kpi-sub">Technical Decline</div>
+            </div>
+            <div class="kpi ok" id="kpiApiNHits">
+                <div class="kpi-label">NSE/INB Hits</div>
+                <div class="kpi-value">—</div>
+                <div class="kpi-sub">Routing · 5m</div>
+            </div>
+            <div class="kpi ok" id="kpiApiNTD">
+                <div class="kpi-label">NSE/INB TD%</div>
+                <div class="kpi-value">—</div>
+                <div class="kpi-sub">Technical Decline</div>
+            </div>
+            <div class="kpi ok" id="kpiApiBHits">
+                <div class="kpi-label">BSE Hits</div>
+                <div class="kpi-value">—</div>
+                <div class="kpi-sub">IPO_ORDER · 5m</div>
+            </div>
+            <div class="kpi ok" id="kpiApiBTD">
+                <div class="kpi-label">BSE TD%</div>
+                <div class="kpi-value">—</div>
+                <div class="kpi-sub">Technical Decline</div>
             </div>
         </div>
-    </div>
 
-    <!-- PANEL 3: API BSE -->
-    <div class="panel">
-        <div class="panel-header">
-            <div class="panel-icon purple">&#128226;</div>
-            <div class="panel-title">API LOG — BSE IPO Routing</div>
-            <div class="panel-meta">
-                <span>Rows: <b id="apiBRows">—</b></span>
-                <span>Time: <b id="apiBTime">—</b></span>
+        <!-- PANELS -->
+        <div class="panels">
+
+            <!-- BACKEND LOG -->
+            <div class="panel">
+                <div class="panel-head">
+                    <div class="panel-head-icon icon-green">&#9881;</div>
+                    <div class="panel-head-text">
+                        <div class="panel-title">BACKEND LOG</div>
+                        <div class="panel-sub">IPO Auth Services</div>
+                    </div>
+                    <div class="panel-badge" id="backendBadge">—</div>
+                </div>
+                <div class="panel-body" id="backendBody">
+                    <div class="loader-state">
+                        <div class="loader-spinner"></div>
+                        <div class="loader-text">Loading backend data...</div>
+                    </div>
+                </div>
             </div>
-            <div class="panel-spacer"></div>
-            <input type="text" class="panel-search" placeholder="Filter rows..." oninput="filterTable('apiBTable', this.value)">
-        </div>
-        <div class="panel-body" id="apiBBody">
-            <div class="loader">
-                <div class="loader-spinner"></div>
-                <div class="loader-text">Loading BSE data...</div>
+
+            <!-- NSE / INB -->
+            <div class="panel">
+                <div class="panel-head">
+                    <div class="panel-head-icon icon-blue">&#128225;</div>
+                    <div class="panel-head-text">
+                        <div class="panel-title">API LOG · NSE/INB</div>
+                        <div class="panel-sub">Routing Services</div>
+                    </div>
+                    <div class="panel-badge" id="apiNBadge">—</div>
+                </div>
+                <div class="panel-body" id="apiNBody">
+                    <div class="loader-state">
+                        <div class="loader-spinner"></div>
+                        <div class="loader-text">Loading NSE/INB data...</div>
+                    </div>
+                </div>
             </div>
+
+            <!-- BSE -->
+            <div class="panel">
+                <div class="panel-head">
+                    <div class="panel-head-icon icon-purple">&#128226;</div>
+                    <div class="panel-head-text">
+                        <div class="panel-title">API LOG · BSE</div>
+                        <div class="panel-sub">BSE IPO_ORDER</div>
+                    </div>
+                    <div class="panel-badge" id="apiBBadge">—</div>
+                </div>
+                <div class="panel-body" id="apiBBody">
+                    <div class="loader-state">
+                        <div class="loader-spinner"></div>
+                        <div class="loader-text">Loading BSE data...</div>
+                    </div>
+                </div>
+            </div>
+
         </div>
     </div>
 
@@ -537,17 +569,15 @@
 
 <script>
 /* ============================================================
- * IPO MONITORING DASHBOARD — v2.0
- * Auto-refresh every 5 minutes
- * Timer starts AFTER response arrives (not before)
+ * IPO MONITORING DASHBOARD — v3.0
  * ============================================================ */
 
-var REFRESH_INTERVAL_SEC = 300;   // 5 minutes
+var REFRESH_INTERVAL_SEC = 300;
 var secondsLeft = 0;
 var countdownTimer = null;
 var isRefreshing = false;
 
-/* ============ TIMER — starts only after response ============ */
+/* ============ COUNTDOWN ============ */
 function startCountdown() {
     if (countdownTimer) clearInterval(countdownTimer);
     secondsLeft = REFRESH_INTERVAL_SEC;
@@ -570,22 +600,21 @@ function updateCountdownUI() {
     var el = document.getElementById('countdown');
     if (!el) return;
     if (isRefreshing) {
-        el.innerHTML = '<span style="color:#f59e0b;">Refreshing...</span>';
+        el.innerHTML = '<span style="color:#ffb020;">&#8635; Refreshing...</span>';
         return;
     }
     var m = Math.floor(secondsLeft / 60);
     var s = secondsLeft % 60;
     var mm = (m < 10 ? '0' : '') + m;
     var ss = (s < 10 ? '0' : '') + s;
-    el.innerHTML = 'Next refresh in <b>' + mm + ':' + ss + '</b>';
+    el.innerHTML = 'Next in <b>' + mm + ':' + ss + '</b>';
 }
 
-/* ============ MANUAL REFRESH ============ */
+/* ============ REFRESH ============ */
 function refreshNow() {
     if (isRefreshing) return;
     isRefreshing = true;
 
-    // Stop timer while query runs
     stopCountdown();
     updateCountdownUI();
 
@@ -593,13 +622,11 @@ function refreshNow() {
     btn.classList.add('spinning');
     btn.disabled = true;
 
-    // Show loaders in each panel
-    showPanelLoader('backendBody', 'Loading backend data...');
-    showPanelLoader('apiNBody', 'Loading NSE/INB data...');
-    showPanelLoader('apiBBody', 'Loading BSE data...');
+    showLoader('backendBody', 'Loading backend data...');
+    showLoader('apiNBody', 'Loading NSE/INB data...');
+    showLoader('apiBBody', 'Loading BSE data...');
 
     var xhr = new XMLHttpRequest();
-    // No client-side timeout — allow slow queries
     xhr.open('GET', 'ipo-monitor.jsp?ajax=fetch&_=' + Date.now(), true);
 
     xhr.onreadystatechange = function() {
@@ -611,7 +638,6 @@ function refreshNow() {
 
         if (xhr.status !== 200) {
             toast('HTTP ' + xhr.status + ' — refresh failed', true);
-            // Still restart timer so it retries
             startCountdown();
             updateCountdownUI();
             return;
@@ -621,21 +647,20 @@ function refreshNow() {
             renderAll(data);
             toast('Data refreshed');
         } catch(e) {
-            console.error('Parse error:', e);
-            toast('Parse error: ' + e.message, true);
+            toast('Parse error', true);
+            console.error(e);
         }
-
-        // ===== TIMER STARTS HERE — after response =====
+        // Timer starts AFTER response
         startCountdown();
         updateCountdownUI();
     };
     xhr.send();
 }
 
-function showPanelLoader(panelId, text) {
+function showLoader(panelId, text) {
     var el = document.getElementById(panelId);
     if (!el) return;
-    el.innerHTML = '<div class="loader">' +
+    el.innerHTML = '<div class="loader-state">' +
                        '<div class="loader-spinner"></div>' +
                        '<div class="loader-text">' + escapeHtml(text) + '</div>' +
                    '</div>';
@@ -643,73 +668,33 @@ function showPanelLoader(panelId, text) {
 
 /* ============ RENDER ALL ============ */
 function renderAll(data) {
-    renderBackend(data.BACKEND_LOG);
-    renderApiN(data.API_NSE_INB);
-    renderApiB(data.API_BSE);
-    updateCards(data);
+    renderPanel(data.BACKEND_LOG, 'backendBody', 'backendBadge', 'backend');
+    renderPanel(data.API_NSE_INB, 'apiNBody', 'apiNBadge', 'apiN');
+    renderPanel(data.API_BSE, 'apiBBody', 'apiBBadge', 'apiB');
+    updateKpis(data);
 }
 
-/* ============ BACKEND PANEL ============ */
-function renderBackend(qr) {
-    var body = document.getElementById('backendBody');
-    document.getElementById('backendRows').textContent = qr && qr.rows ? qr.rows.length : '0';
-    document.getElementById('backendTime').textContent = qr ? (qr.executionTimeMs + ' ms') : '—';
+function renderPanel(qr, bodyId, badgeId, prefix) {
+    var body = document.getElementById(bodyId);
+    var badge = document.getElementById(badgeId);
 
     if (!qr) {
-        body.innerHTML = '<div class="empty"><div class="empty-icon">&#9888;</div>No data</div>';
+        body.innerHTML = '<div class="empty-state"><div class="empty-icon">&#9888;</div><div class="empty-text">No data</div></div>';
+        badge.textContent = '—';
         return;
     }
     if (!qr.success) {
-        body.innerHTML = '<div class="empty"><div class="empty-icon">&#10060;</div>' + escapeHtml(qr.message) + '</div>';
+        body.innerHTML = '<div class="empty-state"><div class="empty-icon">&#10060;</div><div class="empty-text">' + escapeHtml(qr.message) + '</div></div>';
+        badge.textContent = 'ERROR';
         return;
     }
+    badge.textContent = qr.rows.length + ' rows · ' + qr.executionTimeMs + ' ms';
+
     if (!qr.rows || qr.rows.length === 0) {
-        body.innerHTML = '<div class="empty"><div class="empty-icon">&#128269;</div>No hits in last 5 minutes</div>';
+        body.innerHTML = '<div class="empty-state"><div class="empty-icon">&#128269;</div><div class="empty-text">No hits in last 5 min</div></div>';
         return;
     }
-    body.innerHTML = buildTable(qr, 'backendTable');
-}
-
-/* ============ API NSE/INB PANEL ============ */
-function renderApiN(qr) {
-    var body = document.getElementById('apiNBody');
-    document.getElementById('apiNRows').textContent = qr && qr.rows ? qr.rows.length : '0';
-    document.getElementById('apiNTime').textContent = qr ? (qr.executionTimeMs + ' ms') : '—';
-
-    if (!qr) {
-        body.innerHTML = '<div class="empty"><div class="empty-icon">&#9888;</div>No data</div>';
-        return;
-    }
-    if (!qr.success) {
-        body.innerHTML = '<div class="empty"><div class="empty-icon">&#10060;</div>' + escapeHtml(qr.message) + '</div>';
-        return;
-    }
-    if (!qr.rows || qr.rows.length === 0) {
-        body.innerHTML = '<div class="empty"><div class="empty-icon">&#128269;</div>No hits in last 5 minutes</div>';
-        return;
-    }
-    body.innerHTML = buildTable(qr, 'apiNTable');
-}
-
-/* ============ API BSE PANEL ============ */
-function renderApiB(qr) {
-    var body = document.getElementById('apiBBody');
-    document.getElementById('apiBRows').textContent = qr && qr.rows ? qr.rows.length : '0';
-    document.getElementById('apiBTime').textContent = qr ? (qr.executionTimeMs + ' ms') : '—';
-
-    if (!qr) {
-        body.innerHTML = '<div class="empty"><div class="empty-icon">&#9888;</div>No data</div>';
-        return;
-    }
-    if (!qr.success) {
-        body.innerHTML = '<div class="empty"><div class="empty-icon">&#10060;</div>' + escapeHtml(qr.message) + '</div>';
-        return;
-    }
-    if (!qr.rows || qr.rows.length === 0) {
-        body.innerHTML = '<div class="empty"><div class="empty-icon">&#128269;</div>No hits in last 5 minutes</div>';
-        return;
-    }
-    body.innerHTML = buildTable(qr, 'apiBTable');
+    body.innerHTML = buildTable(qr, prefix + 'Table');
 }
 
 /* ============ BUILD TABLE ============ */
@@ -725,13 +710,16 @@ function buildTable(qr, tableId) {
         qr.columns.forEach(function(c) {
             var v = row[c];
             var cls = '';
-            if (v === null || v === undefined || v === '' || v === '0') {
+            var display = v === null || v === undefined ? '' : String(v);
+
+            if (v === null || v === undefined || v === '' || v === '0' || v === '0.00') {
                 cls = 'zero';
             } else if (typeof v === 'string' && v.match(/^\d+(\.\d+)?$/)) {
                 var n = parseFloat(v);
                 if (n === 0) cls = 'zero';
-                else cls = 'num-hi';
+                else cls = 'hi';
             }
+
             if (c === 'TD_PERCENT' || c === 'BD_PERCENT') {
                 var pct = parseFloat(v);
                 if (!isNaN(pct)) {
@@ -740,16 +728,12 @@ function buildTable(qr, tableId) {
                     else cls = 'pct-bad';
                 }
             }
-            if (c === 'TD' || c === 'BD') {
-                var num = parseInt(v);
-                if (num > 0) cls = (c === 'TD') ? 'num-warn' : 'num-err';
-            }
-            if (c === 'SUCCESS') cls = 'num-ok';
-            if (c === 'TOTAL_HITS') cls = 'num-hi';
+            if (c === 'TD') { cls = 'td-cnt'; }
+            if (c === 'BD' || c === 'BD_NEW') { cls = 'bd-cnt'; }
+            if (c === 'SUCCESS') { cls = 'success'; }
+            if (c === 'TOTAL_HITS') { cls = 'hi'; }
 
-            html += '<td class="' + cls + '" title="' + escapeHtml(String(v || '')) + '">' +
-                    escapeHtml(v === null || v === undefined ? '' : String(v)) +
-                    '</td>';
+            html += '<td class="' + cls + '">' + escapeHtml(display) + '</td>';
         });
         html += '</tr>';
     });
@@ -757,22 +741,22 @@ function buildTable(qr, tableId) {
     return html;
 }
 
-/* ============ SUMMARY CARDS ============ */
-function updateCards(data) {
+/* ============ KPI CARDS ============ */
+function updateKpis(data) {
     var b = data.BACKEND_LOG;
     var n = data.API_NSE_INB;
     var x = data.API_BSE;
 
-    var backendHits = 0, backendTD = 0, backendCount = 0;
+    var bHits = 0, bTD = 0, bCount = 0;
     if (b && b.success && b.rows) {
         b.rows.forEach(function(r) {
-            backendHits += parseInt(r.TOTAL_HITS || 0);
-            backendTD += parseFloat(r.TD_PERCENT || 0);
-            backendCount++;
+            bHits += parseInt(r.TOTAL_HITS || 0);
+            bTD += parseFloat(r.TD_PERCENT || 0);
+            bCount++;
         });
     }
-    setCard('cardBackendHits', backendHits);
-    setCard('cardBackendTD', backendCount > 0 ? (backendTD / backendCount).toFixed(2) + '%' : '—', backendTD / backendCount);
+    setKpi('kpiBackendHits', bHits, null);
+    setKpi('kpiBackendTD', bCount > 0 ? (bTD/bCount).toFixed(2) + '%' : '—', bCount > 0 ? bTD/bCount : null);
 
     var nHits = 0, nTD = 0, nCount = 0;
     if (n && n.success && n.rows) {
@@ -782,8 +766,8 @@ function updateCards(data) {
             nCount++;
         });
     }
-    setCard('cardApiNHits', nHits);
-    setCard('cardApiNTD', nCount > 0 ? (nTD / nCount).toFixed(2) + '%' : '—', nTD / nCount);
+    setKpi('kpiApiNHits', nHits, null);
+    setKpi('kpiApiNTD', nCount > 0 ? (nTD/nCount).toFixed(2) + '%' : '—', nCount > 0 ? nTD/nCount : null);
 
     var xHits = 0, xTD = 0, xCount = 0;
     if (x && x.success && x.rows) {
@@ -793,35 +777,26 @@ function updateCards(data) {
             xCount++;
         });
     }
-    setCard('cardApiBHits', xHits);
-    setCard('cardApiBTD', xCount > 0 ? (xTD / xCount).toFixed(2) + '%' : '—', xTD / xCount);
+    setKpi('kpiApiBHits', xHits, null);
+    setKpi('kpiApiBTD', xCount > 0 ? (xTD/xCount).toFixed(2) + '%' : '—', xCount > 0 ? xTD/xCount : null);
 }
 
-function setCard(id, value, pct) {
+function setKpi(id, value, pct) {
     var el = document.getElementById(id);
     if (!el) return;
-    el.textContent = value;
+    var valEl = el.querySelector('.kpi-value');
+    valEl.textContent = value;
     el.classList.remove('ok', 'warn', 'err');
-    if (pct !== undefined && pct !== null && !isNaN(pct)) {
-        if (pct <= 1) el.classList.add('ok');
-        else if (pct <= 5) el.classList.add('warn');
-        else el.classList.add('err');
+    valEl.classList.remove('ok', 'warn', 'err');
+
+    if (pct !== null && pct !== undefined && !isNaN(pct)) {
+        if (pct <= 1) { el.classList.add('ok'); valEl.classList.add('ok'); }
+        else if (pct <= 5) { el.classList.add('warn'); valEl.classList.add('warn'); }
+        else { el.classList.add('err'); valEl.classList.add('err'); }
     } else {
         el.classList.add('ok');
+        valEl.classList.add('ok');
     }
-}
-
-/* ============ TABLE FILTER ============ */
-function filterTable(tableId, query) {
-    var tbl = document.getElementById(tableId);
-    if (!tbl) return;
-    var q = (query || '').toLowerCase().trim();
-    var rows = tbl.querySelectorAll('tbody tr');
-    rows.forEach(function(tr) {
-        if (!q) { tr.style.display = ''; return; }
-        var text = tr.textContent.toLowerCase();
-        tr.style.display = text.indexOf(q) !== -1 ? '' : 'none';
-    });
 }
 
 /* ============ HELPERS ============ */
@@ -839,271 +814,15 @@ function toast(msg, isErr) {
     setTimeout(function(){
         el.style.transition = 'opacity .3s, transform .3s';
         el.style.opacity = '0';
-        el.style.transform = 'translateX(30px)';
+        el.style.transform = 'translateX(24px)';
         setTimeout(function(){ el.remove(); }, 320);
-    }, 2200);
+    }, 2000);
 }
 
 /* ============ INIT ============ */
 window.addEventListener('load', function() {
-    // Only trigger initial load — timer starts AFTER response arrives
     refreshNow();
 });
 </script>
 </body>
 </html>
-
----------------------------------------------------------
-
-
-package com.jdbc;
-
-import java.sql.Connection;
-import java.sql.ResultSet;
-import java.sql.ResultSetMetaData;
-import java.sql.Statement;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-
-public class IPOMonitorService {
-
-    public static class QueryResult {
-        public boolean success;
-        public String message;
-        public List<String> columns = new ArrayList<>();
-        public List<Map<String, Object>> rows = new ArrayList<>();
-        public long executionTimeMs;
-        public String queryName;
-    }
-
-    // ============================================================
-    // QUERY 1 — BACKEND LOG (IPO auth services)
-    // Last 5 minutes
-    // ============================================================
-    public static final String Q_BACKEND = ""
-        + "select trim(api_name) API_NAME, TRIM(sys_ip) SYS_IP, "
-        + "COUNT(1) TOTAL_HITS, "
-        + "SUM(CASE WHEN error_code is null or error_code = 'CK001' THEN 1 ELSE 0 END) SUCCESS, "
-        + "SUM(CASE WHEN error_code ='SI001' then 1 else 0 end) SI001, "
-        + "SUM(CASE WHEN error_code ='SI002' then 1 else 0 end) SI002, "
-        + "SUM(CASE WHEN substr(error_code,3,3) ='002' AND error_code <>'SI002' then 1 else 0 end) DYNAMIC_002, "
-        + "SUM(CASE WHEN error_code ='SI007' and error_code<> '70007' then 1 else 0 end) SI007, "
-        + "SUM(CASE WHEN error_code ='SI051' then 1 else 0 end) SI051, "
-        + "SUM(CASE WHEN error_code ='SI052' then 1 else 0 end) SI052, "
-        + "SUM(CASE WHEN substr(error_code,3,3) ='052' AND error_code <>'SI052' then 1 else 0 end) DYNAMIC_052, "
-        + "SUM(CASE WHEN substr(error_code,3,3) ='014' and error_code <> '00014' then 1 else 0 end) DYNAMIC_014, "
-        + "SUM(CASE WHEN error_code ='SI569' then 1 else 0 end) SI569, "
-        + "SUM(CASE WHEN error_code ='SI570' then 1 else 0 end) SI570, "
-        + "SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') or error_code in('SI001','SI007','SI017','SI569','SI570','SI052','SI077','SI051','SI111')) and error_code<>'00014' THEN 1 ELSE 0 END) TD, "
-        + "ROUND((SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI052','SI077','SI569','SI570')) and error_code <> '00014' THEN 1 ELSE 0 END)*100)/COUNT(1),2) TD_PERCENT, "
-        + "SUM(CASE WHEN ((nvl( substr(error_code,3,3),'A') not in ('002','014') and error_code not in('SI001','SI007','SI017','SI569','SI570','SI052','SI077','SI051','SI111')) AND error_code <> 'CK001' OR error_code IN ('00014','70007')) THEN 1 ELSE 0 END) BD, "
-        + "ROUND((SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','052','051','014') OR error_code IN ('00014','70007')) AND error_code <> 'CK001' and error_code IS NOT NULL THEN 1 ELSE 0 END)*100)/COUNT(1),2) BD_PERCENT "
-        + "from eisapp.BACKEND_LOG where "
-        + "api_name in ('thirdPartyINBIpo_sys','thirdPartyNSEAuth_sys','thirdPartyBSEAuth_sys') and "
-        + "creation_date_time >= sysdate - interval '5' minute "
-        + "GROUP BY trim(api_name),TRIM(sys_ip) "
-        + "ORDER BY 1,2";
-
-    // ============================================================
-    // QUERY 2 — API LOG (NSE / INB)
-    // Last 5 minutes
-    // ============================================================
-    public static final String Q_API_NSE_INB = ""
-        + "select trim(API_NAME) API_NAME, trim(exp_ip) EXP_IP, "
-        + "COUNT(1) TOTAL_HITS, "
-        + "SUM(CASE WHEN RESPONSE_STATUS in ('0','SUCCESS') THEN 1 ELSE 0 END) SUCCESS, "
-        + "SUM(CASE WHEN error_code ='SI001' then 1 else 0 end) SI001, "
-        + "SUM(CASE WHEN substr(error_code,3,3) ='002'then 1 else 0 end) DYNAMIC_002, "
-        + "SUM(CASE WHEN error_code ='SI007' and error_code<> '70007' then 1 else 0 end) SI007, "
-        + "SUM(CASE WHEN error_code ='SI051' then 1 else 0 end) SI051, "
-        + "SUM(CASE WHEN substr(error_code,3,3) ='014' and error_code <> '00014' then 1 else 0 end) DYNAMIC_014, "
-        + "SUM(CASE WHEN error_code ='SI569' then 1 else 0 end) SI569, "
-        + "SUM(CASE WHEN error_code ='SI570' then 1 else 0 end) SI570, "
-        + "SUM(CASE WHEN error_code ='SI052' then 1 else 0 end) SI052, "
-        + "SUM(CASE WHEN error_code ='SI005' then 1 else 0 end) SI005, "
-        + "SUM(CASE WHEN error_code ='SI077' then 1 else 0 end) SI077, "
-        + "SUM(CASE WHEN error_code ='SI003' then 1 else 0 end) SI003, "
-        + "SUM(CASE WHEN error_code ='SI017' then 1 else 0 end) SI017, "
-        + "SUM(CASE WHEN error_code ='SI015' then 1 else 0 end) SI015, "
-        + "SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI569','SI570','SI052','SI005','SI077','SI003','SI017','SI015')) and error_code <> '00014' THEN 1 ELSE 0 END) TD, "
-        + "ROUND((SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI569','SI570','SI052','SI005','SI077','SI003','SI017','SI015')) and error_code <> '00014' THEN 1 ELSE 0 END)*100)/COUNT(1),2) TD_PERCENT, "
-        + "SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','051','014','015') OR error_code IN ('00014','70007')) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END) BD, "
-        + "ROUND((SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','051','014','015') OR error_code IN ('00014','70007')) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END)*100)/COUNT(1),2) BD_PERCENT "
-        + "from eisapp.api_log where "
-        + "creation_date_time >= sysdate - interval '5' minute "
-        + "and api_name in ('thirdPartyGenericRouting_NSE_expDS','thirdPartyGenericRouting_INB_expDS') "
-        + "GROUP BY trim(API_NAME),trim(exp_ip) "
-        + "ORDER BY 1,2";
-
-    // ============================================================
-    // QUERY 3 — API LOG (BSE)
-    // Last 5 minutes
-    // ============================================================
-    public static final String Q_API_BSE = ""
-        + "select trim(API_NAME) API_NAME, trim(exp_ip) EXP_IP, "
-        + "COUNT(1) TOTAL_HITS, "
-        + "SUM(CASE WHEN RESPONSE_STATUS in ('0','SUCCESS') THEN 1 ELSE 0 END) SUCCESS, "
-        + "SUM(CASE WHEN error_code ='SI001' then 1 else 0 end) SI001, "
-        + "SUM(CASE WHEN substr(error_code,3,3) ='002'then 1 else 0 end) DYNAMIC_002, "
-        + "SUM(CASE WHEN error_code ='SI007' and error_code<> '70007' then 1 else 0 end) SI007, "
-        + "SUM(CASE WHEN error_code ='SI051' then 1 else 0 end) SI051, "
-        + "SUM(CASE WHEN substr(error_code,3,3) ='014' and error_code <> '00014' then 1 else 0 end) DYNAMIC_014, "
-        + "SUM(CASE WHEN error_code ='SI569' then 1 else 0 end) SI569, "
-        + "SUM(CASE WHEN error_code ='SI570' then 1 else 0 end) SI570, "
-        + "SUM(CASE WHEN error_code ='SI052' then 1 else 0 end) SI052, "
-        + "SUM(CASE WHEN error_code ='SI005' then 1 else 0 end) SI005, "
-        + "SUM(CASE WHEN error_code ='SI077' then 1 else 0 end) SI077, "
-        + "SUM(CASE WHEN error_code ='SI003' then 1 else 0 end) SI003, "
-        + "SUM(CASE WHEN error_code ='SI017' then 1 else 0 end) SI017, "
-        + "SUM(CASE WHEN error_code ='SI015' then 1 else 0 end) SI015, "
-        + "SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI569','SI570','SI052','SI005','SI077','SI003','SI017','SI015')) and error_code <> '00014' THEN 1 ELSE 0 END) TD, "
-        + "ROUND((SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI569','SI570','SI052','SI005','SI077','SI003','SI017','SI015')) and error_code <> '00014' THEN 1 ELSE 0 END)*100)/COUNT(1),2) TD_PERCENT, "
-        + "SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','051','014','015') OR error_code IN ('00014','70007')) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END) BD, "
-        + "ROUND((SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','051','014','015') OR error_code IN ('00014','70007')) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END)*100)/COUNT(1),2) BD_PERCENT "
-        + "from eisapp.api_log where "
-        + "creation_date_time >= sysdate - interval '5' minute "
-        + "and api_name = 'thirdPartyGenericRouting_expDS' "
-        + "and sup_url = 'BSE' "
-        + "and ORIGINAL_URN = 'IPO_ORDER' "
-        + "and transaction_urn = 'IPO_SERVICE' "
-        + "GROUP BY trim(API_NAME),trim(exp_ip) "
-        + "ORDER BY 1,2";
-
-    // ============================================================
-    // RUN ALL 3 IN PARALLEL
-    // ============================================================
-    public static Map<String, QueryResult> runAll() {
-        Map<String, QueryResult> results = new LinkedHashMap<>();
-        ExecutorService pool = Executors.newFixedThreadPool(3);
-
-        try {
-            Future<QueryResult> f1 = pool.submit(new QueryTask("BACKEND_LOG", Q_BACKEND));
-            Future<QueryResult> f2 = pool.submit(new QueryTask("API_NSE_INB", Q_API_NSE_INB));
-            Future<QueryResult> f3 = pool.submit(new QueryTask("API_BSE", Q_API_BSE));
-
-            results.put("BACKEND_LOG", safeGet(f1));
-            results.put("API_NSE_INB", safeGet(f2));
-            results.put("API_BSE", safeGet(f3));
-        } catch (Exception e) {
-            QueryResult err = new QueryResult();
-            err.success = false;
-            err.message = "Pool error: " + e.getMessage();
-            results.put("ERROR", err);
-        } finally {
-            pool.shutdown();
-            try { pool.awaitTermination(3, TimeUnit.SECONDS); } catch (InterruptedException ignored) {}
-        }
-        return results;
-    }
-
-    private static QueryResult safeGet(Future<QueryResult> f) {
-        try {
-            return f.get(30, TimeUnit.MINUTES);
-        } catch (Exception e) {
-            QueryResult r = new QueryResult();
-            r.success = false;
-            r.message = "Timeout/Error: " + e.getMessage();
-            return r;
-        }
-    }
-
-    // ============================================================
-    // SINGLE QUERY TASK
-    // ============================================================
-    private static class QueryTask implements Callable<QueryResult> {
-        private final String name;
-        private final String sql;
-        QueryTask(String name, String sql) { this.name = name; this.sql = sql; }
-
-        @Override
-        public QueryResult call() {
-            QueryResult r = new QueryResult();
-            r.queryName = name;
-            long t0 = System.currentTimeMillis();
-            Connection conn = null;
-            Statement stmt = null;
-            ResultSet rs = null;
-            try {
-                conn = DBUtilityAuto.getIIBDBConnection();
-                if (conn == null) {
-                    r.success = false;
-                    r.message = "Could not obtain IIB connection.";
-                    return r;
-                }
-                stmt = conn.createStatement();
-                // NO setQueryTimeout — queries may take 10-12 minutes
-                stmt.setFetchSize(500);
-                rs = stmt.executeQuery(sql);
-
-                ResultSetMetaData md = rs.getMetaData();
-                int colCount = md.getColumnCount();
-                for (int i = 1; i <= colCount; i++) r.columns.add(md.getColumnLabel(i));
-
-                while (rs.next()) {
-                    Map<String, Object> row = new LinkedHashMap<>();
-                    for (int i = 1; i <= colCount; i++) {
-                        row.put(md.getColumnLabel(i), rs.getObject(i));
-                    }
-                    r.rows.add(row);
-                }
-                r.success = true;
-                r.message = r.rows.size() + " rows";
-            } catch (Exception e) {
-                r.success = false;
-                r.message = "Error: " + e.getMessage();
-            } finally {
-                if (rs != null) try { rs.close(); } catch (Exception ignored) {}
-                if (stmt != null) try { stmt.close(); } catch (Exception ignored) {}
-                if (conn != null) try { conn.close(); } catch (Exception ignored) {}
-                r.executionTimeMs = System.currentTimeMillis() - t0;
-            }
-            return r;
-        }
-    }
-
-    // ============================================================
-    // JSON HELPERS
-    // ============================================================
-    public static String esc(String s) {
-        if (s == null) return "";
-        return s.replace("\\", "\\\\").replace("\"", "\\\"")
-                .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
-    }
-
-    public static String toJson(QueryResult qr) {
-        StringBuilder sb = new StringBuilder("{");
-        sb.append("\"name\":\"").append(esc(qr.queryName)).append("\",");
-        sb.append("\"success\":").append(qr.success).append(",");
-        sb.append("\"message\":\"").append(esc(qr.message)).append("\",");
-        sb.append("\"executionTimeMs\":").append(qr.executionTimeMs).append(",");
-        sb.append("\"columns\":[");
-        for (int i = 0; i < qr.columns.size(); i++) {
-            if (i > 0) sb.append(",");
-            sb.append("\"").append(esc(qr.columns.get(i))).append("\"");
-        }
-        sb.append("],\"rows\":[");
-        for (int r = 0; r < qr.rows.size(); r++) {
-            if (r > 0) sb.append(",");
-            sb.append("{");
-            Map<String, Object> row = qr.rows.get(r);
-            int c = 0;
-            for (String col : qr.columns) {
-                if (c++ > 0) sb.append(",");
-                Object v = row.get(col);
-                sb.append("\"").append(esc(col)).append("\":");
-                if (v == null) sb.append("null");
-                else sb.append("\"").append(esc(v.toString())).append("\"");
-            }
-            sb.append("}");
-        }
-        sb.append("]}");
-        return sb.toString();
-    }
-}
