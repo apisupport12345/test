@@ -1,8 +1,55 @@
-115	MZ	misc/gen5/getway/payment/SITransaction/GetDetails	misc/TransactionAPI/GET_DETAILS	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-26
-115	MZ	misc/gen5/getway/payment/SITransaction/GetDetails	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-26
-115	MZ	misc/gen5/getway/payment/SITransaction/GetDetails	payments/SITransaction/GetDetails	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-26
-115	MZ	misc/gen5/getway/payment/SITransaction/GetDetails	payments/SITransaction/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-26
-115	MZ	misc/gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/GET_DETAILS	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-26
-115	MZ	misc/gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-26
-115	MZ	misc/gen5/getway/payment/SITransaction/UpdateTransaction	payments/SITransaction/GetDetails	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-26
-115	MZ	misc/gen5/getway/payment/SITransaction/UpdateTransaction	payments/SITransaction/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	16-09-26
+WITH gen5 AS (
+    SELECT 
+        a.ip,
+        a.type,
+        a.route_url,
+        a.lb_url AS gen5_lb_url,
+        b.lb_url AS gen6_lb_url
+    FROM (
+        SELECT ip, type, route_url, lb_url
+        FROM daily_dpg_url_data d
+        WHERE (UPPER(lb_url) LIKE 'GEN5/GATEWAY%' 
+               OR UPPER(lb_url) LIKE 'GEN5%GATEWAY%' 
+               OR UPPER(lb_url) LIKE '%GEN5/GETWAY%')
+          AND UPPER(lb_url) NOT LIKE '%SIAPP3%'
+    ) a
+    LEFT JOIN (
+        SELECT ip, type, lb_url
+        FROM daily_dpg_url_data d
+        WHERE UPPER(lb_url) NOT LIKE '%GEN5%'
+          AND UPPER(lb_url) NOT LIKE '%SIAPP3%'
+    ) b
+    ON a.ip = b.ip 
+    AND a.type = b.type
+    -- Match based on lb_url operation suffix
+    AND REGEXP_SUBSTR(a.lb_url, '[^/]+$') = REGEXP_SUBSTR(b.lb_url, '[^/]+$')
+    AND REGEXP_REPLACE(a.lb_url, '^(.*?/)?gen5/(getway/)?', '', 1, 0, 'i') = 
+        REGEXP_REPLACE(b.lb_url, '^(.*?/)?gen6/', '', 1, 0, 'i')
+),
+gen6 AS (
+    SELECT 
+        a.ip,
+        a.type,
+        a.route_url,
+        a.lb_url AS gen5_lb_url,
+        b.lb_url AS gen6_lb_url
+    FROM (
+        SELECT ip, type, route_url, lb_url
+        FROM daily_dpg_url_data d
+        WHERE UPPER(lb_url) LIKE '%SIAPP3%GEN5%'
+    ) a
+    LEFT JOIN (
+        SELECT ip, type, lb_url
+        FROM daily_dpg_url_data d
+        WHERE UPPER(lb_url) LIKE '%SIAPP3%'
+          AND UPPER(lb_url) NOT LIKE '%GEN5/GATEWAY%'
+    ) b
+    ON a.ip = b.ip 
+    AND a.type = b.type
+    AND REGEXP_SUBSTR(a.lb_url, '[^/]+$') = REGEXP_SUBSTR(b.lb_url, '[^/]+$')
+    AND REGEXP_REPLACE(a.lb_url, '^(.*?/)?gen5/', '', 1, 0, 'i') = 
+        REGEXP_REPLACE(b.lb_url, '^(.*?/)?gen6/', '', 1, 0, 'i')
+)
+SELECT ip, type, gen5_lb_url, gen6_lb_url, route_url, SYSDATE FROM gen5
+UNION ALL
+SELECT ip, type, gen5_lb_url, gen6_lb_url, route_url, SYSDATE FROM gen6;
