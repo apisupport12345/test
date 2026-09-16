@@ -18,20 +18,6 @@ public class IPOMonitorService {
 
     public static final int WINDOW_MINUTES = 15;
 
-    // All known server IPs — these will ALWAYS appear even with zero hits
-    public static final String[] BACKEND_IPS = {
-        "10.188.24.167","10.188.24.168","10.188.24.169","10.188.24.170","10.188.24.171","10.188.24.172",
-        "10.188.25.167","10.188.25.168","10.188.25.169","10.188.25.170","10.188.25.171","10.188.25.172"
-    };
-    public static final String[] API_NSE_INB_IPS = {
-        "10.188.24.63","10.188.24.64","10.188.24.65","10.188.24.66",
-        "10.188.25.63","10.188.25.64","10.188.25.65","10.188.25.66"
-    };
-    public static final String[] API_BSE_IPS = {
-        "10.188.24.61","10.188.24.62","10.188.24.63","10.188.24.64","10.188.24.65","10.188.24.66",
-        "10.188.25.61","10.188.25.62","10.188.25.63","10.188.25.64","10.188.25.65","10.188.25.66"
-    };
-
     public static class QueryResult {
         public boolean success;
         public String message;
@@ -42,7 +28,7 @@ public class IPOMonitorService {
     }
 
     // ============================================================
-    // QUERY 1 — BACKEND LOG
+    // QUERY 1 — BACKEND LOG  (12 IPs × 3 APIs = 36 combos)
     // ============================================================
     public static String getBackendQuery() {
         return ""
@@ -60,8 +46,16 @@ public class IPOMonitorService {
             + "  SELECT '10.188.25.171' FROM DUAL UNION ALL "
             + "  SELECT '10.188.25.172' FROM DUAL "
             + "), "
+            + "API_LIST AS ( "
+            + "  SELECT 'thirdPartyINBIpo_sys' API_NAME FROM DUAL UNION ALL "
+            + "  SELECT 'thirdPartyNSEAuth_sys' FROM DUAL UNION ALL "
+            + "  SELECT 'thirdPartyBSEAuth_sys' FROM DUAL "
+            + "), "
+            + "COMBOS AS ( "
+            + "  SELECT i.IP, a.API_NAME FROM IP_LIST i CROSS JOIN API_LIST a "
+            + "), "
             + "AGG AS ( "
-            + "  SELECT TRIM(sys_ip) SYS_IP, "
+            + "  SELECT TRIM(sys_ip) SYS_IP, TRIM(api_name) API_NAME, "
             + "    COUNT(1) TOTAL_HITS, "
             + "    SUM(CASE WHEN error_code is null or error_code = 'CK001' THEN 1 ELSE 0 END) SUCCESS, "
             + "    SUM(CASE WHEN error_code ='SI001' then 1 else 0 end) SI001, "
@@ -81,15 +75,11 @@ public class IPOMonitorService {
             + "  FROM eisapp.BACKEND_LOG "
             + "  WHERE api_name in ('thirdPartyINBIpo_sys','thirdPartyNSEAuth_sys','thirdPartyBSEAuth_sys') "
             + "    AND creation_date_time >= sysdate - interval '" + WINDOW_MINUTES + "' minute "
-            + "  GROUP BY TRIM(sys_ip) "
+            + "  GROUP BY TRIM(sys_ip), TRIM(api_name) "
             + ") "
             + "SELECT "
-            + "  (SELECT LISTAGG(DISTINCT TRIM(api_name), ', ') WITHIN GROUP (ORDER BY TRIM(api_name)) "
-            + "     FROM eisapp.BACKEND_LOG b2 "
-            + "     WHERE TRIM(b2.sys_ip) = i.IP "
-            + "       AND b2.api_name in ('thirdPartyINBIpo_sys','thirdPartyNSEAuth_sys','thirdPartyBSEAuth_sys') "
-            + "       AND b2.creation_date_time >= sysdate - interval '" + WINDOW_MINUTES + "' minute') API_NAME, "
-            + "  i.IP SYS_IP, "
+            + "  c.API_NAME API_NAME, "
+            + "  c.IP SYS_IP, "
             + "  NVL(a.TOTAL_HITS,0) TOTAL_HITS, "
             + "  NVL(a.SUCCESS,0) SUCCESS, "
             + "  NVL(a.SI001,0) SI001, "
@@ -106,12 +96,12 @@ public class IPOMonitorService {
             + "  NVL(a.TD_PERCENT,0) TD_PERCENT, "
             + "  NVL(a.BD,0) BD, "
             + "  NVL(a.BD_PERCENT,0) BD_PERCENT "
-            + "FROM IP_LIST i LEFT JOIN AGG a ON i.IP = a.SYS_IP "
-            + "ORDER BY i.IP";
+            + "FROM COMBOS c LEFT JOIN AGG a ON c.IP = a.SYS_IP AND c.API_NAME = a.API_NAME "
+            + "ORDER BY c.API_NAME, c.IP";
     }
 
     // ============================================================
-    // QUERY 2 — API LOG NSE/INB
+    // QUERY 2 — API LOG NSE/INB  (8 IPs × 2 APIs = 16 combos)
     // ============================================================
     public static String getApiNseInbQuery() {
         return ""
@@ -125,8 +115,15 @@ public class IPOMonitorService {
             + "  SELECT '10.188.25.65' FROM DUAL UNION ALL "
             + "  SELECT '10.188.25.66' FROM DUAL "
             + "), "
+            + "API_LIST AS ( "
+            + "  SELECT 'thirdPartyGenericRouting_NSE_expDS' API_NAME FROM DUAL UNION ALL "
+            + "  SELECT 'thirdPartyGenericRouting_INB_expDS' FROM DUAL "
+            + "), "
+            + "COMBOS AS ( "
+            + "  SELECT i.IP, a.API_NAME FROM IP_LIST i CROSS JOIN API_LIST a "
+            + "), "
             + "AGG AS ( "
-            + "  SELECT TRIM(exp_ip) EXP_IP, "
+            + "  SELECT TRIM(exp_ip) EXP_IP, TRIM(api_name) API_NAME, "
             + "    COUNT(1) TOTAL_HITS, "
             + "    SUM(CASE WHEN RESPONSE_STATUS in ('0','SUCCESS') THEN 1 ELSE 0 END) SUCCESS, "
             + "    SUM(CASE WHEN error_code ='SI001' then 1 else 0 end) SI001, "
@@ -149,15 +146,11 @@ public class IPOMonitorService {
             + "  FROM eisapp.api_log "
             + "  WHERE creation_date_time >= sysdate - interval '" + WINDOW_MINUTES + "' minute "
             + "    AND api_name in ('thirdPartyGenericRouting_NSE_expDS','thirdPartyGenericRouting_INB_expDS') "
-            + "  GROUP BY TRIM(exp_ip) "
+            + "  GROUP BY TRIM(exp_ip), TRIM(api_name) "
             + ") "
             + "SELECT "
-            + "  (SELECT LISTAGG(DISTINCT TRIM(api_name), ', ') WITHIN GROUP (ORDER BY TRIM(api_name)) "
-            + "     FROM eisapp.api_log b2 "
-            + "     WHERE TRIM(b2.exp_ip) = i.IP "
-            + "       AND b2.api_name in ('thirdPartyGenericRouting_NSE_expDS','thirdPartyGenericRouting_INB_expDS') "
-            + "       AND b2.creation_date_time >= sysdate - interval '" + WINDOW_MINUTES + "' minute') API_NAME, "
-            + "  i.IP EXP_IP, "
+            + "  c.API_NAME API_NAME, "
+            + "  c.IP EXP_IP, "
             + "  NVL(a.TOTAL_HITS,0) TOTAL_HITS, "
             + "  NVL(a.SUCCESS,0) SUCCESS, "
             + "  NVL(a.SI001,0) SI001, "
@@ -177,12 +170,12 @@ public class IPOMonitorService {
             + "  NVL(a.TD_PERCENT,0) TD_PERCENT, "
             + "  NVL(a.BD,0) BD, "
             + "  NVL(a.BD_PERCENT,0) BD_PERCENT "
-            + "FROM IP_LIST i LEFT JOIN AGG a ON i.IP = a.EXP_IP "
-            + "ORDER BY i.IP";
+            + "FROM COMBOS c LEFT JOIN AGG a ON c.IP = a.EXP_IP AND c.API_NAME = a.API_NAME "
+            + "ORDER BY c.API_NAME, c.IP";
     }
 
     // ============================================================
-    // QUERY 3 — API LOG BSE
+    // QUERY 3 — API LOG BSE  (12 IPs × 1 API = 12 combos)
     // ============================================================
     public static String getApiBseQuery() {
         return ""
@@ -200,8 +193,14 @@ public class IPOMonitorService {
             + "  SELECT '10.188.25.65' FROM DUAL UNION ALL "
             + "  SELECT '10.188.25.66' FROM DUAL "
             + "), "
+            + "API_LIST AS ( "
+            + "  SELECT 'thirdPartyGenericRouting_expDS' API_NAME FROM DUAL "
+            + "), "
+            + "COMBOS AS ( "
+            + "  SELECT i.IP, a.API_NAME FROM IP_LIST i CROSS JOIN API_LIST a "
+            + "), "
             + "AGG AS ( "
-            + "  SELECT TRIM(exp_ip) EXP_IP, "
+            + "  SELECT TRIM(exp_ip) EXP_IP, TRIM(api_name) API_NAME, "
             + "    COUNT(1) TOTAL_HITS, "
             + "    SUM(CASE WHEN RESPONSE_STATUS in ('0','SUCCESS') THEN 1 ELSE 0 END) SUCCESS, "
             + "    SUM(CASE WHEN error_code ='SI001' then 1 else 0 end) SI001, "
@@ -227,16 +226,11 @@ public class IPOMonitorService {
             + "    AND sup_url = 'BSE' "
             + "    AND ORIGINAL_URN = 'IPO_ORDER' "
             + "    AND transaction_urn = 'IPO_SERVICE' "
-            + "  GROUP BY TRIM(exp_ip) "
+            + "  GROUP BY TRIM(exp_ip), TRIM(api_name) "
             + ") "
             + "SELECT "
-            + "  (SELECT LISTAGG(DISTINCT TRIM(api_name), ', ') WITHIN GROUP (ORDER BY TRIM(api_name)) "
-            + "     FROM eisapp.api_log b2 "
-            + "     WHERE TRIM(b2.exp_ip) = i.IP "
-            + "       AND b2.api_name = 'thirdPartyGenericRouting_expDS' "
-            + "       AND b2.sup_url = 'BSE' AND b2.ORIGINAL_URN = 'IPO_ORDER' AND b2.transaction_urn = 'IPO_SERVICE' "
-            + "       AND b2.creation_date_time >= sysdate - interval '" + WINDOW_MINUTES + "' minute') API_NAME, "
-            + "  i.IP EXP_IP, "
+            + "  c.API_NAME API_NAME, "
+            + "  c.IP EXP_IP, "
             + "  NVL(a.TOTAL_HITS,0) TOTAL_HITS, "
             + "  NVL(a.SUCCESS,0) SUCCESS, "
             + "  NVL(a.SI001,0) SI001, "
@@ -256,8 +250,8 @@ public class IPOMonitorService {
             + "  NVL(a.TD_PERCENT,0) TD_PERCENT, "
             + "  NVL(a.BD,0) BD, "
             + "  NVL(a.BD_PERCENT,0) BD_PERCENT "
-            + "FROM IP_LIST i LEFT JOIN AGG a ON i.IP = a.EXP_IP "
-            + "ORDER BY i.IP";
+            + "FROM COMBOS c LEFT JOIN AGG a ON c.IP = a.EXP_IP AND c.API_NAME = a.API_NAME "
+            + "ORDER BY c.API_NAME, c.IP";
     }
 
     // ============================================================
@@ -288,9 +282,8 @@ public class IPOMonitorService {
     }
 
     private static QueryResult safeGet(Future<QueryResult> f) {
-        try {
-            return f.get(30, TimeUnit.MINUTES);
-        } catch (Exception e) {
+        try { return f.get(30, TimeUnit.MINUTES); }
+        catch (Exception e) {
             QueryResult r = new QueryResult();
             r.success = false;
             r.message = "Timeout/Error: " + e.getMessage();
@@ -384,3 +377,2126 @@ public class IPOMonitorService {
         return sb.toString();
     }
 }
+
+-----------------------------------------------------------------------------------------
+
+<%@ page language="java" contentType="text/html; charset=UTF-8" pageEncoding="UTF-8" isELIgnored="true"%>
+<%@ page import="com.jdbc.IPOMonitorService" %>
+<%@ page import="com.jdbc.IPOMonitorService.QueryResult" %>
+<%@ page import="java.util.*" %>
+<%
+    String ajax = request.getParameter("ajax");
+    if ("fetch".equals(ajax)) {
+        Map<String, QueryResult> results = IPOMonitorService.runAll();
+        StringBuilder sb = new StringBuilder("{");
+        int i = 0;
+        for (Map.Entry<String, QueryResult> e : results.entrySet()) {
+            if (i++ > 0) sb.append(",");
+            sb.append("\"").append(IPOMonitorService.esc(e.getKey())).append("\":");
+            sb.append(IPOMonitorService.toJson(e.getValue()));
+        }
+        sb.append("}");
+        response.setContentType("application/json");
+        response.setCharacterEncoding("UTF-8");
+        out.print(sb.toString()); out.flush();
+        return;
+    }
+%>
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IPO Monitoring Dashboard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        html[data-theme="dark"] {
+            --bg-base: #070b14;
+            --bg-grad-1: #0a0f1e;
+            --bg-grad-2: #151228;
+            --bg-grad-3: #0d1424;
+            --glass: rgba(20, 28, 45, 0.55);
+            --glass-2: rgba(255, 255, 255, 0.035);
+            --glass-3: rgba(0, 0, 0, 0.18);
+            --glass-border: rgba(120, 150, 210, 0.14);
+            --glass-border-hi: rgba(120, 150, 210, 0.32);
+            --text-0: #f5f7fb;
+            --text-1: #c8d0e0;
+            --text-2: #7e8899;
+            --text-3: #5a6478;
+            --accent: #4f8cff;
+            --green: #22e6a4;
+            --green-dim: rgba(34, 230, 164, 0.14);
+            --amber: #ffb84d;
+            --amber-dim: rgba(255, 184, 77, 0.14);
+            --red: #ff5577;
+            --red-dim: rgba(255, 85, 119, 0.14);
+            --purple: #b47cff;
+            --purple-dim: rgba(180, 124, 255, 0.14);
+            --cyan: #4fd1ff;
+            --bg-scroll: rgba(120, 150, 210, 0.22);
+            --bg-scroll-hover: rgba(120, 150, 210, 0.4);
+            --modal-backdrop: rgba(0, 0, 0, 0.78);
+        }
+
+        html[data-theme="light"] {
+            --bg-base: #eef2f8;
+            --bg-grad-1: #e6ecf5;
+            --bg-grad-2: #f3eef8;
+            --bg-grad-3: #eaf0f8;
+            --glass: rgba(255, 255, 255, 0.85);
+            --glass-2: rgba(255, 255, 255, 0.7);
+            --glass-3: rgba(0, 0, 0, 0.04);
+            --glass-border: rgba(70, 100, 160, 0.15);
+            --glass-border-hi: rgba(70, 100, 160, 0.35);
+            --text-0: #0a1124;
+            --text-1: #2e3a52;
+            --text-2: #64738c;
+            --text-3: #8895ab;
+            --accent: #2f6ee0;
+            --green: #0ea875;
+            --green-dim: rgba(14, 168, 117, 0.12);
+            --amber: #e08a12;
+            --amber-dim: rgba(224, 138, 18, 0.12);
+            --red: #e02550;
+            --red-dim: rgba(224, 37, 80, 0.12);
+            --purple: #8243e0;
+            --purple-dim: rgba(130, 67, 224, 0.12);
+            --cyan: #0e9ec8;
+            --bg-scroll: rgba(70, 100, 160, 0.28);
+            --bg-scroll-hover: rgba(70, 100, 160, 0.5);
+            --modal-backdrop: rgba(20, 30, 50, 0.6);
+        }
+
+        html, body {
+            height: 100vh;
+            overflow: hidden;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            color: var(--text-0);
+            background: var(--bg-base);
+            font-size: 13.5px;
+            -webkit-font-smoothing: antialiased;
+            transition: background 0.3s, color 0.3s;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background:
+                radial-gradient(ellipse at 0% 0%, rgba(79, 140, 255, 0.20), transparent 45%),
+                radial-gradient(ellipse at 100% 0%, rgba(180, 124, 255, 0.16), transparent 45%),
+                radial-gradient(ellipse at 50% 100%, rgba(34, 230, 164, 0.10), transparent 50%),
+                linear-gradient(180deg, var(--bg-grad-1) 0%, var(--bg-grad-3) 50%, var(--bg-grad-2) 100%);
+            z-index: -2;
+        }
+        body::after {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(255,255,255,0.012) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.012) 1px, transparent 1px);
+            background-size: 40px 40px;
+            z-index: -1;
+            pointer-events: none;
+        }
+        html[data-theme="light"] body::after {
+            background-image:
+                linear-gradient(rgba(0,0,0,0.02) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0,0,0,0.02) 1px, transparent 1px);
+        }
+
+        .app {
+            height: 100vh;
+            display: grid;
+            grid-template-rows: 68px 1fr;
+            overflow: hidden;
+        }
+
+        /* HEADER */
+        .header {
+            display: flex;
+            align-items: center;
+            padding: 0 22px;
+            gap: 16px;
+            border-bottom: 1px solid var(--glass-border);
+            background: var(--glass);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            z-index: 100;
+            flex-shrink: 0;
+        }
+        .logo {
+            display: flex; align-items: center; gap: 13px;
+            font-size: 17px; font-weight: 800;
+            letter-spacing: -0.4px; color: var(--text-0);
+        }
+        .logo-mark {
+            width: 38px; height: 38px;
+            border-radius: 11px;
+            background: linear-gradient(135deg, #4f8cff 0%, #b47cff 100%);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 18px;
+            box-shadow: 0 6px 20px rgba(79, 140, 255, 0.45), inset 0 1px 0 rgba(255,255,255,0.3);
+        }
+        .logo-pill {
+            font-size: 10px; font-weight: 800;
+            padding: 3px 9px;
+            background: var(--green-dim);
+            border: 1px solid rgba(34, 230, 164, 0.35);
+            color: var(--green);
+            border-radius: 6px;
+            letter-spacing: 1.2px;
+            text-transform: uppercase;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .pulse-dot {
+            width: 6px; height: 6px; border-radius: 50%;
+            background: var(--green);
+            box-shadow: 0 0 8px var(--green);
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.35; transform: scale(0.85); }
+        }
+        .hdr-spacer { flex: 1; }
+
+        .hdr-stat {
+            display: flex; align-items: center; gap: 7px;
+            padding: 7px 14px;
+            background: var(--glass-2);
+            border: 1px solid var(--glass-border);
+            border-radius: 10px;
+            font-size: 12.5px; font-weight: 700;
+            color: var(--text-1);
+        }
+        .hdr-stat .num { color: var(--text-0); font-weight: 800; font-size: 14px; }
+        .hdr-stat .num.green { color: var(--green); }
+        .hdr-stat .num.amber { color: var(--amber); }
+        .hdr-stat .num.red   { color: var(--red); }
+        .hdr-stat .num.purple{ color: var(--purple); }
+        .hdr-stat .dot { width: 7px; height: 7px; border-radius: 50%; }
+        .hdr-stat .dot.g { background: var(--green); box-shadow: 0 0 6px var(--green); }
+        .hdr-stat .dot.a { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+        .hdr-stat .dot.r { background: var(--red); box-shadow: 0 0 6px var(--red); }
+        .hdr-stat .dot.p { background: var(--purple); box-shadow: 0 0 6px var(--purple); }
+
+        .countdown-pill {
+            display: flex; align-items: center; gap: 9px;
+            padding: 8px 16px;
+            background: linear-gradient(135deg, rgba(79, 140, 255, 0.15), rgba(180, 124, 255, 0.12));
+            border: 1px solid rgba(79, 140, 255, 0.35);
+            border-radius: 10px;
+            font-size: 12.5px; font-weight: 700;
+            color: var(--text-0);
+            font-variant-numeric: tabular-nums;
+        }
+        .countdown-pill .cd-val { color: var(--accent); font-size: 14px; font-weight: 800; letter-spacing: 0.3px; }
+
+        .theme-toggle {
+            width: 52px; height: 28px;
+            border-radius: 14px;
+            background: var(--glass-2);
+            border: 1px solid var(--glass-border);
+            position: relative;
+            cursor: pointer;
+            transition: 0.25s;
+            flex-shrink: 0;
+        }
+        .theme-toggle:hover { border-color: var(--accent); }
+        .theme-toggle .icon {
+            position: absolute;
+            top: 50%; transform: translateY(-50%);
+            font-size: 13px;
+            transition: 0.25s;
+            pointer-events: none;
+        }
+        .theme-toggle .icon.sun  { left: 6px;  opacity: 0; }
+        .theme-toggle .icon.moon { right: 6px; opacity: 1; }
+        html[data-theme="light"] .theme-toggle .icon.sun  { opacity: 1; }
+        html[data-theme="light"] .theme-toggle .icon.moon { opacity: 0; }
+        .theme-toggle .knob {
+            position: absolute;
+            top: 3px; left: 3px;
+            width: 20px; height: 20px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #4f8cff, #3866dd);
+            transition: 0.25s cubic-bezier(0.4,0,0.2,1);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+        }
+        html[data-theme="light"] .theme-toggle .knob {
+            left: 27px;
+            background: linear-gradient(135deg, #fbbf24, #f59e0b);
+        }
+
+        .btn-refresh {
+            width: 40px; height: 40px;
+            background: linear-gradient(135deg, #4f8cff, #3866dd);
+            border: none;
+            border-radius: 10px;
+            color: #fff;
+            font-size: 16px;
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: 0.22s;
+            box-shadow: 0 6px 18px rgba(79, 140, 255, 0.4);
+            flex-shrink: 0;
+        }
+        .btn-refresh:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 26px rgba(79, 140, 255, 0.6);
+        }
+        .btn-refresh:disabled { opacity: 0.7; cursor: not-allowed; }
+        .btn-refresh.spinning { animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* MAIN LAYOUT — 3 columns: Info | KPIs+Panels */
+        .main-wrap {
+            display: grid;
+            grid-template-columns: 260px 1fr;
+            gap: 14px;
+            padding: 14px 18px;
+            min-height: 0;
+            overflow: hidden;
+        }
+
+        /* ============================================================
+         * INFO PANEL (LEFT SIDE)
+         * ============================================================ */
+        .info-panel {
+            background: var(--glass);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            padding: 16px;
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            display: flex; flex-direction: column;
+            gap: 12px;
+            overflow-y: auto;
+            box-shadow: 0 4px 22px rgba(0,0,0,0.2);
+        }
+        .info-panel::-webkit-scrollbar { width: 6px; }
+        .info-panel::-webkit-scrollbar-thumb {
+            background: var(--bg-scroll);
+            border-radius: 3px;
+        }
+
+        .info-title {
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 1.4px;
+            text-transform: uppercase;
+            color: var(--text-3);
+            display: flex; align-items: center; gap: 8px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--glass-border);
+        }
+        .info-title::before {
+            content: '';
+            width: 3px; height: 12px;
+            background: var(--accent);
+            border-radius: 2px;
+            box-shadow: 0 0 10px rgba(79,140,255,0.5);
+        }
+
+        .info-block {
+            background: var(--glass-2);
+            border: 1px solid var(--glass-border);
+            border-radius: 11px;
+            padding: 12px 14px;
+            display: flex; flex-direction: column;
+            gap: 6px;
+            transition: 0.2s;
+        }
+        .info-block:hover {
+            border-color: var(--glass-border-hi);
+            background: var(--glass-3);
+        }
+        .info-block-label {
+            font-size: 10px;
+            font-weight: 800;
+            letter-spacing: 0.9px;
+            text-transform: uppercase;
+            color: var(--text-3);
+        }
+        .info-block-value {
+            font-size: 15px;
+            font-weight: 800;
+            color: var(--text-0);
+            font-variant-numeric: tabular-nums;
+            line-height: 1.2;
+        }
+        .info-block-value.small { font-size: 13px; }
+        .info-block-sub {
+            font-size: 11px;
+            color: var(--text-2);
+            font-weight: 600;
+        }
+
+        /* Legend */
+        .legend-list {
+            display: flex; flex-direction: column; gap: 8px;
+        }
+        .legend-item {
+            display: flex; align-items: center; gap: 10px;
+            padding: 8px 10px;
+            background: var(--glass-2);
+            border: 1px solid var(--glass-border);
+            border-radius: 9px;
+            transition: 0.15s;
+        }
+        .legend-item:hover {
+            background: var(--glass-3);
+            border-color: var(--glass-border-hi);
+        }
+        .legend-swatch {
+            width: 22px; height: 22px;
+            border-radius: 6px;
+            flex-shrink: 0;
+            position: relative;
+        }
+        .legend-swatch.green  { background: linear-gradient(135deg, #22e6a4, #0ea875); box-shadow: 0 0 10px rgba(34,230,164,0.5); }
+        .legend-swatch.red    { background: linear-gradient(135deg, #ff5577, #e02550); box-shadow: 0 0 10px rgba(255,85,119,0.5); }
+        .legend-swatch.amber  { background: linear-gradient(135deg, #ffb84d, #e08a12); box-shadow: 0 0 10px rgba(255,184,77,0.5); }
+        .legend-swatch.purple { background: linear-gradient(135deg, #b47cff, #8243e0); box-shadow: 0 0 10px rgba(180,124,255,0.5); }
+
+        .legend-text {
+            flex: 1; min-width: 0;
+        }
+        .legend-text .name {
+            font-size: 12px;
+            font-weight: 800;
+            color: var(--text-0);
+            letter-spacing: 0.3px;
+        }
+        .legend-text .desc {
+            font-size: 10.5px;
+            color: var(--text-2);
+            font-weight: 600;
+            margin-top: 1px;
+        }
+        .legend-count {
+            font-size: 14px;
+            font-weight: 800;
+            font-variant-numeric: tabular-nums;
+            padding: 3px 9px;
+            border-radius: 6px;
+            letter-spacing: 0.4px;
+        }
+        .legend-count.green  { background: var(--green-dim);  color: var(--green); }
+        .legend-count.red    { background: var(--red-dim);    color: var(--red); }
+        .legend-count.amber  { background: var(--amber-dim);  color: var(--amber); }
+        .legend-count.purple { background: var(--purple-dim); color: var(--purple); }
+
+        /* Status bar */
+        .info-status {
+            display: flex; align-items: center; gap: 8px;
+            padding: 10px 12px;
+            background: var(--green-dim);
+            border: 1px solid rgba(34,230,164,0.3);
+            border-radius: 10px;
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--green);
+        }
+        .info-status.loading {
+            background: var(--amber-dim);
+            border-color: rgba(255,184,77,0.3);
+            color: var(--amber);
+        }
+        .info-status-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+            box-shadow: 0 0 8px currentColor;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        /* Shortcuts */
+        .shortcuts {
+            display: flex; flex-direction: column; gap: 6px;
+        }
+        .shortcut-row {
+            display: flex; align-items: center; justify-content: space-between;
+            font-size: 11.5px;
+            color: var(--text-2);
+            font-weight: 600;
+            padding: 4px 0;
+        }
+        .shortcut-row kbd {
+            font-family: 'JetBrains Mono', 'Consolas', monospace;
+            font-size: 10.5px;
+            font-weight: 700;
+            background: var(--glass-3);
+            color: var(--text-1);
+            padding: 2px 7px;
+            border-radius: 4px;
+            border: 1px solid var(--glass-border);
+            letter-spacing: 0.3px;
+        }
+
+        /* MAIN content (right) */
+        .main-content {
+            display: grid;
+            grid-template-rows: 108px 1fr;
+            gap: 14px;
+            min-height: 0;
+            overflow: hidden;
+            min-width: 0;
+        }
+
+        /* KPIs */
+        .kpis {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 12px;
+            min-height: 0;
+        }
+        .kpi {
+            background: var(--glass);
+            border: 1px solid var(--glass-border);
+            border-radius: 14px;
+            padding: 12px 16px;
+            display: flex; flex-direction: column; justify-content: center;
+            position: relative; overflow: hidden;
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            transition: 0.22s;
+        }
+        .kpi:hover {
+            transform: translateY(-2px);
+            border-color: var(--glass-border-hi);
+            box-shadow: 0 12px 32px rgba(0,0,0,0.35);
+        }
+        .kpi::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 3px;
+            background: var(--accent);
+            box-shadow: 0 0 16px rgba(79, 140, 255, 0.5);
+        }
+        .kpi.green::before { background: var(--green); box-shadow: 0 0 16px rgba(34, 230, 164, 0.6); }
+        .kpi.amber::before { background: var(--amber); box-shadow: 0 0 16px rgba(255, 184, 77, 0.6); }
+        .kpi.red::before   { background: var(--red); box-shadow: 0 0 16px rgba(255, 85, 119, 0.6); }
+
+        .kpi-label {
+            font-size: 10.5px; font-weight: 800;
+            letter-spacing: 1.1px; text-transform: uppercase;
+            color: var(--text-3);
+            margin-bottom: 5px;
+        }
+        .kpi-value {
+            font-size: 28px; font-weight: 800;
+            color: var(--text-0);
+            letter-spacing: -0.7px; line-height: 1;
+            font-variant-numeric: tabular-nums;
+        }
+        .kpi-value.green { color: var(--green); }
+        .kpi-value.amber { color: var(--amber); }
+        .kpi-value.red   { color: var(--red); }
+        .kpi-sub {
+            font-size: 11px; color: var(--text-3);
+            font-weight: 600; margin-top: 4px;
+        }
+
+        /* PANELS */
+        .panels {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 14px;
+            min-height: 0;
+            overflow: hidden;
+        }
+        .panel {
+            background: var(--glass);
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            display: flex; flex-direction: column;
+            overflow: hidden;
+            min-height: 0;
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            box-shadow: 0 4px 22px rgba(0,0,0,0.2);
+        }
+        .panel-head {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--glass-border);
+            display: flex; align-items: center; gap: 10px;
+            background: var(--glass-2);
+            flex-shrink: 0;
+        }
+        .ph-icon {
+            width: 30px; height: 30px;
+            border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 15px;
+            flex-shrink: 0;
+        }
+        .ph-icon.green  { background: var(--green-dim); color: var(--green); }
+        .ph-icon.blue   { background: rgba(79, 140, 255, 0.15); color: var(--accent); }
+        .ph-icon.purple { background: var(--purple-dim); color: var(--purple); }
+
+        .ph-text { flex: 1; min-width: 0; }
+        .ph-title {
+            font-size: 14px; font-weight: 800;
+            color: var(--text-0);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .ph-sub {
+            font-size: 10px; color: var(--text-3);
+            font-weight: 700;
+            letter-spacing: 0.6px; text-transform: uppercase;
+            margin-top: 1px;
+        }
+        .ph-badge {
+            font-size: 10px; font-weight: 800;
+            padding: 3px 9px;
+            border-radius: 7px;
+            background: var(--glass-2);
+            color: var(--text-2);
+            letter-spacing: 0.4px;
+            white-space: nowrap;
+            border: 1px solid var(--glass-border);
+        }
+
+        .panel-body {
+            flex: 1; min-height: 0;
+            overflow-y: auto; overflow-x: hidden;
+            padding: 12px;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 10px;
+            align-content: start;
+        }
+        .panel-body::-webkit-scrollbar { width: 8px; }
+        .panel-body::-webkit-scrollbar-track { background: transparent; }
+        .panel-body::-webkit-scrollbar-thumb {
+            background: var(--bg-scroll);
+            border-radius: 4px;
+        }
+        .panel-body::-webkit-scrollbar-thumb:hover { background: var(--bg-scroll-hover); }
+
+        /* IP CARD */
+        .ip-card {
+            background: var(--glass-2);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 12px 14px;
+            display: flex; flex-direction: column; gap: 10px;
+            transition: 0.22s;
+            position: relative; overflow: hidden;
+            min-height: 210px;
+            cursor: pointer;
+        }
+        .ip-card:hover {
+            background: var(--glass-3);
+            border-color: var(--glass-border-hi);
+            transform: translateY(-3px);
+            box-shadow: 0 14px 34px rgba(0,0,0,0.4);
+        }
+        .ip-card::after {
+            content: '👁';
+            position: absolute;
+            top: 10px; right: 10px;
+            font-size: 12px;
+            opacity: 0;
+            transition: opacity 0.22s;
+            color: var(--text-2);
+            pointer-events: none;
+        }
+        .ip-card:hover::after { opacity: 0.6; }
+
+        .ip-card.td-card {
+            background: var(--red-dim);
+            border: 2px solid rgba(255, 85, 119, 0.55);
+            animation: tdPulse 2.6s ease-in-out infinite;
+        }
+        .ip-card.td-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; bottom: 0;
+            width: 5px;
+            background: var(--red);
+            box-shadow: 0 0 18px var(--red);
+        }
+        @keyframes tdPulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(255, 85, 119, 0.0); }
+            50%      { box-shadow: 0 0 24px 2px rgba(255, 85, 119, 0.35); }
+        }
+
+        .ip-card.bd-card {
+            background: var(--amber-dim);
+            border: 2px solid rgba(255, 184, 77, 0.55);
+            animation: bdPulse 2.6s ease-in-out infinite;
+        }
+        .ip-card.bd-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; bottom: 0;
+            width: 5px;
+            background: var(--amber);
+            box-shadow: 0 0 18px var(--amber);
+        }
+        @keyframes bdPulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(255, 184, 77, 0.0); }
+            50%      { box-shadow: 0 0 24px 2px rgba(255, 184, 77, 0.35); }
+        }
+
+        .ip-card.zero-card {
+            background: linear-gradient(135deg, rgba(180, 124, 255, 0.16), rgba(90, 100, 120, 0.10));
+            border: 2px solid rgba(180, 124, 255, 0.55);
+            animation: zeroPulse 2.6s ease-in-out infinite;
+        }
+        .ip-card.zero-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; bottom: 0;
+            width: 5px;
+            background: var(--purple);
+            box-shadow: 0 0 18px var(--purple);
+        }
+        @keyframes zeroPulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(180, 124, 255, 0.0); }
+            50%      { box-shadow: 0 0 24px 2px rgba(180, 124, 255, 0.4); }
+        }
+
+        .ip-card.healthy-card { border-color: var(--glass-border); }
+        .ip-card.healthy-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; bottom: 0;
+            width: 3px;
+            background: var(--green);
+        }
+
+        .ip-head {
+            display: flex; align-items: center; justify-content: space-between; gap: 8px;
+        }
+        .ip-addr {
+            font-family: 'JetBrains Mono', 'SF Mono', 'Consolas', monospace;
+            font-size: 14px; font-weight: 800;
+            color: var(--text-0);
+            letter-spacing: 0.3px;
+        }
+        .ip-badge {
+            font-size: 10px; font-weight: 900;
+            padding: 4px 10px;
+            border-radius: 7px;
+            letter-spacing: 1.2px;
+            text-transform: uppercase;
+        }
+        .ip-badge.healthy-card { background: var(--green-dim); color: var(--green); border: 1px solid rgba(34,230,164,0.4); }
+        .ip-badge.td-card      { background: var(--red-dim);   color: var(--red);   border: 1px solid rgba(255,85,119,0.45); }
+        .ip-badge.bd-card      { background: var(--amber-dim); color: var(--amber); border: 1px solid rgba(255,184,77,0.45); }
+        .ip-badge.zero-card    { background: var(--purple-dim); color: var(--purple); border: 1px solid rgba(180,124,255,0.5); }
+
+        .ip-api {
+            font-size: 10.5px;
+            color: var(--text-2);
+            font-weight: 700;
+            line-height: 1.35;
+            margin-top: -4px;
+            word-break: break-all;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            min-height: 28px;
+            font-family: 'JetBrains Mono', 'Consolas', monospace;
+        }
+
+        .ip-metrics {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+        .ip-metric {
+            background: var(--glass-3);
+            border-radius: 8px;
+            padding: 8px 10px;
+            border: 1px solid var(--glass-border);
+        }
+        .ip-metric-label {
+            font-size: 10px; color: var(--text-3);
+            font-weight: 800;
+            letter-spacing: 0.8px; text-transform: uppercase;
+            margin-bottom: 4px;
+        }
+        .ip-metric-value {
+            font-size: 17px; font-weight: 800;
+            color: var(--text-0);
+            font-variant-numeric: tabular-nums;
+            line-height: 1;
+        }
+        .ip-metric-value.green { color: var(--green); }
+        .ip-metric-value.amber { color: var(--amber); }
+        .ip-metric-value.red   { color: var(--red); }
+        .ip-metric-value.purple{ color: var(--purple); }
+
+        .succ-bar {
+            height: 6px;
+            background: var(--glass-3);
+            border-radius: 3px;
+            overflow: hidden;
+            margin-top: 4px;
+        }
+        .succ-bar-inner {
+            height: 100%;
+            background: linear-gradient(90deg, var(--green), var(--cyan));
+            border-radius: 3px;
+            transition: width 0.4s ease;
+            box-shadow: 0 0 10px rgba(34, 230, 164, 0.5);
+        }
+        .succ-bar-inner.warn { background: linear-gradient(90deg, var(--amber), #ff8a4d); box-shadow: 0 0 10px rgba(255,184,77,0.5); }
+        .succ-bar-inner.bad  { background: linear-gradient(90deg, var(--red), #ff3d5f); box-shadow: 0 0 10px rgba(255,85,119,0.5); }
+        .succ-bar-inner.zero { background: linear-gradient(90deg, var(--purple), #c4a6ff); box-shadow: 0 0 10px rgba(180,124,255,0.5); }
+
+        .err-chips {
+            display: flex; flex-wrap: wrap; gap: 5px;
+            padding-top: 8px;
+            border-top: 1px dashed var(--glass-border);
+            min-height: 28px;
+        }
+        .err-chip {
+            font-family: 'JetBrains Mono', 'Consolas', monospace;
+            font-size: 10.5px; font-weight: 800;
+            padding: 3px 8px;
+            border-radius: 5px;
+            letter-spacing: 0.3px;
+            white-space: nowrap;
+        }
+        .err-chip.td {
+            background: var(--red-dim);
+            color: var(--red);
+            border: 1px solid rgba(255, 85, 119, 0.45);
+        }
+        .err-chip.bd {
+            background: var(--amber-dim);
+            color: var(--amber);
+            border: 1px solid rgba(255, 184, 77, 0.45);
+        }
+        .err-chip.ok {
+            background: var(--green-dim);
+            color: var(--green);
+            border: 1px solid rgba(34, 230, 164, 0.3);
+            font-family: inherit;
+        }
+        .err-chip.zero {
+            background: var(--purple-dim);
+            color: var(--purple);
+            border: 1px solid rgba(180, 124, 255, 0.5);
+            font-family: inherit;
+            font-weight: 900;
+            letter-spacing: 0.5px;
+        }
+
+        /* STATES */
+        .state {
+            grid-column: 1 / -1;
+            padding: 40px 20px;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            text-align: center;
+            color: var(--text-2);
+            min-height: 200px;
+        }
+        .state .ico { font-size: 40px; opacity: 0.35; margin-bottom: 12px; }
+        .state .ttl { font-size: 14px; font-weight: 700; color: var(--text-1); margin-bottom: 4px; }
+        .state .sub { font-size: 12px; color: var(--text-3); }
+
+        .loader-spin {
+            width: 44px; height: 44px;
+            border: 4px solid rgba(79, 140, 255, 0.15);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.9s linear infinite;
+            margin-bottom: 16px;
+        }
+
+        /* MODAL */
+        .modal-backdrop {
+            position: fixed; inset: 0;
+            background: var(--modal-backdrop);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            z-index: 1000;
+            display: none;
+            align-items: center; justify-content: center;
+            padding: 24px;
+            animation: fadeIn 0.22s ease;
+        }
+        .modal-backdrop.active { display: flex; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        .modal {
+            background: var(--bg-base);
+            border-radius: 20px;
+            width: 100%;
+            max-width: 780px;
+            max-height: 88vh;
+            display: flex; flex-direction: column;
+            overflow: hidden;
+            position: relative;
+            animation: modalSlide 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
+            box-shadow: 0 40px 100px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.06) inset;
+        }
+        html[data-theme="dark"] .modal {
+            background: linear-gradient(180deg, #121826 0%, #0a0e18 100%);
+        }
+        html[data-theme="light"] .modal {
+            background: linear-gradient(180deg, #ffffff 0%, #f6f8fc 100%);
+            box-shadow: 0 40px 100px rgba(20, 40, 80, 0.28), 0 0 0 1px rgba(20, 40, 80, 0.06) inset;
+        }
+        @keyframes modalSlide {
+            from { opacity: 0; transform: translateY(30px) scale(0.94); }
+            to   { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        .modal::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 4px;
+            background: var(--accent);
+            box-shadow: 0 0 20px rgba(79, 140, 255, 0.6);
+        }
+        .modal.td::before   { background: linear-gradient(90deg, var(--red), #ff8a9e); box-shadow: 0 0 20px rgba(255,85,119,0.7); }
+        .modal.bd::before   { background: linear-gradient(90deg, var(--amber), #ffd27a); box-shadow: 0 0 20px rgba(255,184,77,0.7); }
+        .modal.zero::before { background: linear-gradient(90deg, var(--purple), #c4a6ff); box-shadow: 0 0 20px rgba(180,124,255,0.7); }
+        .modal.healthy::before { background: linear-gradient(90deg, var(--green), var(--cyan)); box-shadow: 0 0 20px rgba(34,230,164,0.6); }
+
+        .modal-head {
+            padding: 26px 28px 20px;
+            display: flex; align-items: flex-start; justify-content: space-between; gap: 18px;
+            flex-shrink: 0;
+            border-bottom: 1px solid var(--glass-border);
+        }
+        .modal-head-left {
+            display: flex; align-items: center; gap: 16px;
+            min-width: 0; flex: 1;
+        }
+        .modal-status-icon {
+            width: 56px; height: 56px;
+            border-radius: 16px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 26px;
+            flex-shrink: 0;
+        }
+        .modal-status-icon.td {
+            background: linear-gradient(135deg, rgba(255,85,119,0.22), rgba(255,85,119,0.08));
+            color: var(--red);
+            border: 1.5px solid rgba(255, 85, 119, 0.4);
+            box-shadow: 0 0 24px rgba(255, 85, 119, 0.25), inset 0 1px 0 rgba(255,255,255,0.1);
+        }
+        .modal-status-icon.bd {
+            background: linear-gradient(135deg, rgba(255,184,77,0.22), rgba(255,184,77,0.08));
+            color: var(--amber);
+            border: 1.5px solid rgba(255, 184, 77, 0.4);
+            box-shadow: 0 0 24px rgba(255, 184, 77, 0.25), inset 0 1px 0 rgba(255,255,255,0.1);
+        }
+        .modal-status-icon.zero {
+            background: linear-gradient(135deg, rgba(180,124,255,0.22), rgba(180,124,255,0.08));
+            color: var(--purple);
+            border: 1.5px solid rgba(180, 124, 255, 0.4);
+            box-shadow: 0 0 24px rgba(180, 124, 255, 0.3), inset 0 1px 0 rgba(255,255,255,0.1);
+        }
+        .modal-status-icon.healthy {
+            background: linear-gradient(135deg, rgba(34,230,164,0.22), rgba(34,230,164,0.08));
+            color: var(--green);
+            border: 1.5px solid rgba(34, 230, 164, 0.4);
+            box-shadow: 0 0 24px rgba(34, 230, 164, 0.25), inset 0 1px 0 rgba(255,255,255,0.1);
+        }
+
+        .modal-head-text { min-width: 0; flex: 1; }
+        .modal-tag {
+            display: inline-block;
+            font-size: 10px;
+            font-weight: 800;
+            padding: 3px 9px;
+            border-radius: 6px;
+            letter-spacing: 1.2px;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+        .modal-tag.td { background: var(--red-dim); color: var(--red); border: 1px solid rgba(255, 85, 119, 0.4); }
+        .modal-tag.bd { background: var(--amber-dim); color: var(--amber); border: 1px solid rgba(255, 184, 77, 0.4); }
+        .modal-tag.zero { background: var(--purple-dim); color: var(--purple); border: 1px solid rgba(180, 124, 255, 0.4); }
+        .modal-tag.healthy { background: var(--green-dim); color: var(--green); border: 1px solid rgba(34, 230, 164, 0.4); }
+
+        .modal-title {
+            font-size: 22px;
+            font-weight: 800;
+            color: var(--text-0);
+            font-family: 'JetBrains Mono', 'Consolas', monospace;
+            letter-spacing: 0.2px;
+            margin-bottom: 4px;
+        }
+        .modal-subtitle {
+            font-size: 13px;
+            color: var(--text-2);
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .modal-close {
+            width: 38px; height: 38px;
+            border-radius: 10px;
+            background: var(--glass-2);
+            border: 1px solid var(--glass-border);
+            color: var(--text-1);
+            font-size: 20px;
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: 0.2s;
+            flex-shrink: 0;
+            line-height: 1;
+            font-family: inherit;
+            font-weight: 400;
+        }
+        .modal-close:hover {
+            background: var(--red-dim);
+            color: var(--red);
+            border-color: rgba(255,85,119,0.4);
+            transform: rotate(90deg) scale(1.05);
+        }
+
+        .modal-body {
+            padding: 24px 28px 28px;
+            overflow-y: auto;
+            flex: 1;
+        }
+        .modal-body::-webkit-scrollbar { width: 8px; }
+        .modal-body::-webkit-scrollbar-track { background: transparent; }
+        .modal-body::-webkit-scrollbar-thumb {
+            background: var(--bg-scroll);
+            border-radius: 4px;
+        }
+
+        .health-banner {
+            padding: 16px 20px;
+            border-radius: 14px;
+            display: flex; align-items: center; gap: 16px;
+            margin-bottom: 24px;
+        }
+        .health-banner.healthy {
+            background: linear-gradient(135deg, rgba(34,230,164,0.15), rgba(34,230,164,0.05));
+            border: 1px solid rgba(34, 230, 164, 0.35);
+        }
+        .health-banner.td {
+            background: linear-gradient(135deg, rgba(255,85,119,0.15), rgba(255,85,119,0.05));
+            border: 1px solid rgba(255, 85, 119, 0.4);
+        }
+        .health-banner.bd {
+            background: linear-gradient(135deg, rgba(255,184,77,0.15), rgba(255,184,77,0.05));
+            border: 1px solid rgba(255, 184, 77, 0.4);
+        }
+        .health-banner.zero {
+            background: linear-gradient(135deg, rgba(180,124,255,0.15), rgba(180,124,255,0.05));
+            border: 1px solid rgba(180, 124, 255, 0.4);
+        }
+        .health-banner .hb-icon {
+            width: 42px; height: 42px;
+            border-radius: 11px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 22px;
+            flex-shrink: 0;
+        }
+        .health-banner.healthy .hb-icon { background: rgba(34,230,164,0.2); color: var(--green); }
+        .health-banner.td .hb-icon { background: rgba(255,85,119,0.2); color: var(--red); }
+        .health-banner.bd .hb-icon { background: rgba(255,184,77,0.2); color: var(--amber); }
+        .health-banner.zero .hb-icon { background: rgba(180,124,255,0.2); color: var(--purple); }
+
+        .health-banner .hb-text { flex: 1; min-width: 0; }
+        .health-banner .hb-title {
+            font-size: 15px;
+            font-weight: 800;
+            letter-spacing: -0.1px;
+            margin-bottom: 3px;
+        }
+        .health-banner.healthy .hb-title { color: var(--green); }
+        .health-banner.td .hb-title { color: var(--red); }
+        .health-banner.bd .hb-title { color: var(--amber); }
+        .health-banner.zero .hb-title { color: var(--purple); }
+        .health-banner .hb-sub {
+            font-size: 12.5px;
+            color: var(--text-2);
+            font-weight: 500;
+        }
+
+        .modal-section { margin-bottom: 24px; }
+        .modal-section:last-child { margin-bottom: 0; }
+        .modal-section-title {
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 1.4px;
+            text-transform: uppercase;
+            color: var(--text-3);
+            margin-bottom: 14px;
+            display: flex; align-items: center; gap: 9px;
+        }
+        .modal-section-title::before {
+            content: '';
+            width: 3px; height: 12px;
+            background: var(--accent);
+            border-radius: 2px;
+            box-shadow: 0 0 10px rgba(79,140,255,0.5);
+        }
+
+        .tiles-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+        }
+        .tile {
+            background: var(--glass-2);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 14px 16px;
+            display: flex; flex-direction: column; gap: 6px;
+            transition: 0.2s;
+            position: relative; overflow: hidden;
+        }
+        .tile:hover {
+            border-color: var(--glass-border-hi);
+            transform: translateY(-2px);
+        }
+        .tile::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 2px;
+            background: var(--accent);
+        }
+        .tile.green::before { background: var(--green); }
+        .tile.amber::before { background: var(--amber); }
+        .tile.red::before   { background: var(--red); }
+        .tile.purple::before{ background: var(--purple); }
+
+        .tile-label {
+            font-size: 10px;
+            color: var(--text-3);
+            font-weight: 800;
+            letter-spacing: 0.9px;
+            text-transform: uppercase;
+        }
+        .tile-value {
+            font-size: 24px;
+            font-weight: 800;
+            color: var(--text-0);
+            font-variant-numeric: tabular-nums;
+            line-height: 1;
+            letter-spacing: -0.5px;
+        }
+        .tile-value.green { color: var(--green); }
+        .tile-value.amber { color: var(--amber); }
+        .tile-value.red   { color: var(--red); }
+        .tile-value.purple{ color: var(--purple); }
+
+        .modal-progress {
+            height: 10px;
+            background: var(--glass-3);
+            border-radius: 5px;
+            overflow: hidden;
+            margin-top: 14px;
+        }
+        .modal-progress-inner {
+            height: 100%;
+            border-radius: 5px;
+            transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+            background: linear-gradient(90deg, var(--green), var(--cyan));
+            box-shadow: 0 0 14px rgba(34,230,164,0.6);
+        }
+        .modal-progress-inner.warn { background: linear-gradient(90deg, var(--amber), #ff8a4d); box-shadow: 0 0 14px rgba(255,184,77,0.6); }
+        .modal-progress-inner.bad  { background: linear-gradient(90deg, var(--red), #ff3d5f); box-shadow: 0 0 14px rgba(255,85,119,0.6); }
+        .modal-progress-inner.zero { background: linear-gradient(90deg, var(--purple), #c4a6ff); box-shadow: 0 0 14px rgba(180,124,255,0.6); }
+
+        .err-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .err-row {
+            display: grid;
+            grid-template-columns: 120px 1fr 90px;
+            gap: 14px;
+            align-items: center;
+            padding: 12px 16px;
+            background: var(--glass-2);
+            border: 1px solid var(--glass-border);
+            border-radius: 11px;
+            transition: 0.15s;
+        }
+        .err-row:hover {
+            background: var(--glass-3);
+            border-color: var(--glass-border-hi);
+            transform: translateX(2px);
+        }
+        .err-code {
+            font-family: 'JetBrains Mono', 'Consolas', monospace;
+            font-size: 12.5px;
+            font-weight: 800;
+            padding: 6px 10px;
+            border-radius: 7px;
+            text-align: center;
+            letter-spacing: 0.5px;
+        }
+        .err-code.td { background: var(--red-dim); color: var(--red); border: 1px solid rgba(255,85,119,0.4); }
+        .err-code.bd { background: var(--amber-dim); color: var(--amber); border: 1px solid rgba(255,184,77,0.4); }
+        .err-bar {
+            height: 24px;
+            background: var(--glass-3);
+            border-radius: 7px;
+            overflow: hidden;
+            position: relative;
+        }
+        .err-bar-fill {
+            height: 100%;
+            border-radius: 7px;
+            transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            padding-left: 10px;
+            font-size: 11px;
+            font-weight: 800;
+            color: #fff;
+            text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+        }
+        .err-bar-fill.td { background: linear-gradient(90deg, var(--red), #ff3d5f); box-shadow: 0 0 14px rgba(255,85,119,0.6); }
+        .err-bar-fill.bd { background: linear-gradient(90deg, var(--amber), #ff8a4d); box-shadow: 0 0 14px rgba(255,184,77,0.6); }
+        .err-count {
+            text-align: right;
+            font-family: 'JetBrains Mono', 'Consolas', monospace;
+            font-size: 16px;
+            font-weight: 800;
+            color: var(--text-0);
+            font-variant-numeric: tabular-nums;
+        }
+        .err-count small {
+            display: block;
+            font-size: 10.5px;
+            color: var(--text-3);
+            font-weight: 700;
+            margin-top: 2px;
+        }
+
+        .err-empty {
+            padding: 32px 24px;
+            text-align: center;
+            background: linear-gradient(135deg, rgba(34,230,164,0.12), rgba(34,230,164,0.03));
+            border: 1px solid rgba(34, 230, 164, 0.35);
+            border-radius: 14px;
+            color: var(--green);
+            font-size: 14px;
+            font-weight: 700;
+        }
+        .err-empty.zero {
+            background: linear-gradient(135deg, rgba(180,124,255,0.12), rgba(180,124,255,0.03));
+            border: 1px solid rgba(180, 124, 255, 0.4);
+            color: var(--purple);
+        }
+        .err-empty .big-ic {
+            font-size: 40px;
+            display: block;
+            margin-bottom: 8px;
+            filter: drop-shadow(0 0 12px rgba(34,230,164,0.6));
+        }
+        .err-empty.zero .big-ic {
+            filter: drop-shadow(0 0 12px rgba(180,124,255,0.6));
+        }
+        .err-empty .sub {
+            color: var(--text-2);
+            font-size: 12.5px;
+            font-weight: 500;
+            margin-top: 6px;
+        }
+
+        .raw-table {
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+            background: var(--glass-2);
+            border: 1px solid var(--glass-border);
+            border-radius: 11px;
+            overflow: hidden;
+        }
+        .raw-row {
+            display: grid;
+            grid-template-columns: 1fr 1.2fr;
+            gap: 16px;
+            align-items: center;
+            padding: 11px 16px;
+            border-bottom: 1px solid var(--glass-border);
+            transition: background 0.15s;
+        }
+        .raw-row:last-child { border-bottom: none; }
+        .raw-row:hover { background: var(--glass-3); }
+        .raw-row .key {
+            font-family: 'JetBrains Mono', 'Consolas', monospace;
+            font-size: 12px;
+            font-weight: 700;
+            color: var(--text-2);
+            letter-spacing: 0.3px;
+        }
+        .raw-row .val {
+            font-family: 'JetBrains Mono', 'Consolas', monospace;
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text-0);
+            text-align: right;
+            word-break: break-word;
+        }
+        .raw-row .val.red   { color: var(--red); }
+        .raw-row .val.amber { color: var(--amber); }
+        .raw-row .val.green { color: var(--green); }
+        .raw-row .val.purple{ color: var(--purple); }
+
+        /* TOAST */
+        .toast {
+            position: fixed;
+            bottom: 24px; right: 24px;
+            padding: 12px 20px;
+            background: var(--glass);
+            border: 1px solid var(--glass-border);
+            border-left: 4px solid var(--green);
+            border-radius: 10px;
+            color: var(--text-0);
+            font-size: 13px;
+            font-weight: 700;
+            backdrop-filter: blur(20px);
+            box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+            z-index: 9999;
+            animation: slideIn 0.25s ease;
+        }
+        .toast.err { border-left-color: var(--red); }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(30px); }
+            to   { opacity: 1; transform: translateX(0); }
+        }
+
+        /* RESPONSIVE */
+        @media (max-width: 1500px) {
+            .kpis { grid-template-columns: repeat(3, 1fr); }
+            .main-content { grid-template-rows: 200px 1fr; }
+        }
+        @media (max-width: 1300px) {
+            .main-wrap { grid-template-columns: 220px 1fr; }
+        }
+        @media (max-width: 1100px) {
+            .main-wrap { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+            .info-panel { max-height: 280px; }
+            .panels { grid-template-columns: 1fr; }
+            .main-content { grid-template-rows: auto 1fr; overflow-y: auto; }
+            .panel-body { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+            .tiles-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+        @media (max-width: 700px) {
+            .kpis { grid-template-columns: repeat(2, 1fr); }
+            .main-wrap { padding: 10px; }
+            .header { padding: 0 12px; }
+            .modal-backdrop { padding: 8px; }
+            .modal { max-height: 95vh; border-radius: 16px; }
+            .modal-head { padding: 20px 20px 16px; }
+            .modal-body { padding: 18px 20px 22px; }
+            .tiles-grid { grid-template-columns: 1fr 1fr; }
+            .err-row { grid-template-columns: 100px 1fr 70px; gap: 10px; padding: 10px; }
+            .modal-title { font-size: 18px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="app">
+
+    <!-- HEADER -->
+    <div class="header">
+        <div class="logo">
+            <div class="logo-mark">&#128200;</div>
+            IPO Monitor
+            <span class="logo-pill"><span class="pulse-dot"></span> LIVE</span>
+        </div>
+        <div class="hdr-spacer"></div>
+        <div class="hdr-stat">
+            <span class="dot p"></span> Zero <span class="num purple" id="hdrZero">0</span>
+        </div>
+        <div class="hdr-stat">
+            <span class="dot r"></span> TD <span class="num red" id="hdrCrit">0</span>
+        </div>
+        <div class="hdr-stat">
+            <span class="dot a"></span> BD <span class="num amber" id="hdrWarn">0</span>
+        </div>
+        <div class="hdr-stat">
+            <span class="dot g"></span> Healthy <span class="num green" id="hdrHealthy">0</span>
+        </div>
+        <div class="countdown-pill">
+            <span>&#9202;</span>
+            <span>Next</span>
+            <span class="cd-val" id="cdVal">--:--</span>
+        </div>
+        <div class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">
+            <span class="icon moon">&#9789;</span>
+            <span class="icon sun">&#9728;</span>
+            <div class="knob"></div>
+        </div>
+        <button class="btn-refresh" id="refreshBtn" onclick="refreshNow()" title="Refresh now">&#8635;</button>
+    </div>
+
+    <!-- MAIN (Info Panel + Content) -->
+    <div class="main-wrap">
+
+        <!-- INFO PANEL -->
+        <div class="info-panel">
+            <div class="info-title">Dashboard Info</div>
+
+            <!-- Status -->
+            <div class="info-status" id="infoStatus">
+                <span class="info-status-dot"></span>
+                <span id="infoStatusText">Initializing...</span>
+            </div>
+
+            <!-- Session stats -->
+            <div class="info-block">
+                <div class="info-block-label">Data Window</div>
+                <div class="info-block-value">Last 15 min</div>
+                <div class="info-block-sub" id="infoWindowSub">Auto-refresh every 5 min</div>
+            </div>
+
+            <div class="info-block">
+                <div class="info-block-label">Last Refresh</div>
+                <div class="info-block-value small" id="infoLastRefresh">—</div>
+                <div class="info-block-sub" id="infoRefreshCount">0 refreshes this session</div>
+            </div>
+
+            <div class="info-block">
+                <div class="info-block-label">Total Combos</div>
+                <div class="info-block-value" id="infoTotalCombos">—</div>
+                <div class="info-block-sub">IP × Service pairs</div>
+            </div>
+
+            <!-- Legend -->
+            <div class="info-title" style="margin-top: 6px;">Status Legend</div>
+            <div class="legend-list">
+                <div class="legend-item">
+                    <div class="legend-swatch green"></div>
+                    <div class="legend-text">
+                        <div class="name">Healthy</div>
+                        <div class="desc">No errors</div>
+                    </div>
+                    <div class="legend-count green" id="legendHealthy">0</div>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-swatch red"></div>
+                    <div class="legend-text">
+                        <div class="name">TD</div>
+                        <div class="desc">Technical Decline</div>
+                    </div>
+                    <div class="legend-count red" id="legendTD">0</div>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-swatch amber"></div>
+                    <div class="legend-text">
+                        <div class="name">BD</div>
+                        <div class="desc">Business Decline</div>
+                    </div>
+                    <div class="legend-count amber" id="legendBD">0</div>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-swatch purple"></div>
+                    <div class="legend-text">
+                        <div class="name">Zero Hits</div>
+                        <div class="desc">No traffic</div>
+                    </div>
+                    <div class="legend-count purple" id="legendZero">0</div>
+                </div>
+            </div>
+
+            <!-- Shortcuts -->
+            <div class="info-title" style="margin-top: 6px;">Shortcuts</div>
+            <div class="shortcuts">
+                <div class="shortcut-row"><span>Refresh</span><kbd>Ctrl+R</kbd></div>
+                <div class="shortcut-row"><span>Theme</span><kbd>Ctrl+T</kbd></div>
+                <div class="shortcut-row"><span>Close modal</span><kbd>ESC</kbd></div>
+            </div>
+        </div>
+
+        <!-- CONTENT -->
+        <div class="main-content">
+
+            <!-- KPI ROW -->
+            <div class="kpis">
+                <div class="kpi green" id="kpiApiNHits">
+                    <div class="kpi-label">NSE/INB Hits</div>
+                    <div class="kpi-value" id="kpiApiNHitsVal">—</div>
+                    <div class="kpi-sub" id="kpiApiNHitsSub">Routing services</div>
+                </div>
+                <div class="kpi green" id="kpiApiNTD">
+                    <div class="kpi-label">NSE/INB TD%</div>
+                    <div class="kpi-value" id="kpiApiNTDVal">—</div>
+                    <div class="kpi-sub" id="kpiApiNTDSub">Technical decline</div>
+                </div>
+                <div class="kpi green" id="kpiApiBHits">
+                    <div class="kpi-label">BSE Hits</div>
+                    <div class="kpi-value" id="kpiApiBHitsVal">—</div>
+                    <div class="kpi-sub" id="kpiApiBHitsSub">IPO_ORDER service</div>
+                </div>
+                <div class="kpi green" id="kpiApiBTD">
+                    <div class="kpi-label">BSE TD%</div>
+                    <div class="kpi-value" id="kpiApiBTDVal">—</div>
+                    <div class="kpi-sub" id="kpiApiBTDSub">Technical decline</div>
+                </div>
+                <div class="kpi green" id="kpiBackendHits">
+                    <div class="kpi-label">Backend Hits</div>
+                    <div class="kpi-value" id="kpiBackendHitsVal">—</div>
+                    <div class="kpi-sub" id="kpiBackendHitsSub">NSE · BSE · INB Auth</div>
+                </div>
+                <div class="kpi green" id="kpiBackendTD">
+                    <div class="kpi-label">Backend TD%</div>
+                    <div class="kpi-value" id="kpiBackendTDVal">—</div>
+                    <div class="kpi-sub" id="kpiBackendTDSub">Technical decline</div>
+                </div>
+            </div>
+
+            <!-- PANELS -->
+            <div class="panels">
+
+                <div class="panel">
+                    <div class="panel-head">
+                        <div class="ph-icon blue">&#128225;</div>
+                        <div class="ph-text">
+                            <div class="ph-title">API LOG · NSE/INB</div>
+                            <div class="ph-sub">Routing Services</div>
+                        </div>
+                        <div class="ph-badge" id="apiNBadge">—</div>
+                    </div>
+                    <div class="panel-body" id="apiNBody">
+                        <div class="state">
+                            <div class="loader-spin"></div>
+                            <div class="ttl">Loading NSE/INB data...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-head">
+                        <div class="ph-icon purple">&#128226;</div>
+                        <div class="ph-text">
+                            <div class="ph-title">API LOG · BSE</div>
+                            <div class="ph-sub">BSE IPO_ORDER</div>
+                        </div>
+                        <div class="ph-badge" id="apiBBadge">—</div>
+                    </div>
+                    <div class="panel-body" id="apiBBody">
+                        <div class="state">
+                            <div class="loader-spin"></div>
+                            <div class="ttl">Loading BSE data...</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-head">
+                        <div class="ph-icon green">&#9881;</div>
+                        <div class="ph-text">
+                            <div class="ph-title">BACKEND LOG</div>
+                            <div class="ph-sub">IPO Auth · NSE + BSE + INB</div>
+                        </div>
+                        <div class="ph-badge" id="backendBadge">—</div>
+                    </div>
+                    <div class="panel-body" id="backendBody">
+                        <div class="state">
+                            <div class="loader-spin"></div>
+                            <div class="ttl">Loading backend data...</div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<!-- MODAL -->
+<div class="modal-backdrop" id="modalBackdrop" onclick="closeModalFromBackdrop(event)">
+    <div class="modal" id="modalBox" onclick="event.stopPropagation()">
+        <div class="modal-head">
+            <div class="modal-head-left">
+                <div class="modal-status-icon" id="modalIcon">&#128225;</div>
+                <div class="modal-head-text">
+                    <span class="modal-tag" id="modalTag">—</span>
+                    <div class="modal-title" id="modalTitle">—</div>
+                    <div class="modal-subtitle" id="modalSubtitle">—</div>
+                </div>
+            </div>
+            <button class="modal-close" onclick="closeModal()" title="Close (Esc)">&#215;</button>
+        </div>
+        <div class="modal-body" id="modalBody"></div>
+    </div>
+</div>
+
+<script>
+/* ============================================================
+ * IPO MONITORING DASHBOARD — v11.0
+ * IP × API combos + Info Panel
+ * ============================================================ */
+
+var REFRESH_INTERVAL_SEC = 300;
+var secondsLeft = 0;
+var countdownTimer = null;
+var isRefreshing = false;
+var refreshCount = 0;
+var __panelRows = {};
+
+/* ============ THEME ============ */
+(function initTheme() {
+    try {
+        var saved = localStorage.getItem('ipo_theme');
+        if (saved === 'light' || saved === 'dark') {
+            document.documentElement.setAttribute('data-theme', saved);
+        }
+    } catch(e) {}
+})();
+
+function toggleTheme() {
+    var current = document.documentElement.getAttribute('data-theme') || 'dark';
+    var next = current === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem('ipo_theme', next); } catch(e) {}
+    toast('Switched to ' + next + ' mode');
+}
+
+/* ============ INFO PANEL ============ */
+function setInfoStatus(text, isLoading) {
+    var statusEl = document.getElementById('infoStatus');
+    var textEl = document.getElementById('infoStatusText');
+    textEl.textContent = text;
+    statusEl.classList.toggle('loading', !!isLoading);
+}
+
+function updateInfoPanel(stats, totalCombos, execMs) {
+    document.getElementById('legendHealthy').textContent = stats.healthy;
+    document.getElementById('legendTD').textContent = stats.td;
+    document.getElementById('legendBD').textContent = stats.bd;
+    document.getElementById('legendZero').textContent = stats.zero;
+
+    document.getElementById('infoTotalCombos').textContent = totalCombos;
+
+    var now = new Date();
+    var hh = String(now.getHours()).padStart(2, '0');
+    var mm = String(now.getMinutes()).padStart(2, '0');
+    var ss = String(now.getSeconds()).padStart(2, '0');
+    document.getElementById('infoLastRefresh').textContent = hh + ':' + mm + ':' + ss;
+
+    refreshCount++;
+    document.getElementById('infoRefreshCount').textContent = refreshCount + ' refresh' + (refreshCount === 1 ? '' : 'es') + ' this session';
+}
+
+/* ============ COUNTDOWN ============ */
+function startCountdown() {
+    if (countdownTimer) clearInterval(countdownTimer);
+    secondsLeft = REFRESH_INTERVAL_SEC;
+    renderCountdown();
+    countdownTimer = setInterval(function() {
+        secondsLeft--;
+        if (secondsLeft <= 0) { secondsLeft = REFRESH_INTERVAL_SEC; refreshNow(); }
+        renderCountdown();
+    }, 1000);
+}
+function stopCountdown() { if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; } }
+function renderCountdown() {
+    var el = document.getElementById('cdVal');
+    if (!el) return;
+    if (isRefreshing) { el.textContent = '...'; el.style.color = 'var(--amber)'; return; }
+    el.style.color = '';
+    var m = Math.floor(secondsLeft / 60);
+    var s = secondsLeft % 60;
+    el.textContent = (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+}
+
+/* ============ REFRESH ============ */
+function refreshNow() {
+    if (isRefreshing) return;
+    isRefreshing = true;
+    stopCountdown();
+    renderCountdown();
+    setInfoStatus('Refreshing...', true);
+
+    var btn = document.getElementById('refreshBtn');
+    btn.classList.add('spinning');
+    btn.disabled = true;
+
+    showState('apiNBody', 'Loading NSE/INB data...');
+    showState('apiBBody', 'Loading BSE data...');
+    showState('backendBody', 'Loading backend data...');
+
+    var t0 = Date.now();
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', 'ipo-monitor.jsp?ajax=fetch&_=' + Date.now(), true);
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState !== 4) return;
+        btn.classList.remove('spinning');
+        btn.disabled = false;
+        isRefreshing = false;
+        var elapsed = Date.now() - t0;
+
+        if (xhr.status !== 200) {
+            toast('HTTP ' + xhr.status + ' — refresh failed', true);
+            setInfoStatus('Error — HTTP ' + xhr.status, false);
+            startCountdown();
+            renderCountdown();
+            return;
+        }
+        try {
+            var data = JSON.parse(xhr.responseText);
+            renderAll(data, elapsed);
+            toast('Data refreshed');
+            setInfoStatus('Live · Active', false);
+        } catch(e) {
+            toast('Parse error: ' + e.message, true);
+            setInfoStatus('Parse error', false);
+            console.error(e);
+        }
+        startCountdown();
+        renderCountdown();
+    };
+    xhr.send();
+}
+
+function showState(id, text) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.innerHTML = '<div class="state"><div class="loader-spin"></div><div class="ttl">' + escapeHtml(text) + '</div></div>';
+}
+
+/* ============ RENDER ALL ============ */
+function renderAll(data, elapsed) {
+    var s1 = renderPanel(data.API_NSE_INB, 'apiNBody', 'apiNBadge');
+    var s2 = renderPanel(data.API_BSE, 'apiBBody', 'apiBBadge');
+    var s3 = renderPanel(data.BACKEND_LOG, 'backendBody', 'backendBadge');
+
+    updateKpis(data);
+
+    var totals = {
+        healthy: s1.healthy + s2.healthy + s3.healthy,
+        td: s1.td + s2.td + s3.td,
+        bd: s1.bd + s2.bd + s3.bd,
+        zero: s1.zero + s2.zero + s3.zero
+    };
+
+    document.getElementById('hdrHealthy').textContent = totals.healthy;
+    document.getElementById('hdrWarn').textContent = totals.bd;
+    document.getElementById('hdrCrit').textContent = totals.td;
+    document.getElementById('hdrZero').textContent = totals.zero;
+
+    var totalCombos = totals.healthy + totals.td + totals.bd + totals.zero;
+    updateInfoPanel(totals, totalCombos, elapsed);
+}
+
+/* ============ PANEL RENDER ============ */
+function renderPanel(qr, bodyId, badgeId) {
+    var body = document.getElementById(bodyId);
+    var badge = document.getElementById(badgeId);
+    var stats = { healthy: 0, td: 0, bd: 0, zero: 0 };
+
+    if (!qr || !qr.success) {
+        body.innerHTML = '<div class="state">' +
+                            '<div class="ico">&#9888;</div>' +
+                            '<div class="ttl">Could not load data</div>' +
+                            '<div class="sub">' + escapeHtml(qr ? qr.message : 'Unknown error') + '</div>' +
+                         '</div>';
+        badge.textContent = 'ERROR';
+        return stats;
+    }
+
+    badge.textContent = qr.rows.length + ' combos · ' + qr.executionTimeMs + ' ms';
+
+    if (!qr.rows || qr.rows.length === 0) {
+        body.innerHTML = '<div class="state"><div class="ico">&#128269;</div><div class="ttl">No data</div></div>';
+        return stats;
+    }
+
+    var cols = qr.columns;
+    var ipCol   = findCol(cols, ['SYS_IP', 'EXP_IP', 'IP']);
+    var apiCol  = findCol(cols, ['API_NAME']);
+    var hitsCol = findCol(cols, ['TOTAL_HITS', 'HITS']);
+    var succCol = findCol(cols, ['SUCCESS']);
+    var tdCol   = findCol(cols, ['TD']);
+    var tdpCol  = findCol(cols, ['TD_PERCENT']);
+    var bdCol   = findCol(cols, ['BD']);
+    var bdpCol  = findCol(cols, ['BD_PERCENT']);
+
+    var errCols = [];
+    cols.forEach(function(c) {
+        if (c === ipCol || c === apiCol || c === hitsCol || c === succCol ||
+            c === tdCol || c === tdpCol || c === bdCol || c === bdpCol) return;
+        errCols.push(c);
+    });
+
+    var rows = qr.rows.map(function(row) {
+        var ip    = row[ipCol] || '-';
+        var api   = row[apiCol] || '';
+        var hits  = parseInt(row[hitsCol] || 0);
+        var succ  = parseInt(row[succCol] || 0);
+        var td    = parseInt(row[tdCol] || 0);
+        var tdPct = parseFloat(row[tdpCol] || 0);
+        var bd    = parseInt(row[bdCol] || 0);
+        var bdPct = parseFloat(row[bdpCol] || 0);
+
+        var category;
+        if (hits === 0) category = 'zero-card';
+        else if (td > 0 || tdPct > 0) category = 'td-card';
+        else if (bd > 0 || bdPct > 0) category = 'bd-card';
+        else category = 'healthy-card';
+
+        var errChips = [];
+        errCols.forEach(function(c) {
+            var v = parseInt(row[c] || 0);
+            if (v > 0) {
+                var chipCls = category === 'bd-card' ? 'bd' : 'td';
+                errChips.push('<span class="err-chip ' + chipCls + '">' + escapeHtml(c) + ' · ' + v + '</span>');
+            }
+        });
+
+        return {
+            ip: ip, api: api, hits: hits, succ: succ,
+            td: td, tdPct: tdPct, bd: bd, bdPct: bdPct,
+            category: category, errChips: errChips,
+            allData: row
+        };
+    });
+
+    rows.sort(function(a, b) {
+        var priority = { 'zero-card': 0, 'td-card': 1, 'bd-card': 2, 'healthy-card': 3 };
+        var pa = priority[a.category], pb = priority[b.category];
+        if (pa !== pb) return pa - pb;
+        var apiCmp = String(a.api).localeCompare(String(b.api));
+        if (apiCmp !== 0) return apiCmp;
+        return String(a.ip).localeCompare(String(b.ip));
+    });
+
+    var panelKey = bodyId.replace('Body', '');
+    __panelRows[panelKey] = rows;
+
+    var html = '';
+    rows.forEach(function(r, idx) {
+        if (r.category === 'td-card') stats.td++;
+        else if (r.category === 'bd-card') stats.bd++;
+        else if (r.category === 'zero-card') stats.zero++;
+        else stats.healthy++;
+
+        var succPct = r.hits > 0 ? (r.succ * 100 / r.hits) : 0;
+        var succCls = r.hits === 0 ? 'purple' : succPct >= 99 ? 'green' : succPct >= 95 ? 'amber' : 'red';
+        var barCls  = r.hits === 0 ? 'zero' : succPct >= 99 ? '' : succPct >= 95 ? 'warn' : 'bad';
+        var barWidth = r.hits === 0 ? 100 : Math.min(100, Math.max(2, succPct));
+
+        var tdColorCls = r.tdPct > 0 ? 'red' : 'green';
+        var bdColorCls = r.bdPct > 0 ? 'amber' : 'green';
+
+        var badgeText = r.category === 'zero-card' ? 'ZERO' :
+                        r.category === 'td-card' ? 'TD' :
+                        r.category === 'bd-card' ? 'BD' : 'OK';
+
+        var apiDisplay = r.api || '—';
+
+        html += '<div class="ip-card ' + r.category + '" onclick="openIpModal(\'' + panelKey + '\',' + idx + ')">';
+
+        html +=   '<div class="ip-head">';
+        html +=     '<div class="ip-addr">' + escapeHtml(r.ip) + '</div>';
+        html +=     '<div class="ip-badge ' + r.category + '">' + badgeText + '</div>';
+        html +=   '</div>';
+
+        html += '<div class="ip-api" title="' + escapeHtml(r.api) + '">' + escapeHtml(apiDisplay) + '</div>';
+
+        html +=   '<div class="ip-metrics">';
+        html +=     '<div class="ip-metric"><div class="ip-metric-label">Hits</div><div class="ip-metric-value ' + (r.hits === 0 ? 'purple' : '') + '">' + r.hits + '</div></div>';
+        html +=     '<div class="ip-metric"><div class="ip-metric-label">Success</div><div class="ip-metric-value ' + succCls + '">' + r.succ + '</div></div>';
+        html +=     '<div class="ip-metric"><div class="ip-metric-label">TD%</div><div class="ip-metric-value ' + tdColorCls + '">' + r.tdPct.toFixed(2) + '%</div></div>';
+        html +=     '<div class="ip-metric"><div class="ip-metric-label">BD%</div><div class="ip-metric-value ' + bdColorCls + '">' + r.bdPct.toFixed(2) + '%</div></div>';
+        html +=   '</div>';
+
+        html +=   '<div class="succ-bar"><div class="succ-bar-inner ' + barCls + '" style="width:' + barWidth.toFixed(1) + '%"></div></div>';
+
+        html +=   '<div class="err-chips">';
+        if (r.hits === 0) {
+            html += '<span class="err-chip zero">&#9888; ZERO HITS</span>';
+        } else if (r.errChips.length > 0) {
+            html += r.errChips.join('');
+        } else {
+            html += '<span class="err-chip ok">&#10003; No errors</span>';
+        }
+        html +=   '</div>';
+
+        html += '</div>';
+    });
+
+    body.innerHTML = html;
+    return stats;
+}
+
+function findCol(cols, names) {
+    for (var i = 0; i < names.length; i++) {
+        var n = names[i].toUpperCase();
+        for (var j = 0; j < cols.length; j++) {
+            if (cols[j].toUpperCase() === n) return cols[j];
+        }
+    }
+    return null;
+}
+
+/* ============ MODAL ============ */
+function openIpModal(panelKey, idx) {
+    var rows = __panelRows[panelKey];
+    if (!rows || !rows[idx]) return;
+    var r = rows[idx];
+    var row = r.allData;
+
+    var panelInfo = {
+        'apiN':    { title: 'API LOG · NSE/INB', sub: 'Routing Services' },
+        'apiB':    { title: 'API LOG · BSE',     sub: 'BSE IPO_ORDER' },
+        'backend': { title: 'BACKEND LOG',       sub: 'IPO Auth Services' }
+    };
+    var pInfo = panelInfo[panelKey] || { title: 'IP Detail', sub: '' };
+
+    var catShort = r.category === 'zero-card' ? 'zero' :
+                   r.category === 'td-card' ? 'td' :
+                   r.category === 'bd-card' ? 'bd' : 'healthy';
+
+    var modalBox = document.getElementById('modalBox');
+    modalBox.className = 'modal ' + catShort;
+
+    var iconEl = document.getElementById('modalIcon');
+    iconEl.className = 'modal-status-icon ' + catShort;
+    iconEl.innerHTML = catShort === 'healthy' ? '&#10003;' :
+                       catShort === 'zero' ? '&#9940;' : '&#9888;';
+
+    var tagEl = document.getElementById('modalTag');
+    tagEl.className = 'modal-tag ' + catShort;
+    tagEl.textContent = catShort === 'td' ? 'TECHNICAL DECLINE' :
+                        catShort === 'bd' ? 'BUSINESS DECLINE' :
+                        catShort === 'zero' ? 'ZERO HITS' : 'HEALTHY';
+
+    document.getElementById('modalTitle').textContent = r.ip;
+    document.getElementById('modalSubtitle').textContent = pInfo.title + ' · ' + (r.api || 'Unknown API');
+
+    var succPct = r.hits > 0 ? (r.succ * 100 / r.hits) : 0;
+    var barCls = r.hits === 0 ? 'zero' : succPct >= 99 ? '' : succPct >= 95 ? 'warn' : 'bad';
+
+    var html = '';
+
+    var bannerTitle = catShort === 'td' ? 'Critical — Technical Decline Detected' :
+                      catShort === 'bd' ? 'Warning — Business Decline Detected' :
+                      catShort === 'zero' ? 'Zero Hits Detected' :
+                      'All Good — No Errors';
+    var bannerSub = catShort === 'td' ? 'This IP/Service is experiencing TD errors.' :
+                    catShort === 'bd' ? 'This IP/Service is experiencing BD errors.' :
+                    catShort === 'zero' ? 'No traffic received for this service on this server in the selected window.' :
+                    'This IP/Service is operating normally.';
+
+    html += '<div class="health-banner ' + catShort + '">';
+    html +=   '<div class="hb-icon">' + (catShort === 'healthy' ? '&#9989;' : catShort === 'zero' ? '&#9940;' : '&#9888;') + '</div>';
+    html +=   '<div class="hb-text">';
+    html +=     '<div class="hb-title">' + bannerTitle + '</div>';
+    html +=     '<div class="hb-sub">' + bannerSub + '</div>';
+    html +=   '</div>';
+    html += '</div>';
+
+    html += '<div class="modal-section">';
+    html +=   '<div class="modal-section-title">Performance Metrics</div>';
+    html +=   '<div class="tiles-grid">';
+
+    var succCls2 = r.hits === 0 ? 'purple' : succPct >= 99 ? 'green' : succPct >= 95 ? 'amber' : 'red';
+    var tdCls = r.td > 0 ? 'red' : 'green';
+    var bdCls = r.bd > 0 ? 'amber' : 'green';
+    var tdPctCls = r.tdPct > 0 ? 'red' : 'green';
+    var bdPctCls = r.bdPct > 0 ? 'amber' : 'green';
+    var hitsCls = r.hits === 0 ? 'purple' : 'green';
+
+    html += '<div class="tile ' + hitsCls + '"><div class="tile-label">Total Hits</div><div class="tile-value ' + hitsCls + '">' + r.hits + '</div></div>';
+    html += '<div class="tile ' + succCls2 + '"><div class="tile-label">Success</div><div class="tile-value ' + succCls2 + '">' + r.succ + '</div></div>';
+    html += '<div class="tile ' + succCls2 + '"><div class="tile-label">Success %</div><div class="tile-value ' + succCls2 + '">' + succPct.toFixed(2) + '%</div></div>';
+    html += '<div class="tile ' + (r.td > 0 ? 'red' : 'green') + '"><div class="tile-label">TD Count</div><div class="tile-value ' + tdCls + '">' + r.td + '</div></div>';
+    html += '<div class="tile ' + (r.tdPct > 0 ? 'red' : 'green') + '"><div class="tile-label">TD %</div><div class="tile-value ' + tdPctCls + '">' + r.tdPct.toFixed(2) + '%</div></div>';
+    html += '<div class="tile ' + (r.bd > 0 ? 'amber' : 'green') + '"><div class="tile-label">BD Count</div><div class="tile-value ' + bdCls + '">' + r.bd + '</div></div>';
+    html += '<div class="tile ' + (r.bdPct > 0 ? 'amber' : 'green') + '"><div class="tile-label">BD %</div><div class="tile-value ' + bdPctCls + '">' + r.bdPct.toFixed(2) + '%</div></div>';
+    html += '<div class="tile ' + ((r.td + r.bd) > 0 ? 'red' : 'green') + '"><div class="tile-label">Errors</div><div class="tile-value ' + ((r.td + r.bd) > 0 ? 'red' : 'green') + '">' + (r.td + r.bd) + '</div></div>';
+
+    html +=   '</div>';
+    html +=   '<div class="modal-progress">';
+    html +=     '<div class="modal-progress-inner ' + barCls + '" style="width:' + (r.hits === 0 ? 100 : Math.min(100, Math.max(2, succPct))).toFixed(1) + '%"></div>';
+    html +=   '</div>';
+    html += '</div>';
+
+    html += '<div class="modal-section">';
+    html +=   '<div class="modal-section-title">Error Code Breakdown</div>';
+
+    var errList = [];
+    Object.keys(row).forEach(function(key) {
+        var upper = key.toUpperCase();
+        if (upper === 'API_NAME' || upper === 'SYS_IP' || upper === 'EXP_IP' ||
+            upper === 'IP' || upper === 'TOTAL_HITS' || upper === 'SUCCESS' ||
+            upper === 'TD' || upper === 'TD_PERCENT' || upper === 'BD' ||
+            upper === 'BD_PERCENT') return;
+        var val = parseInt(row[key] || 0);
+        if (val > 0) {
+            errList.push({ code: key, count: val, isBD: (catShort === 'bd') });
+        }
+    });
+    if (r.td > 0 && !errList.some(function(e){ return e.code.toUpperCase() === 'TD'; })) {
+        errList.push({ code: 'TD', count: r.td, isBD: false });
+    }
+    if (r.bd > 0 && !errList.some(function(e){ return e.code.toUpperCase() === 'BD'; })) {
+        errList.push({ code: 'BD', count: r.bd, isBD: true });
+    }
+    errList.sort(function(a, b) { return b.count - a.count; });
+
+    if (r.hits === 0 && errList.length === 0) {
+        html += '<div class="err-empty zero"><span class="big-ic">&#9940;</span>ZERO HITS — No traffic received<div class="sub">This service did not process any requests on this server in the selected window</div></div>';
+    } else if (errList.length === 0) {
+        html += '<div class="err-empty"><span class="big-ic">&#10003;</span>No errors detected — 100% healthy<div class="sub">All requests completed successfully</div></div>';
+    } else {
+        var maxCount = errList.reduce(function(m, e){ return Math.max(m, e.count); }, 1);
+        html += '<div class="err-list">';
+        errList.forEach(function(e) {
+            var pct = (e.count / maxCount) * 100;
+            var chipCls = e.isBD ? 'bd' : 'td';
+            var barCls2 = e.isBD ? 'bd' : 'td';
+            var pctOfTotal = r.hits > 0 ? ((e.count / r.hits) * 100).toFixed(2) : '0.00';
+            html += '<div class="err-row">';
+            html +=   '<div class="err-code ' + chipCls + '">' + escapeHtml(e.code) + '</div>';
+            html +=   '<div class="err-bar"><div class="err-bar-fill ' + barCls2 + '" style="width:' + Math.max(10, pct).toFixed(1) + '%">' + e.count + '</div></div>';
+            html +=   '<div class="err-count">' + e.count + '<small>' + pctOfTotal + '%</small></div>';
+            html += '</div>';
+        });
+        html += '</div>';
+    }
+    html += '</div>';
+
+    html += '<div class="modal-section">';
+    html +=   '<div class="modal-section-title">Raw Data (All Columns)</div>';
+    html +=   '<div class="raw-table">';
+    Object.keys(row).forEach(function(key) {
+        var v = row[key];
+        var display = (v === null || v === undefined || v === '') ? '—' : String(v);
+        var valCls = '';
+        var upper = key.toUpperCase();
+        var numVal = parseInt(v || 0);
+        if ((upper === 'TD' || upper.indexOf('SI') === 0) && numVal > 0) valCls = 'red';
+        else if ((upper === 'BD' || upper === 'BD_NEW') && numVal > 0) valCls = 'amber';
+        else if (upper === 'SUCCESS') valCls = 'green';
+        html += '<div class="raw-row"><div class="key">' + escapeHtml(key) + '</div><div class="val ' + valCls + '">' + escapeHtml(display) + '</div></div>';
+    });
+    html +=   '</div>';
+    html += '</div>';
+
+    document.getElementById('modalBody').innerHTML = html;
+    document.getElementById('modalBackdrop').classList.add('active');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeModal() {
+    document.getElementById('modalBackdrop').classList.remove('active');
+    document.body.style.overflow = '';
+}
+function closeModalFromBackdrop(e) {
+    if (e.target.id === 'modalBackdrop') closeModal();
+}
+
+/* ============ KPIS ============ */
+function updateKpis(data) {
+    var b = data.BACKEND_LOG, n = data.API_NSE_INB, x = data.API_BSE;
+    function agg(qr) {
+        var hits = 0, tdSum = 0, count = 0;
+        if (qr && qr.success && qr.rows) {
+            qr.rows.forEach(function(r) {
+                hits += parseInt(r.TOTAL_HITS || 0);
+                tdSum += parseFloat(r.TD_PERCENT || 0);
+                count++;
+            });
+        }
+        return { hits: hits, tdAvg: count > 0 ? (tdSum / count) : null, ips: count };
+    }
+    var bA = agg(b), nA = agg(n), xA = agg(x);
+    setKpi('kpiApiNHits', 'kpiApiNHitsVal', 'kpiApiNHitsSub', nA.hits, nA.ips + ' combos', null);
+    setKpi('kpiApiNTD',   'kpiApiNTDVal',   'kpiApiNTDSub',   null, null, nA.tdAvg);
+    setKpi('kpiApiBHits', 'kpiApiBHitsVal', 'kpiApiBHitsSub', xA.hits, xA.ips + ' combos', null);
+    setKpi('kpiApiBTD',   'kpiApiBTDVal',   'kpiApiBTDSub',   null, null, xA.tdAvg);
+    setKpi('kpiBackendHits', 'kpiBackendHitsVal', 'kpiBackendHitsSub', bA.hits, bA.ips + ' combos', null);
+    setKpi('kpiBackendTD',   'kpiBackendTDVal',   'kpiBackendTDSub',   null, null, bA.tdAvg);
+}
+
+function setKpi(wrapperId, valId, subId, hits, hitsSub, tdPct) {
+    var wrap = document.getElementById(wrapperId);
+    var val  = document.getElementById(valId);
+    var sub  = document.getElementById(subId);
+    if (!wrap || !val) return;
+    wrap.classList.remove('green', 'amber', 'red');
+    val.classList.remove('green', 'amber', 'red');
+    if (hits !== null && hits !== undefined) {
+        val.textContent = hits.toLocaleString();
+        val.classList.add('green');
+        wrap.classList.add('green');
+        if (sub && hitsSub) sub.textContent = hitsSub;
+    } else if (tdPct !== null && tdPct !== undefined && !isNaN(tdPct)) {
+        val.textContent = tdPct.toFixed(2) + '%';
+        if (tdPct > 0) {
+            val.classList.add('red');
+            wrap.classList.add('red');
+            sub.textContent = tdPct <= 5 ? 'Technical decline' : 'High decline';
+        } else {
+            val.classList.add('green');
+            wrap.classList.add('green');
+            sub.textContent = 'No decline';
+        }
+    } else {
+        val.textContent = '—';
+        wrap.classList.add('green');
+        val.classList.add('green');
+    }
+}
+
+/* ============ HELPERS ============ */
+function escapeHtml(s) {
+    if (s == null) return '';
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+function toast(msg, isErr) {
+    var el = document.createElement('div');
+    el.className = 'toast' + (isErr ? ' err' : '');
+    el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(function() {
+        el.style.transition = 'opacity .3s, transform .3s';
+        el.style.opacity = '0';
+        el.style.transform = 'translateX(30px)';
+        setTimeout(function() { el.remove(); }, 320);
+    }, 2200);
+}
+
+/* ============ KEYBOARD SHORTCUTS ============ */
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeModal();
+    if (e.ctrlKey && (e.key === 'r' || e.key === 'R')) {
+        e.preventDefault();
+        refreshNow();
+    }
+    if (e.ctrlKey && (e.key === 't' || e.key === 'T')) {
+        e.preventDefault();
+        toggleTheme();
+    }
+});
+
+/* ============ INIT ============ */
+window.addEventListener('load', function() {
+    refreshNow();
+});
+</script>
+
+</body>
+</html>
