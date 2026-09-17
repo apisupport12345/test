@@ -1,76 +1,46 @@
-with gen5 as (select nvl(a.ip,b.ip) as ip, nvl(a.type,b.type) as type,nvl(a.route_url,b.route_url) as route_url,
-gen5_lb_url,gen6_lb_url
-from (SELECT ip,type,route_url,lb_url AS gen5_lb_url,ROW_NUMBER() OVER (PARTITION BY ip, type, route_url ORDER BY lb_url) rn
-FROM daily_dpg_url_data d
-WHERE (UPPER(lb_url) LIKE 'GEN5/GATEWAY%' or UPPER(lb_url) LIKE 'GEN5%GATEWAY%' or UPPER(lb_url) LIKE '%GEN5/GETWAY%')
-and UPPER(lb_url) not LIKE '%SIAPP3%') a full outer join
-(SELECT ip,type,route_url,lb_url AS gen6_lb_url,ROW_NUMBER() OVER (PARTITION BY ip, type, route_url ORDER BY lb_url) rn
-FROM daily_dpg_url_data d
-WHERE ( UPPER(lb_url) not LIKE '%GEN5%') and UPPER(lb_url) not LIKE '%SIAPP3%') b
-ON a.route_url = b.route_url and a.ip = b.ip and a.type = b.type),
+WITH base AS (
+  SELECT ip, type, route_url, lb_url
+  FROM daily_dpg_url_data
+  WHERE UPPER(lb_url) NOT LIKE '%SIAPP3%'  -- exclude SIAPP3 for now, handle separately
+),
+gen5 AS (
+  SELECT ip, type, route_url, lb_url AS gen5_lb_url
+  FROM base
+  WHERE UPPER(lb_url) LIKE '%GEN5%'
+     OR UPPER(lb_url) LIKE '%GETWAY%'   -- handle misspelling
+),
+gen6 AS (
+  SELECT ip, type, route_url, lb_url AS gen6_lb_url
+  FROM base
+  WHERE UPPER(lb_url) NOT LIKE '%GEN5%'
+    AND UPPER(lb_url) NOT LIKE '%GETWAY%'
+),
+-- For SIAPP3 rows (both gen5 and gen6 may have SIAPP3 prefix)
+siapp3 AS (
+  SELECT ip, type, route_url, lb_url
+  FROM daily_dpg_url_data
+  WHERE UPPER(lb_url) LIKE '%SIAPP3%'
+),
+gen5_siapp3 AS (
+  SELECT ip, type, route_url, lb_url AS gen5_lb_url
+  FROM siapp3
+  WHERE UPPER(lb_url) LIKE '%GEN5%' OR UPPER(lb_url) LIKE '%GETWAY%'
+),
+gen6_siapp3 AS (
+  SELECT ip, type, route_url, lb_url AS gen6_lb_url
+  FROM siapp3
+  WHERE UPPER(lb_url) NOT LIKE '%GEN5%' AND UPPER(lb_url) NOT LIKE '%GETWAY%'
+)
+-- Final: cartesian product for non-SIAPP3
+SELECT g5.ip, g5.type, g5.gen5_lb_url, g6.gen6_lb_url, g5.route_url, SYSDATE
+FROM gen5 g5
+JOIN gen6 g6
+  ON g5.ip = g6.ip AND g5.type = g6.type AND g5.route_url = g6.route_url
 
-gen6 as (select nvl(a.ip,b.ip) as ip, nvl(a.type,b.type) as type,nvl(a.route_url,b.route_url) as route_url,
-gen5_lb_url,gen6_lb_url from
-(SELECT ip,type,route_url,lb_url AS gen5_lb_url,ROW_NUMBER() OVER (PARTITION BY ip, type, route_url ORDER BY lb_url) rn
-FROM daily_dpg_url_data d
-where UPPER(lb_url) LIKE '%SIAPP3%GEN5%') a full outer join
-(SELECT ip,type,route_url,lb_url AS gen6_lb_url,ROW_NUMBER() OVER (PARTITION BY ip, type, route_url ORDER BY lb_url) rn
-FROM daily_dpg_url_data d
-where UPPER(lb_url) LIKE '%SIAPP3%' and UPPER(lb_url) not LIKE '%GEN5/GATEWAY%' )b
-ON a.route_url = b.route_url and a.ip = b.ip and a.type = b.type)
-select ip,type,gen5_lb_url,gen6_lb_url,route_url,sysdate from gen5
-union all
-select ip,type,gen5_lb_url,gen6_lb_url,route_url,sysdate from gen6;
+UNION ALL
 
-
-bahi mere above query maine bellow conditon satisfy nhi ho rahi plz fix
-
-u skip lots of rows
-
-
-i need this o/p
-
-IP	TYPE	GEN5_LB_URL	GEN6_LB_URL	ROUTE_URL
-115	MZ	https://siapp3.sbi.co.in:7443/gen5/gateway/EKYC/AuthenticatEkycCertificate	https://siapp3.sbi.co.in:7443/gen6/gateway/EKYC/AuthenticatEkycCertificate	 http://eispri.sbi.co.in:3038/EKYC/AuthenticatEkycCertificate/misc 
-116	MZ	https://siapp3.sbi.co.in:7443/gen5/gateway/EKYC/AuthenticatEkycCertificate	https://siapp3.sbi.co.in:7443/gen6/gateway/EKYC/AuthenticatEkycCertificate	 http://eispri.sbi.co.in:3038/EKYC/AuthenticatEkycCertificate/misc 
-120	MZ	https://siapp3.sbi.co.in:7443/gen5/gateway/EKYC/AuthenticatEkycCertificate	https://siapp3.sbi.co.in:7443/gen6/gateway/EKYC/AuthenticatEkycCertificate	 http://eispri.sbi.co.in:3038/EKYC/AuthenticatEkycCertificate/misc 
-121	MZ	https://siapp3.sbi.co.in:7443/gen5/gateway/EKYC/AuthenticatEkycCertificate	https://siapp3.sbi.co.in:7443/gen6/gateway/EKYC/AuthenticatEkycCertificate	 http://eispri.sbi.co.in:3038/EKYC/AuthenticatEkycCertificate/misc 
-122	MZ	https://siapp3.sbi.co.in:7443/gen5/gateway/EKYC/AuthenticatEkycCertificate	https://siapp3.sbi.co.in:7443/gen6/gateway/EKYC/AuthenticatEkycCertificate	 http://eispri.sbi.co.in:3038/EKYC/AuthenticatEkycCertificate/misc 
-123	MZ	https://siapp3.sbi.co.in:7443/gen5/gateway/EKYC/AuthenticatEkycCertificate	https://siapp3.sbi.co.in:7443/gen6/gateway/EKYC/AuthenticatEkycCertificate	 http://eispri.sbi.co.in:3038/EKYC/AuthenticatEkycCertificate/misc 
-115	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	https://siapp3.sbi.co.in:7443/gen6/gateway/misc/payment/SITransaction/UpdateTransaction	 http://eispri.sbi.co.in:3023/dotNet/generic/router/misc 
-116	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	https://siapp3.sbi.co.in:7443/gen6/gateway/misc/payment/SITransaction/UpdateTransaction	 http://eispri.sbi.co.in:3023/dotNet/generic/router/misc 
-120	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	https://siapp3.sbi.co.in:7443/gen6/gateway/misc/payment/SITransaction/UpdateTransaction	 http://eispri.sbi.co.in:3023/dotNet/generic/router/misc 
-122	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	https://siapp3.sbi.co.in:7443/gen6/gateway/misc/payment/SITransaction/UpdateTransaction	 http://eispri.sbi.co.in:3023/dotNet/generic/router/misc 
-123	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	https://siapp3.sbi.co.in:7443/gen6/gateway/misc/payment/SITransaction/UpdateTransaction	 http://eispri.sbi.co.in:3023/dotNet/generic/router/misc 
-121	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	https://siapp3.sbi.co.in:7443/gen6/gateway/misc/payment/SITransaction/UpdateTransaction	 http://eispri.sbi.co.in:3023/dotNet/generic/router/misc 
-				
-				
-ur given this 				
-IP	TYPE	GEN5_LB_URL	GEN6_LB_URL	ROUTE_URL
-			https://siapp3.sbi.co.in:7443/gen6/gateway/EKYC/AuthenticatEkycCertificate	http://eispri.sbi.co.in:3038/EKYC/AuthenticatEkycCertificate/misc 
-			https://siapp3.sbi.co.in:7443/gen6/gateway/EKYC/AuthenticatEkycCertificate	http://eispri.sbi.co.in:3038/EKYC/AuthenticatEkycCertificate/misc 
-			https://siapp3.sbi.co.in:7443/gen6/gateway/EKYC/AuthenticatEkycCertificate	http://eispri.sbi.co.in:3038/EKYC/AuthenticatEkycCertificate/misc 
-			https://siapp3.sbi.co.in:7443/gen6/gateway/EKYC/AuthenticatEkycCertificate	http://eispri.sbi.co.in:3038/EKYC/AuthenticatEkycCertificate/misc 
-			https://siapp3.sbi.co.in:7443/gen6/gateway/EKYC/AuthenticatEkycCertificate	http://eispri.sbi.co.in:3038/EKYC/AuthenticatEkycCertificate/misc 
-			https://siapp3.sbi.co.in:7443/gen6/gateway/EKYC/AuthenticatEkycCertificate	http://eispri.sbi.co.in:3038/EKYC/AuthenticatEkycCertificate/misc 
-115	MZ	https://siapp3.sbi.co.in:7443/gen5/gateway/EKYC/AuthenticatEkycCertificate		http://eispri.sbi.co.in:3038/EKYC/AuthenticatEkycCertificate/misc
-116	MZ	https://siapp3.sbi.co.in:7443/gen5/gateway/EKYC/AuthenticatEkycCertificate		http://eispri.sbi.co.in:3038/EKYC/AuthenticatEkycCertificate/misc
-120	MZ	https://siapp3.sbi.co.in:7443/gen5/gateway/EKYC/AuthenticatEkycCertificate		http://eispri.sbi.co.in:3038/EKYC/AuthenticatEkycCertificate/misc
-121	MZ	https://siapp3.sbi.co.in:7443/gen5/gateway/EKYC/AuthenticatEkycCertificate		http://eispri.sbi.co.in:3038/EKYC/AuthenticatEkycCertificate/misc
-122	MZ	https://siapp3.sbi.co.in:7443/gen5/gateway/EKYC/AuthenticatEkycCertificate		http://eispri.sbi.co.in:3038/EKYC/AuthenticatEkycCertificate/misc
-123	MZ	https://siapp3.sbi.co.in:7443/gen5/gateway/EKYC/AuthenticatEkycCertificate		http://eispri.sbi.co.in:3038/EKYC/AuthenticatEkycCertificate/misc
-115	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc
-116	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc
-120	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc
-122	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc
-123	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc
-121	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc
-			https://siapp3.sbi.co.in:7443/gen6/gateway/misc/payment/SITransaction/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc 
-			https://siapp3.sbi.co.in:7443/gen6/gateway/misc/payment/SITransaction/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc 
-			https://siapp3.sbi.co.in:7443/gen6/gateway/misc/payment/SITransaction/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc 
-			https://siapp3.sbi.co.in:7443/gen6/gateway/misc/payment/SITransaction/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc 
-			https://siapp3.sbi.co.in:7443/gen6/gateway/misc/payment/SITransaction/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc 
-			https://siapp3.sbi.co.in:7443/gen6/gateway/misc/payment/SITransaction/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc 
-
-
-i want agar aisa senario aye tho condtion match honi chaiye
+-- Final: cartesian product for SIAPP3
+SELECT g5.ip, g5.type, g5.gen5_lb_url, g6.gen6_lb_url, g5.route_url, SYSDATE
+FROM gen5_siapp3 g5
+JOIN gen6_siapp3 g6
+  ON g5.ip = g6.ip AND g5.type = g6.type AND g5.route_url = g6.route_url;
