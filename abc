@@ -1,44 +1,92 @@
-u give me like this
+WITH gen5_base AS (
+    SELECT 
+        ip, 
+        type, 
+        route_url, 
+        lb_url AS gen5_lb_url,
+        REGEXP_SUBSTR(lb_url, '[^/]+$') AS gen5_op,
+        CASE 
+            WHEN UPPER(lb_url) LIKE '%SIAPP3%' THEN 1
+            ELSE 0
+        END AS is_siapp3_gen5
+    FROM daily_dpg_url_data
+    WHERE (UPPER(lb_url) LIKE 'GEN5/GATEWAY%'
+        OR UPPER(lb_url) LIKE 'GEN5%GATEWAY%'
+        OR UPPER(lb_url) LIKE '%GEN5/GETWAY%'
+        OR UPPER(lb_url) LIKE '%SIAPP3%GEN5%')
+),
+gen6_base AS (
+    SELECT 
+        ip, 
+        type, 
+        route_url,
+        lb_url AS gen6_lb_url,
+        REGEXP_SUBSTR(lb_url, '[^/]+$') AS gen6_op,
+        CASE 
+            WHEN UPPER(lb_url) LIKE '%SIAPP3%' THEN 1
+            ELSE 0
+        END AS is_siapp3_gen6
+    FROM daily_dpg_url_data
+    WHERE UPPER(lb_url) NOT LIKE '%GEN5%'
+      AND UPPER(lb_url) NOT LIKE '%GEN5/GATEWAY%'
+),
+gen5_with_gen6 AS (
+    SELECT 
+        g5.ip,
+        g5.type,
+        g5.route_url,
+        g5.gen5_lb_url,
+        g5.gen5_op,
+        g5.is_siapp3_gen5,
+        g6.gen6_lb_url,
+        g6.is_siapp3_gen6,
+        ROW_NUMBER() OVER (
+            PARTITION BY g5.ip, g5.type, g5.route_url, g5.gen5_lb_url
+            ORDER BY 
+                CASE 
+                    WHEN g5.is_siapp3_gen5 = 1 AND g6.is_siapp3_gen6 = 1 THEN 1
+                    WHEN g5.is_siapp3_gen5 = 0 AND g6.is_siapp3_gen6 = 1 THEN 2
+                    WHEN g5.is_siapp3_gen5 = 0 AND g6.is_siapp3_gen6 = 0 THEN 3
+                    ELSE 4
+                END,
+                CASE 
+                    WHEN g6.gen6_op = g5.gen5_op THEN 1
+                    ELSE 2
+                END,
+                g6.gen6_lb_url
+        ) AS rn
+    FROM gen5_base g5
+    LEFT JOIN gen6_base g6
+      ON g5.ip = g6.ip
+     AND g5.type = g6.type
+     AND g5.route_url = g6.route_url
+)
+SELECT 
+    ip, 
+    type, 
+    gen5_lb_url,
+    gen6_lb_url,
+    route_url,
+    SYSDATE
+FROM gen5_with_gen6
+WHERE rn = 1
 
-IP	TYPE	GEN5_LB_URL	GEN6_LB_URL	ROUTE_URL
-			https://siapp3.sbi.co.in:7443/gen6/gateway/EKYC/AuthenticatEkycCertificate	 http://eispri.sbi.co.in:3038/EKYC/AuthenticatEkycCertificate/misc 
-			https://siapp3.sbi.co.in:7443/gen6/gateway/EKYC/AuthenticatEkycCertificate	 http://eispri.sbi.co.in:3038/EKYC/AuthenticatEkycCertificate/misc 
-			https://siapp3.sbi.co.in:7443/gen6/gateway/EKYC/AuthenticatEkycCertificate	 http://eispri.sbi.co.in:3038/EKYC/AuthenticatEkycCertificate/misc 
-			https://siapp3.sbi.co.in:7443/gen6/gateway/EKYC/AuthenticatEkycCertificate	 http://eispri.sbi.co.in:3038/EKYC/AuthenticatEkycCertificate/misc 
-			https://siapp3.sbi.co.in:7443/gen6/gateway/EKYC/AuthenticatEkycCertificate	 http://eispri.sbi.co.in:3038/EKYC/AuthenticatEkycCertificate/misc 
-			https://siapp3.sbi.co.in:7443/gen6/gateway/EKYC/AuthenticatEkycCertificate	 http://eispri.sbi.co.in:3038/EKYC/AuthenticatEkycCertificate/misc 
-115	MZ	https://siapp3.sbi.co.in:7443/gen5/gateway/EKYC/AuthenticatEkycCertificate		http://eispri.sbi.co.in:3038/EKYC/AuthenticatEkycCertificate/misc
-116	MZ	https://siapp3.sbi.co.in:7443/gen5/gateway/EKYC/AuthenticatEkycCertificate		http://eispri.sbi.co.in:3038/EKYC/AuthenticatEkycCertificate/misc
-120	MZ	https://siapp3.sbi.co.in:7443/gen5/gateway/EKYC/AuthenticatEkycCertificate		http://eispri.sbi.co.in:3038/EKYC/AuthenticatEkycCertificate/misc
-121	MZ	https://siapp3.sbi.co.in:7443/gen5/gateway/EKYC/AuthenticatEkycCertificate		http://eispri.sbi.co.in:3038/EKYC/AuthenticatEkycCertificate/misc
-122	MZ	https://siapp3.sbi.co.in:7443/gen5/gateway/EKYC/AuthenticatEkycCertificate		http://eispri.sbi.co.in:3038/EKYC/AuthenticatEkycCertificate/misc
-123	MZ	https://siapp3.sbi.co.in:7443/gen5/gateway/EKYC/AuthenticatEkycCertificate		http://eispri.sbi.co.in:3038/EKYC/AuthenticatEkycCertificate/misc
-115	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc
-116	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc
-120	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc
-122	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc
-123	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc
-121	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc
-			https://siapp3.sbi.co.in:7443/gen6/gateway/misc/payment/SITransaction/UpdateTransaction	 http://eispri.sbi.co.in:3023/dotNet/generic/router/misc 
-			https://siapp3.sbi.co.in:7443/gen6/gateway/misc/payment/SITransaction/UpdateTransaction	 http://eispri.sbi.co.in:3023/dotNet/generic/router/misc 
-			https://siapp3.sbi.co.in:7443/gen6/gateway/misc/payment/SITransaction/UpdateTransaction	 http://eispri.sbi.co.in:3023/dotNet/generic/router/misc 
-			https://siapp3.sbi.co.in:7443/gen6/gateway/misc/payment/SITransaction/UpdateTransaction	 http://eispri.sbi.co.in:3023/dotNet/generic/router/misc 
-			https://siapp3.sbi.co.in:7443/gen6/gateway/misc/payment/SITransaction/UpdateTransaction	 http://eispri.sbi.co.in:3023/dotNet/generic/router/misc 
-			https://siapp3.sbi.co.in:7443/gen6/gateway/misc/payment/SITransaction/UpdateTransaction	 http://eispri.sbi.co.in:3023/dotNet/generic/router/misc 
+UNION ALL
 
-
-but i want like this 
-
-IP	TYPE	GEN5_LB_URL	GEN6_LB_URL	ROUTE_URL
-115	MZ	https://siapp3.sbi.co.in:7443/gen5/gateway/EKYC/AuthenticatEkycCertificate	https://siapp3.sbi.co.in:7443/gen6/gateway/EKYC/AuthenticatEkycCertificate	 http://eispri.sbi.co.in:3038/EKYC/AuthenticatEkycCertificate/misc 
-116	MZ	https://siapp3.sbi.co.in:7443/gen5/gateway/EKYC/AuthenticatEkycCertificate	https://siapp3.sbi.co.in:7443/gen6/gateway/EKYC/AuthenticatEkycCertificate	 http://eispri.sbi.co.in:3038/EKYC/AuthenticatEkycCertificate/misc 
-120	MZ	https://siapp3.sbi.co.in:7443/gen5/gateway/EKYC/AuthenticatEkycCertificate	https://siapp3.sbi.co.in:7443/gen6/gateway/EKYC/AuthenticatEkycCertificate	 http://eispri.sbi.co.in:3038/EKYC/AuthenticatEkycCertificate/misc 
-121	MZ	https://siapp3.sbi.co.in:7443/gen5/gateway/EKYC/AuthenticatEkycCertificate	https://siapp3.sbi.co.in:7443/gen6/gateway/EKYC/AuthenticatEkycCertificate	 http://eispri.sbi.co.in:3038/EKYC/AuthenticatEkycCertificate/misc 
-122	MZ	https://siapp3.sbi.co.in:7443/gen5/gateway/EKYC/AuthenticatEkycCertificate	https://siapp3.sbi.co.in:7443/gen6/gateway/EKYC/AuthenticatEkycCertificate	 http://eispri.sbi.co.in:3038/EKYC/AuthenticatEkycCertificate/misc 
-123	MZ	https://siapp3.sbi.co.in:7443/gen5/gateway/EKYC/AuthenticatEkycCertificate	https://siapp3.sbi.co.in:7443/gen6/gateway/EKYC/AuthenticatEkycCertificate	 http://eispri.sbi.co.in:3038/EKYC/AuthenticatEkycCertificate/misc 
-115	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	https://siapp3.sbi.co.in:7443/gen6/gateway/misc/payment/SITransaction/UpdateTransaction	 http://eispri.sbi.co.in:3023/dotNet/generic/router/misc 
-116	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	https://siapp3.sbi.co.in:7443/gen6/gateway/misc/payment/SITransaction/UpdateTransaction	 http://eispri.sbi.co.in:3023/dotNet/generic/router/misc 
-120	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	https://siapp3.sbi.co.in:7443/gen6/gateway/misc/payment/SITransaction/UpdateTransaction	 http://eispri.sbi.co.in:3023/dotNet/generic/router/misc 
-122	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	https://siapp3.sbi.co.in:7443/gen6/gateway/misc/payment/SITransaction/UpdateTransaction	 http://eispri.sbi.co.in:3023/dotNet/generic/router/misc 
-123	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	https://siapp3.sbi.co.in:7443/gen6/gateway/misc/payment/SITransaction/UpdateTransaction	 http://eispri.sbi.co.in:3023/dotNet/generic/router/misc 
-121	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	https://siapp3.sbi.co.in:7443/gen6/gateway/misc/payment/SITransaction/UpdateTransaction	 http://eispri.sbi.co.in:3023/dotNet/generic/router/misc 
+SELECT 
+    g6.ip,
+    g6.type,
+    NULL AS gen5_lb_url,
+    g6.gen6_lb_url,
+    g6.route_url,
+    SYSDATE
+FROM gen6_base g6
+WHERE NOT EXISTS (
+    SELECT 1 
+    FROM gen5_with_gen6 g5
+    WHERE g5.ip = g6.ip
+      AND g5.type = g6.type
+      AND g5.route_url = g6.route_url
+      AND g5.gen6_lb_url = g6.gen6_lb_url
+      AND g5.rn = 1
+);
