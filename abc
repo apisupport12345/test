@@ -1,83 +1,14 @@
-WITH 
-gen5_non_siapp3 AS (
-    SELECT 
-        ip, type, route_url, 
-        lb_url AS gen5_lb_url,
-        REGEXP_SUBSTR(lb_url, '[^/]+$') AS op
-    FROM daily_dpg_url_data
-    WHERE (UPPER(lb_url) LIKE 'GEN5/GATEWAY%'
-        OR UPPER(lb_url) LIKE 'GEN5%GATEWAY%'
-        OR UPPER(lb_url) LIKE '%GEN5/GETWAY%')
-      AND UPPER(lb_url) NOT LIKE '%SIAPP3%'
-),
-gen6_non_siapp3 AS (
-    SELECT 
-        ip, type, route_url, 
-        lb_url AS gen6_lb_url,
-        REGEXP_SUBSTR(lb_url, '[^/]+$') AS op,
-        ROW_NUMBER() OVER (
-            PARTITION BY ip, type, REGEXP_SUBSTR(lb_url, '[^/]+$')
-            ORDER BY lb_url
-        ) rn
-    FROM daily_dpg_url_data
-    WHERE UPPER(lb_url) NOT LIKE '%GEN5%'
-      AND UPPER(lb_url) NOT LIKE '%SIAPP3%'
-),
-gen6_non_siapp3_fb AS (
-    SELECT 
-        ip, type, lb_url AS gen6_lb_url,
-        ROW_NUMBER() OVER (PARTITION BY ip, type ORDER BY lb_url) rn
-    FROM daily_dpg_url_data
-    WHERE UPPER(lb_url) NOT LIKE '%GEN5%'
-      AND UPPER(lb_url) NOT LIKE '%SIAPP3%'
-),
-gen5_siapp3 AS (
-    SELECT 
-        ip, type, route_url, 
-        lb_url AS gen5_lb_url,
-        REGEXP_SUBSTR(lb_url, '[^/]+$') AS op
-    FROM daily_dpg_url_data
-    WHERE UPPER(lb_url) LIKE '%SIAPP3%GEN5%'
-),
-gen6_siapp3 AS (
-    SELECT 
-        ip, type, route_url, 
-        lb_url AS gen6_lb_url,
-        REGEXP_SUBSTR(lb_url, '[^/]+$') AS op,
-        ROW_NUMBER() OVER (
-            PARTITION BY ip, type, REGEXP_SUBSTR(lb_url, '[^/]+$')
-            ORDER BY lb_url
-        ) rn
-    FROM daily_dpg_url_data
-    WHERE UPPER(lb_url) LIKE '%SIAPP3%'
-      AND UPPER(lb_url) NOT LIKE '%GEN5/GATEWAY%'
-),
-gen6_siapp3_fb AS (
-    SELECT 
-        ip, type, lb_url AS gen6_lb_url,
-        ROW_NUMBER() OVER (PARTITION BY ip, type ORDER BY lb_url) rn
-    FROM daily_dpg_url_data
-    WHERE UPPER(lb_url) LIKE '%SIAPP3%'
-      AND UPPER(lb_url) NOT LIKE '%GEN5/GATEWAY%'
-)
-SELECT 
-    g5.ip, g5.type, g5.gen5_lb_url,
-    COALESCE(g6.gen6_lb_url, fb.gen6_lb_url) AS gen6_lb_url,
-    g5.route_url, SYSDATE
-FROM gen5_non_siapp3 g5
-LEFT JOIN gen6_non_siapp3 g6
-  ON g5.ip = g6.ip AND g5.type = g6.type AND g5.op = g6.op AND g6.rn = 1
-LEFT JOIN gen6_non_siapp3_fb fb
-  ON g5.ip = fb.ip AND g5.type = fb.type AND fb.rn = 1
+115	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	17-09-26
+116	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	17-09-26
+120	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	17-09-26
+121	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	17-09-26
+122	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	17-09-26
+123	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	17-09-26
 
-UNION ALL
 
-SELECT 
-    g5.ip, g5.type, g5.gen5_lb_url,
-    COALESCE(g6.gen6_lb_url, fb.gen6_lb_url) AS gen6_lb_url,
-    g5.route_url, SYSDATE
-FROM gen5_siapp3 g5
-LEFT JOIN gen6_siapp3 g6
-  ON g5.ip = g6.ip AND g5.type = g6.type AND g5.op = g6.op AND g6.rn = 1
-LEFT JOIN gen6_siapp3_fb fb
-  ON g5.ip = fb.ip AND g5.type = fb.type AND fb.rn = 1;
+https://siapp3.sbi.co.in:7443/gen6/gateway/misc/payment/SITransaction/UpdateTransaction
+https://siapp3.sbi.co.in:7443/gen6/gateway/misc/payment/SITransaction/UpdateTransaction
+https://siapp3.sbi.co.in:7443/gen6/gateway/misc/payment/SITransaction/UpdateTransaction
+https://siapp3.sbi.co.in:7443/gen6/gateway/misc/payment/SITransaction/UpdateTransaction
+https://siapp3.sbi.co.in:7443/gen6/gateway/misc/payment/SITransaction/UpdateTransaction
+https://siapp3.sbi.co.in:7443/gen6/gateway/misc/payment/SITransaction/UpdateTransaction
