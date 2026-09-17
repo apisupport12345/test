@@ -1,146 +1,40 @@
-WITH 
--- ============================================================
--- GEN5 non-siapp3
--- ============================================================
-gen5_non_siapp3 AS (
-    SELECT 
-        ip, 
-        type, 
-        route_url, 
-        lb_url AS gen5_lb_url,
-        REGEXP_SUBSTR(lb_url, '[^/]+$') AS op,
-        ROW_NUMBER() OVER (PARTITION BY ip, type, route_url ORDER BY lb_url) rn
-    FROM daily_dpg_url_data
-    WHERE (UPPER(lb_url) LIKE 'GEN5/GATEWAY%'
-        OR UPPER(lb_url) LIKE 'GEN5%GATEWAY%'
-        OR UPPER(lb_url) LIKE '%GEN5/GETWAY%')
-      AND UPPER(lb_url) NOT LIKE '%SIAPP3%'
-),
--- ============================================================
--- GEN6 non-siapp3
--- ============================================================
-gen6_non_siapp3 AS (
-    SELECT 
-        ip, 
-        type, 
-        route_url, 
-        lb_url AS gen6_lb_url,
-        REGEXP_SUBSTR(lb_url, '[^/]+$') AS op,
-        ROW_NUMBER() OVER (PARTITION BY ip, type, route_url ORDER BY lb_url) rn
-    FROM daily_dpg_url_data
-    WHERE UPPER(lb_url) NOT LIKE '%GEN5%'
-      AND UPPER(lb_url) NOT LIKE '%SIAPP3%'
-),
--- ============================================================
--- GEN5 siapp3
--- ============================================================
-gen5_siapp3 AS (
-    SELECT 
-        ip, 
-        type, 
-        route_url, 
-        lb_url AS gen5_lb_url,
-        REGEXP_SUBSTR(lb_url, '[^/]+$') AS op,
-        ROW_NUMBER() OVER (PARTITION BY ip, type, route_url ORDER BY lb_url) rn
-    FROM daily_dpg_url_data
-    WHERE UPPER(lb_url) LIKE '%SIAPP3%GEN5%'
-),
--- ============================================================
--- GEN6 siapp3
--- ============================================================
-gen6_siapp3 AS (
-    SELECT 
-        ip, 
-        type, 
-        route_url, 
-        lb_url AS gen6_lb_url,
-        REGEXP_SUBSTR(lb_url, '[^/]+$') AS op,
-        ROW_NUMBER() OVER (PARTITION BY ip, type, route_url ORDER BY lb_url) rn
-    FROM daily_dpg_url_data
-    WHERE UPPER(lb_url) LIKE '%SIAPP3%'
-      AND UPPER(lb_url) NOT LIKE '%GEN5/GATEWAY%'
-)
+my query
 
--- ============================================================
--- 1. Gen5 non-siapp3 + gen6 match (route_url AND op dono match)
--- ============================================================
-SELECT 
-    g5.ip, 
-    g5.type, 
-    g5.gen5_lb_url, 
-    g6.gen6_lb_url,
-    g5.route_url, 
-    SYSDATE
-FROM gen5_non_siapp3 g5
-LEFT JOIN gen6_non_siapp3 g6
-  ON g5.ip = g6.ip 
- AND g5.type = g6.type 
- AND g5.route_url = g6.route_url
- AND g5.op = g6.op
- AND g6.rn = 1
-WHERE g5.rn = 1
+203	DMZ	gen5/DDE/gateway/tradeFinance/eBG/misc	gen6/gateway/tradeFinance/eBG	http://eispri.sbi.co.in:3011/tradeFinance/eBG/misc	17-09-26
+200	DMZ	gen5/DDE/gateway/tradeFinance/eBG/misc	gen6/gateway/tradeFinance/eBG	http://eispri.sbi.co.in:3011/tradeFinance/eBG/misc	17-09-26
+201	DMZ	gen5/DDE/gateway/tradeFinance/eBG/misc	gen6/gateway/tradeFinance/eBG	http://eispri.sbi.co.in:3011/tradeFinance/eBG/misc	17-09-26
+202	DMZ	gen5/DDE/gateway/tradeFinance/eBG/misc	gen6/gateway/tradeFinance/eBG	http://eispri.sbi.co.in:3011/tradeFinance/eBG/misc	17-09-26
+123	MZ	gen5/gateway/AOF2/customerNormalDetails_bth/enquiry	customers/AOF2/customerNormalDetails_bth/enquiry	http://eispri.sbi.co.in:3002/AOF2/customerNormalDetails_bth/enquiry/customers	17-09-26
+116	MZ	gen5/gateway/AOF2/customerNormalDetails_bth/enquiry	customers/AOF2/customerNormalDetails_bth/enquiry	http://eispri.sbi.co.in:3002/AOF2/customerNormalDetails_bth/enquiry/customers	17-09-26
+115	MZ	gen5/gateway/AOF2/customerNormalDetails_bth/enquiry	customers/AOF2/customerNormalDetails_bth/enquiry	http://eispri.sbi.co.in:3002/AOF2/customerNormalDetails_bth/enquiry/customers	17-09-26
+120	MZ	gen5/gateway/AOF2/customerNormalDetails_bth/enquiry	customers/AOF2/customerNormalDetails_bth/enquiry	http://eispri.sbi.co.in:3002/AOF2/customerNormalDetails_bth/enquiry/customers	17-09-26
+121	MZ	gen5/gateway/AOF2/customerNormalDetails_bth/enquiry	customers/AOF2/customerNormalDetails_bth/enquiry	http://eispri.sbi.co.in:3002/AOF2/customerNormalDetails_bth/enquiry/customers	17-09-26
+122	MZ	gen5/gateway/AOF2/customerNormalDetails_bth/enquiry	customers/AOF2/customerNormalDetails_bth/enquiry	http://eispri.sbi.co.in:3002/AOF2/customerNormalDetails_bth/enquiry/customers	17-09-26
+121	MZ	gen5/gateway/AOF2/personalCustomerDetails_bth/amend	customers/AOF2/personalCustomerDetails_bth/amend	http://eispri.sbi.co.in:3002/AOF2/personalCustomerDetails_bth/amend/customers	17-09-26
+122	MZ	gen5/gateway/AOF2/personalCustomerDetails_bth/amend	customers/AOF2/personalCustomerDetails_bth/amend	http://eispri.sbi.co.in:3002/AOF2/personalCustomerDetails_bth/amend/customers	17-09-26
+115	MZ	gen5/gateway/AOF2/personalCustomerDetails_bth/amend	customers/AOF2/personalCustomerDetails_bth/amend	http://eispri.sbi.co.in:3002/AOF2/personalCustomerDetails_bth/amend/customers	17-09-26
+116	MZ	gen5/gateway/AOF2/personalCustomerDetails_bth/amend	customers/AOF2/personalCustomerDetails_bth/amend	http://eispri.sbi.co.in:3002/AOF2/personalCustomerDetails_bth/amend/customers	17-09-26
+120	MZ	gen5/gateway/AOF2/personalCustomerDetails_bth/amend	customers/AOF2/personalCustomerDetails_bth/amend	http://eispri.sbi.co.in:3002/AOF2/personalCustomerDetails_bth/amend/customers	17-09-26
+123	MZ	gen5/gateway/AOF2/personalCustomerDetails_bth/amend	customers/AOF2/personalCustomerDetails_bth/amend	http://eispri.sbi.co.in:3002/AOF2/personalCustomerDetails_bth/amend/customers	17-09-26
 
-UNION ALL
+Ur query
 
--- ============================================================
--- 2. Gen6 non-siapp3 rows jinka koi gen5 match nahi
--- ============================================================
-SELECT 
-    g6.ip, 
-    g6.type, 
-    NULL AS gen5_lb_url, 
-    g6.gen6_lb_url,
-    NULL AS route_url, 
-    SYSDATE
-FROM gen6_non_siapp3 g6
-WHERE g6.rn = 1
-  AND NOT EXISTS (
-      SELECT 1 FROM gen5_non_siapp3 g5
-      WHERE g5.ip = g6.ip 
-        AND g5.type = g6.type 
-        AND g5.route_url = g6.route_url
-        AND g5.op = g6.op
-  )
+200	DMZ	gen5/DDE/gateway/tradeFinance/eBG/misc		http://eispri.sbi.co.in:3011/tradeFinance/eBG/misc	17-09-26
+203	DMZ	gen5/DDE/gateway/tradeFinance/eBG/misc		http://eispri.sbi.co.in:3011/tradeFinance/eBG/misc	17-09-26
+202	DMZ	gen5/DDE/gateway/tradeFinance/eBG/misc		http://eispri.sbi.co.in:3011/tradeFinance/eBG/misc	17-09-26
+201	DMZ	gen5/DDE/gateway/tradeFinance/eBG/misc		http://eispri.sbi.co.in:3011/tradeFinance/eBG/misc	17-09-26
+122	MZ	gen5/gateway/AOF2/customerNormalDetails_bth/enquiry	customers/AOF2/customerNormalDetails_bth/enquiry	http://eispri.sbi.co.in:3002/AOF2/customerNormalDetails_bth/enquiry/customers	17-09-26
+116	MZ	gen5/gateway/AOF2/customerNormalDetails_bth/enquiry	customers/AOF2/customerNormalDetails_bth/enquiry	http://eispri.sbi.co.in:3002/AOF2/customerNormalDetails_bth/enquiry/customers	17-09-26
+120	MZ	gen5/gateway/AOF2/customerNormalDetails_bth/enquiry	customers/AOF2/customerNormalDetails_bth/enquiry	http://eispri.sbi.co.in:3002/AOF2/customerNormalDetails_bth/enquiry/customers	17-09-26
+123	MZ	gen5/gateway/AOF2/customerNormalDetails_bth/enquiry	customers/AOF2/customerNormalDetails_bth/enquiry	http://eispri.sbi.co.in:3002/AOF2/customerNormalDetails_bth/enquiry/customers	17-09-26
+115	MZ	gen5/gateway/AOF2/customerNormalDetails_bth/enquiry	customers/AOF2/customerNormalDetails_bth/enquiry	http://eispri.sbi.co.in:3002/AOF2/customerNormalDetails_bth/enquiry/customers	17-09-26
+121	MZ	gen5/gateway/AOF2/customerNormalDetails_bth/enquiry	customers/AOF2/customerNormalDetails_bth/enquiry	http://eispri.sbi.co.in:3002/AOF2/customerNormalDetails_bth/enquiry/customers	17-09-26
+123	MZ	gen5/gateway/AOF2/personalCustomerDetails_bth/amend	customers/AOF2/personalCustomerDetails_bth/amend	http://eispri.sbi.co.in:3002/AOF2/personalCustomerDetails_bth/amend/customers	17-09-26
+121	MZ	gen5/gateway/AOF2/personalCustomerDetails_bth/amend	customers/AOF2/personalCustomerDetails_bth/amend	http://eispri.sbi.co.in:3002/AOF2/personalCustomerDetails_bth/amend/customers	17-09-26
+116	MZ	gen5/gateway/AOF2/personalCustomerDetails_bth/amend	customers/AOF2/personalCustomerDetails_bth/amend	http://eispri.sbi.co.in:3002/AOF2/personalCustomerDetails_bth/amend/customers	17-09-26
+120	MZ	gen5/gateway/AOF2/personalCustomerDetails_bth/amend	customers/AOF2/personalCustomerDetails_bth/amend	http://eispri.sbi.co.in:3002/AOF2/personalCustomerDetails_bth/amend/customers	17-09-26
+115	MZ	gen5/gateway/AOF2/personalCustomerDetails_bth/amend	customers/AOF2/personalCustomerDetails_bth/amend	http://eispri.sbi.co.in:3002/AOF2/personalCustomerDetails_bth/amend/customers	17-09-26
+122	MZ	gen5/gateway/AOF2/personalCustomerDetails_bth/amend	customers/AOF2/personalCustomerDetails_bth/amend	http://eispri.sbi.co.in:3002/AOF2/personalCustomerDetails_bth/amend/customers	17-09-26
 
-UNION ALL
-
--- ============================================================
--- 3. Gen5 siapp3 + gen6 siapp3 match (route_url AND op dono match)
--- ============================================================
-SELECT 
-    g5.ip, 
-    g5.type, 
-    g5.gen5_lb_url, 
-    g6.gen6_lb_url,
-    g5.route_url, 
-    SYSDATE
-FROM gen5_siapp3 g5
-LEFT JOIN gen6_siapp3 g6
-  ON g5.ip = g6.ip 
- AND g5.type = g6.type 
- AND g5.route_url = g6.route_url
- AND g5.op = g6.op
- AND g6.rn = 1
-WHERE g5.rn = 1
-
-UNION ALL
-
--- ============================================================
--- 4. Gen6 siapp3 rows jinka koi gen5 match nahi
--- ============================================================
-SELECT 
-    g6.ip, 
-    g6.type, 
-    NULL AS gen5_lb_url, 
-    g6.gen6_lb_url,
-    NULL AS route_url, 
-    SYSDATE
-FROM gen6_siapp3 g6
-WHERE g6.rn = 1
-  AND NOT EXISTS (
-      SELECT 1 FROM gen5_siapp3 g5
-      WHERE g5.ip = g6.ip 
-        AND g5.type = g6.type 
-        AND g5.route_url = g6.route_url
-        AND g5.op = g6.op
-  );
+print null value in gen 6 url 
+aise bahot url hain its just ex
