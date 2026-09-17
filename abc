@@ -1,113 +1,161 @@
 WITH 
-gen5_non_siapp3 AS (
+-- Saari non-siapp3 rows (gen5 aur gen6 dono)
+all_non_siapp3 AS (
     SELECT 
-        ip, type, route_url, 
-        lb_url AS gen5_lb_url,
-        REGEXP_SUBSTR(lb_url, '([^/]+/){2}[^/]+$') AS last3,
-        REGEXP_SUBSTR(lb_url, '[^/]+/[^/]+$') AS last2,
-        REGEXP_SUBSTR(lb_url, '[^/]+$') AS last1
+        ip, 
+        type, 
+        route_url, 
+        lb_url,
+        -- last 3 segments
+        REGEXP_SUBSTR(lb_url, '([^/]+/){2}[^/]+$') AS last3
     FROM daily_dpg_url_data
+    WHERE UPPER(lb_url) NOT LIKE '%SIAPP3%'
+),
+-- Saari siapp3 rows
+all_siapp3 AS (
+    SELECT 
+        ip, 
+        type, 
+        route_url, 
+        lb_url,
+        REGEXP_SUBSTR(lb_url, '([^/]+/){2}[^/]+$') AS last3
+    FROM daily_dpg_url_data
+    WHERE UPPER(lb_url) LIKE '%SIAPP3%'
+),
+-- Gen5 (non-siapp3) rows
+gen5_non_siapp3 AS (
+    SELECT ip, type, route_url, lb_url AS gen5_lb_url, last3
+    FROM all_non_siapp3
     WHERE (UPPER(lb_url) LIKE 'GEN5/GATEWAY%'
         OR UPPER(lb_url) LIKE 'GEN5%GATEWAY%'
         OR UPPER(lb_url) LIKE '%GEN5/GETWAY%')
-      AND UPPER(lb_url) NOT LIKE '%SIAPP3%'
 ),
+-- Gen6 (non-siapp3) rows
 gen6_non_siapp3 AS (
-    SELECT 
-        ip, type, 
-        lb_url AS gen6_lb_url,
-        REGEXP_SUBSTR(lb_url, '([^/]+/){2}[^/]+$') AS last3,
-        REGEXP_SUBSTR(lb_url, '[^/]+/[^/]+$') AS last2,
-        REGEXP_SUBSTR(lb_url, '[^/]+$') AS last1,
-        ROW_NUMBER() OVER (
-            PARTITION BY ip, type, REGEXP_SUBSTR(lb_url, '([^/]+/){2}[^/]+$')
-            ORDER BY lb_url
-        ) rn3,
-        ROW_NUMBER() OVER (
-            PARTITION BY ip, type, REGEXP_SUBSTR(lb_url, '[^/]+/[^/]+$')
-            ORDER BY lb_url
-        ) rn2,
-        ROW_NUMBER() OVER (
-            PARTITION BY ip, type, REGEXP_SUBSTR(lb_url, '[^/]+$')
-            ORDER BY lb_url
-        ) rn1
-    FROM daily_dpg_url_data
+    SELECT ip, type, lb_url AS gen6_lb_url, last3
+    FROM all_non_siapp3
     WHERE UPPER(lb_url) NOT LIKE '%GEN5%'
-      AND UPPER(lb_url) NOT LIKE '%SIAPP3%'
 ),
+-- Gen5 (siapp3) rows
 gen5_siapp3 AS (
-    SELECT 
-        ip, type, route_url, 
-        lb_url AS gen5_lb_url,
-        REGEXP_SUBSTR(lb_url, '([^/]+/){2}[^/]+$') AS last3,
-        REGEXP_SUBSTR(lb_url, '[^/]+/[^/]+$') AS last2,
-        REGEXP_SUBSTR(lb_url, '[^/]+$') AS last1
-    FROM daily_dpg_url_data
-    WHERE UPPER(lb_url) LIKE '%SIAPP3%GEN5%'
+    SELECT ip, type, route_url, lb_url AS gen5_lb_url, last3
+    FROM all_siapp3
+    WHERE UPPER(lb_url) LIKE '%GEN5%'
 ),
+-- Gen6 (siapp3) rows
 gen6_siapp3 AS (
-    SELECT 
-        ip, type, 
-        lb_url AS gen6_lb_url,
-        REGEXP_SUBSTR(lb_url, '([^/]+/){2}[^/]+$') AS last3,
-        REGEXP_SUBSTR(lb_url, '[^/]+/[^/]+$') AS last2,
-        REGEXP_SUBSTR(lb_url, '[^/]+$') AS last1,
-        ROW_NUMBER() OVER (
-            PARTITION BY ip, type, REGEXP_SUBSTR(lb_url, '([^/]+/){2}[^/]+$')
-            ORDER BY lb_url
-        ) rn3,
-        ROW_NUMBER() OVER (
-            PARTITION BY ip, type, REGEXP_SUBSTR(lb_url, '[^/]+/[^/]+$')
-            ORDER BY lb_url
-        ) rn2,
-        ROW_NUMBER() OVER (
-            PARTITION BY ip, type, REGEXP_SUBSTR(lb_url, '[^/]+$')
-            ORDER BY lb_url
-        ) rn1
-    FROM daily_dpg_url_data
-    WHERE UPPER(lb_url) LIKE '%SIAPP3%'
-      AND UPPER(lb_url) NOT LIKE '%GEN5/GATEWAY%'
+    SELECT ip, type, lb_url AS gen6_lb_url, last3
+    FROM all_siapp3
+    WHERE UPPER(lb_url) NOT LIKE '%GEN5%'
 )
--- Non-siapp3 gen5
+-- ============ NON-SIAPP3 SECTION ============
+-- 1. Gen5 non-siapp3 with matching gen6 (non-siapp3 preferred, siapp3 fallback)
 SELECT 
-    g5.ip, g5.type, g5.gen5_lb_url,
-    COALESCE(g6_3.gen6_lb_url, g6_2.gen6_lb_url, g6_1.gen6_lb_url,
-             g6s_3.gen6_lb_url, g6s_2.gen6_lb_url, g6s_1.gen6_lb_url) AS gen6_lb_url,
-    g5.route_url, SYSDATE
+    g5.ip, 
+    g5.type, 
+    g5.gen5_lb_url, 
+    COALESCE(g6.gen6_lb_url, g6s.gen6_lb_url) AS gen6_lb_url,
+    g5.route_url, 
+    SYSDATE
 FROM gen5_non_siapp3 g5
-LEFT JOIN gen6_non_siapp3 g6_3
-  ON g5.ip = g6_3.ip AND g5.type = g6_3.type 
- AND g5.last3 = g6_3.last3 AND g6_3.rn3 = 1
-LEFT JOIN gen6_non_siapp3 g6_2
-  ON g5.ip = g6_2.ip AND g5.type = g6_2.type 
- AND g5.last2 = g6_2.last2 AND g6_2.rn2 = 1
-LEFT JOIN gen6_non_siapp3 g6_1
-  ON g5.ip = g6_1.ip AND g5.type = g6_1.type 
- AND g5.last1 = g6_1.last1 AND g6_1.rn1 = 1
-LEFT JOIN gen6_siapp3 g6s_3
-  ON g5.ip = g6s_3.ip AND g5.type = g6s_3.type 
- AND g5.last3 = g6s_3.last3 AND g6s_3.rn3 = 1
-LEFT JOIN gen6_siapp3 g6s_2
-  ON g5.ip = g6s_2.ip AND g5.type = g6s_2.type 
- AND g5.last2 = g6s_2.last2 AND g6s_2.rn2 = 1
-LEFT JOIN gen6_siapp3 g6s_1
-  ON g5.ip = g6s_1.ip AND g5.type = g6s_1.type 
- AND g5.last1 = g6s_1.last1 AND g6s_1.rn1 = 1
+LEFT JOIN gen6_non_siapp3 g6
+  ON g5.ip = g6.ip 
+ AND g5.type = g6.type 
+ AND g5.last3 = g6.last3
+LEFT JOIN gen6_siapp3 g6s
+  ON g5.ip = g6s.ip 
+ AND g5.type = g6s.type 
+ AND g5.last3 = g6s.last3
+WHERE NOT EXISTS (
+    SELECT 1 FROM gen6_non_siapp3 g6x
+    WHERE g6x.ip = g5.ip AND g6x.type = g5.type AND g6x.last3 = g5.last3
+)
+AND NOT EXISTS (
+    SELECT 1 FROM gen6_siapp3 g6y
+    WHERE g6y.ip = g5.ip AND g6y.type = g5.type AND g6y.last3 = g5.last3
+)
 
 UNION ALL
 
--- Siapp3 gen5
+-- 2. Gen5 non-siapp3 with matching gen6 (both exist - pick non-siapp3)
 SELECT 
-    g5.ip, g5.type, g5.gen5_lb_url,
-    COALESCE(g6_3.gen6_lb_url, g6_2.gen6_lb_url, g6_1.gen6_lb_url) AS gen6_lb_url,
-    g5.route_url, SYSDATE
+    g5.ip, 
+    g5.type, 
+    g5.gen5_lb_url, 
+    g6.gen6_lb_url,
+    g5.route_url, 
+    SYSDATE
+FROM gen5_non_siapp3 g5
+JOIN gen6_non_siapp3 g6
+  ON g5.ip = g6.ip 
+ AND g5.type = g6.type 
+ AND g5.last3 = g6.last3
+
+UNION ALL
+
+-- 3. Gen6 non-siapp3 rows jinka koi gen5 match nahi (NULL gen5_lb_url)
+SELECT 
+    g6.ip, 
+    g6.type, 
+    NULL AS gen5_lb_url, 
+    g6.gen6_lb_url,
+    NULL AS route_url, 
+    SYSDATE
+FROM gen6_non_siapp3 g6
+WHERE NOT EXISTS (
+    SELECT 1 FROM gen5_non_siapp3 g5
+    WHERE g5.ip = g6.ip AND g5.type = g6.type AND g5.last3 = g6.last3
+)
+
+UNION ALL
+
+-- 4. Gen5 non-siapp3 rows jinka koi gen6 match nahi (NULL gen6_lb_url)
+SELECT 
+    g5.ip, 
+    g5.type, 
+    g5.gen5_lb_url, 
+    NULL AS gen6_lb_url,
+    g5.route_url, 
+    SYSDATE
+FROM gen5_non_siapp3 g5
+WHERE NOT EXISTS (
+    SELECT 1 FROM gen6_non_siapp3 g6
+    WHERE g6.ip = g5.ip AND g6.type = g5.type AND g6.last3 = g5.last3
+)
+AND NOT EXISTS (
+    SELECT 1 FROM gen6_siapp3 g6s
+    WHERE g6s.ip = g5.ip AND g6s.type = g5.type AND g6s.last3 = g5.last3
+)
+
+UNION ALL
+
+-- ============ SIAPP3 SECTION ============
+-- 5. Gen5 siapp3 with matching gen6 siapp3
+SELECT 
+    g5.ip, 
+    g5.type, 
+    g5.gen5_lb_url, 
+    g6.gen6_lb_url,
+    g5.route_url, 
+    SYSDATE
 FROM gen5_siapp3 g5
-LEFT JOIN gen6_siapp3 g6_3
-  ON g5.ip = g6_3.ip AND g5.type = g6_3.type 
- AND g5.last3 = g6_3.last3 AND g6_3.rn3 = 1
-LEFT JOIN gen6_siapp3 g6_2
-  ON g5.ip = g6_2.ip AND g5.type = g6_2.type 
- AND g5.last2 = g6_2.last2 AND g6_2.rn2 = 1
-LEFT JOIN gen6_siapp3 g6_1
-  ON g5.ip = g6_1.ip AND g5.type = g6_1.type 
- AND g5.last1 = g6_1.last1 AND g6_1.rn1 = 1;
+LEFT JOIN gen6_siapp3 g6
+  ON g5.ip = g6.ip 
+ AND g5.type = g6.type 
+ AND g5.last3 = g6.last3
+
+UNION ALL
+
+-- 6. Gen6 siapp3 rows jinka koi gen5 match nahi (NULL gen5_lb_url)
+SELECT 
+    g6.ip, 
+    g6.type, 
+    NULL AS gen5_lb_url, 
+    g6.gen6_lb_url,
+    NULL AS route_url, 
+    SYSDATE
+FROM gen6_siapp3 g6
+WHERE NOT EXISTS (
+    SELECT 1 FROM gen5_siapp3 g5
+    WHERE g5.ip = g6.ip AND g5.type = g6.type AND g5.last3 = g6.last3
+);
