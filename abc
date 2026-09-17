@@ -1,23 +1,149 @@
-with gen5 as (select nvl(a.ip,b.ip) as ip, nvl(a.type,b.type) as type,nvl(a.route_url,b.route_url) as route_url,
-gen5_lb_url,gen6_lb_url
-from (SELECT ip,type,route_url,lb_url AS gen5_lb_url,ROW_NUMBER() OVER (PARTITION BY ip, type, route_url ORDER BY lb_url) rn
-FROM daily_dpg_url_data d
-WHERE (UPPER(lb_url) LIKE 'GEN5/GATEWAY%' or UPPER(lb_url) LIKE 'GEN5%GATEWAY%' or UPPER(lb_url) LIKE '%GEN5/GETWAY%')
-and UPPER(lb_url) not LIKE '%SIAPP3%') a full outer join
-(SELECT ip,type,route_url,lb_url AS gen6_lb_url,ROW_NUMBER() OVER (PARTITION BY ip, type, route_url ORDER BY lb_url) rn
-FROM daily_dpg_url_data d
-WHERE ( UPPER(lb_url) not LIKE '%GEN5%') and UPPER(lb_url) not LIKE '%SIAPP3%') b
-ON a.route_url = b.route_url and a.ip = b.ip and a.type = b.type),
+WITH 
+-- ============================================================
+-- GEN5 non-siapp3
+-- ============================================================
+gen5_non_siapp3 AS (
+    SELECT 
+        ip, 
+        type, 
+        route_url, 
+        lb_url AS gen5_lb_url,
+        REGEXP_SUBSTR(lb_url, '[^/]+$') AS op
+    FROM daily_dpg_url_data
+    WHERE (UPPER(lb_url) LIKE 'GEN5/GATEWAY%'
+        OR UPPER(lb_url) LIKE 'GEN5%GATEWAY%'
+        OR UPPER(lb_url) LIKE '%GEN5/GETWAY%')
+      AND UPPER(lb_url) NOT LIKE '%SIAPP3%'
+),
+-- ============================================================
+-- GEN6 non-siapp3 (dedup by op)
+-- ============================================================
+gen6_non_siapp3 AS (
+    SELECT 
+        ip, 
+        type, 
+        lb_url AS gen6_lb_url,
+        REGEXP_SUBSTR(lb_url, '[^/]+$') AS op,
+        ROW_NUMBER() OVER (
+            PARTITION BY ip, type, REGEXP_SUBSTR(lb_url, '[^/]+$')
+            ORDER BY lb_url
+        ) rn
+    FROM daily_dpg_url_data
+    WHERE UPPER(lb_url) NOT LIKE '%GEN5%'
+      AND UPPER(lb_url) NOT LIKE '%SIAPP3%'
+),
+-- ============================================================
+-- GEN5 siapp3
+-- ============================================================
+gen5_siapp3 AS (
+    SELECT 
+        ip, 
+        type, 
+        route_url, 
+        lb_url AS gen5_lb_url,
+        REGEXP_SUBSTR(lb_url, '[^/]+$') AS op
+    FROM daily_dpg_url_data
+    WHERE UPPER(lb_url) LIKE '%SIAPP3%GEN5%'
+),
+-- ============================================================
+-- GEN6 siapp3 (dedup by op)
+-- ============================================================
+gen6_siapp3 AS (
+    SELECT 
+        ip, 
+        type, 
+        lb_url AS gen6_lb_url,
+        REGEXP_SUBSTR(lb_url, '[^/]+$') AS op,
+        ROW_NUMBER() OVER (
+            PARTITION BY ip, type, REGEXP_SUBSTR(lb_url, '[^/]+$')
+            ORDER BY lb_url
+        ) rn
+    FROM daily_dpg_url_data
+    WHERE UPPER(lb_url) LIKE '%SIAPP3%'
+      AND UPPER(lb_url) NOT LIKE '%GEN5/GATEWAY%'
+)
 
-gen6 as (select nvl(a.ip,b.ip) as ip, nvl(a.type,b.type) as type,nvl(a.route_url,b.route_url) as route_url,
-gen5_lb_url,gen6_lb_url from
-(SELECT ip,type,route_url,lb_url AS gen5_lb_url,ROW_NUMBER() OVER (PARTITION BY ip, type, route_url ORDER BY lb_url) rn
-FROM daily_dpg_url_data d
-where UPPER(lb_url) LIKE '%SIAPP3%GEN5%') a full outer join
-(SELECT ip,type,route_url,lb_url AS gen6_lb_url,ROW_NUMBER() OVER (PARTITION BY ip, type, route_url ORDER BY lb_url) rn
-FROM daily_dpg_url_data d
-where UPPER(lb_url) LIKE '%SIAPP3%' and UPPER(lb_url) not LIKE '%GEN5/GATEWAY%' )b
-ON a.route_url = b.route_url and a.ip = b.ip and a.type = b.type)
-select ip,type,gen5_lb_url,gen6_lb_url,route_url,sysdate from gen5
-union all
-select ip,type,gen5_lb_url,gen6_lb_url,route_url,sysdate from gen6;
+-- ============================================================
+-- 1. Gen5 non-siapp3 + gen6 match (non-siapp3 preferred, siapp3 fallback)
+--    Saari gen5 rows print hongi (even if no match)
+-- ============================================================
+SELECT 
+    g5.ip, 
+    g5.type, 
+    g5.gen5_lb_url, 
+    COALESCE(g6.gen6_lb_url, g6s.gen6_lb_url) AS gen6_lb_url,
+    g5.route_url, 
+    SYSDATE
+FROM gen5_non_siapp3 g5
+LEFT JOIN gen6_non_siapp3 g6
+  ON g5.ip = g6.ip 
+ AND g5.type = g6.type 
+ AND g5.op = g6.op
+ AND g6.rn = 1
+LEFT JOIN gen6_siapp3 g6s
+  ON g5.ip = g6s.ip 
+ AND g5.type = g6s.type 
+ AND g5.op = g6s.op
+ AND g6s.rn = 1
+
+UNION ALL
+
+-- ============================================================
+-- 2. Gen6 non-siapp3 rows jinka koi gen5 match nahi
+--    (gen5_lb_url = NULL, but row print hogi)
+-- ============================================================
+SELECT 
+    g6.ip, 
+    g6.type, 
+    NULL AS gen5_lb_url, 
+    g6.gen6_lb_url,
+    NULL AS route_url, 
+    SYSDATE
+FROM gen6_non_siapp3 g6
+WHERE g6.rn = 1
+  AND NOT EXISTS (
+      SELECT 1 FROM gen5_non_siapp3 g5
+      WHERE g5.ip = g6.ip 
+        AND g5.type = g6.type 
+        AND g5.op = g6.op
+  )
+
+UNION ALL
+
+-- ============================================================
+-- 3. Gen5 siapp3 + gen6 siapp3 match
+-- ============================================================
+SELECT 
+    g5.ip, 
+    g5.type, 
+    g5.gen5_lb_url, 
+    g6.gen6_lb_url,
+    g5.route_url, 
+    SYSDATE
+FROM gen5_siapp3 g5
+LEFT JOIN gen6_siapp3 g6
+  ON g5.ip = g6.ip 
+ AND g5.type = g6.type 
+ AND g5.op = g6.op
+ AND g6.rn = 1
+
+UNION ALL
+
+-- ============================================================
+-- 4. Gen6 siapp3 rows jinka koi gen5 match nahi
+-- ============================================================
+SELECT 
+    g6.ip, 
+    g6.type, 
+    NULL AS gen5_lb_url, 
+    g6.gen6_lb_url,
+    NULL AS route_url, 
+    SYSDATE
+FROM gen6_siapp3 g6
+WHERE g6.rn = 1
+  AND NOT EXISTS (
+      SELECT 1 FROM gen5_siapp3 g5
+      WHERE g5.ip = g6.ip 
+        AND g5.type = g6.type 
+        AND g5.op = g6.op
+  );
