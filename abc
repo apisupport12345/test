@@ -1,81 +1,99 @@
-WITH gen5_base AS (
+WITH 
+-- Gen5 rows (non-siapp3)
+gen5_non_siapp3 AS (
     SELECT 
-        ip,
-        type,
-        route_url,
+        ip, 
+        type, 
+        route_url, 
         lb_url AS gen5_lb_url,
-        -- Siapp3 flag
-        CASE WHEN UPPER(lb_url) LIKE '%SIAPP3%' THEN 1 ELSE 0 END AS gen5_siapp3,
-        -- Path nikaalo (gen5 prefix hata ke) - ye batayega kaunsa operation hai
-        UPPER(REGEXP_REPLACE(lb_url, '^.*?/gen5/(gateway/|getway/)?', '', 1, 0, 'i')) AS gen5_path,
-        -- Last segment (operation name)
-        UPPER(REGEXP_SUBSTR(lb_url, '[^/]+$')) AS gen5_op
+        REGEXP_SUBSTR(lb_url, '[^/]+$') AS op,
+        REGEXP_REPLACE(lb_url, '^(.*?/)?gen5/(getway/)?', '', 1, 0, 'i') AS clean_path
     FROM daily_dpg_url_data
     WHERE (UPPER(lb_url) LIKE 'GEN5/GATEWAY%'
         OR UPPER(lb_url) LIKE 'GEN5%GATEWAY%'
-        OR UPPER(lb_url) LIKE '%GEN5/GETWAY%'
-        OR UPPER(lb_url) LIKE '%SIAPP3%GEN5%')
+        OR UPPER(lb_url) LIKE '%GEN5/GETWAY%')
+      AND UPPER(lb_url) NOT LIKE '%SIAPP3%'
 ),
-gen6_base AS (
+-- Gen6 rows (non-siapp3)
+gen6_non_siapp3 AS (
     SELECT 
-        ip,
-        type,
-        route_url,
+        ip, 
+        type, 
+        route_url, 
         lb_url AS gen6_lb_url,
-        -- Siapp3 flag
-        CASE WHEN UPPER(lb_url) LIKE '%SIAPP3%' THEN 1 ELSE 0 END AS gen6_siapp3,
-        -- Path nikaalo (gen6 prefix hata ke)
-        UPPER(REGEXP_REPLACE(lb_url, '^.*?/gen6/(gateway/|getway/)?', '', 1, 0, 'i')) AS gen6_path,
-        -- Last segment (operation name)
-        UPPER(REGEXP_SUBSTR(lb_url, '[^/]+$')) AS gen6_op
+        REGEXP_SUBSTR(lb_url, '[^/]+$') AS op,
+        REGEXP_REPLACE(lb_url, '^(.*?/)?gen6/(getway/)?', '', 1, 0, 'i') AS clean_path
     FROM daily_dpg_url_data
     WHERE UPPER(lb_url) NOT LIKE '%GEN5%'
+      AND UPPER(lb_url) NOT LIKE '%SIAPP3%'
+),
+-- Gen5 rows (siapp3 wale)
+gen5_siapp3 AS (
+    SELECT 
+        ip, 
+        type, 
+        route_url, 
+        lb_url AS gen5_lb_url,
+        REGEXP_SUBSTR(lb_url, '[^/]+$') AS op,
+        REGEXP_REPLACE(lb_url, '^(.*?/)?gen5/(getway/)?', '', 1, 0, 'i') AS clean_path
+    FROM daily_dpg_url_data
+    WHERE UPPER(lb_url) LIKE '%SIAPP3%GEN5%'
+),
+-- Gen6 rows (siapp3 wale)
+gen6_siapp3 AS (
+    SELECT 
+        ip, 
+        type, 
+        route_url, 
+        lb_url AS gen6_lb_url,
+        REGEXP_SUBSTR(lb_url, '[^/]+$') AS op,
+        REGEXP_REPLACE(lb_url, '^(.*?/)?gen6/(getway/)?', '', 1, 0, 'i') AS clean_path
+    FROM daily_dpg_url_data
+    WHERE UPPER(lb_url) LIKE '%SIAPP3%'
       AND UPPER(lb_url) NOT LIKE '%GEN5/GATEWAY%'
 ),
--- Har gen5 row ke liye best gen6 match (priority se)
-gen5_matched AS (
+-- Non-siapp3 result
+result_non_siapp3 AS (
     SELECT 
         g5.ip,
         g5.type,
-        g5.route_url,
         g5.gen5_lb_url,
-        g5.gen5_path,
-        g5.gen5_op,
-        g5.gen5_siapp3,
         g6.gen6_lb_url,
-        g6.gen6_path,
-        g6.gen6_op,
-        g6.gen6_siapp3,
-        ROW_NUMBER() OVER (
-            PARTITION BY g5.ip, g5.type, g5.route_url, g5.gen5_lb_url
-            ORDER BY 
-                -- Priority 1: Path match (best)
-                CASE WHEN g5.gen5_path = g6.gen6_path THEN 1 ELSE 2 END,
-                -- Priority 2: Operation match
-                CASE WHEN g5.gen5_op = g6.gen6_op THEN 1 ELSE 2 END,
-                -- Priority 3: Siapp3 preference
-                -- Agar gen5 siapp3 hai to gen6 bhi siapp3 ho
-                CASE 
-                    WHEN g5.gen5_siapp3 = 1 AND g6.gen6_siapp3 = 1 THEN 1
-                    WHEN g5.gen5_siapp3 = 1 AND g6.gen6_siapp3 = 0 THEN 2
-                    WHEN g5.gen5_siapp3 = 0 AND g6.gen6_siapp3 = 1 THEN 1
-                    WHEN g5.gen5_siapp3 = 0 AND g6.gen6_siapp3 = 0 THEN 2
-                    ELSE 3
-                END,
-                g6.gen6_lb_url
-        ) AS rn
-    FROM gen5_base g5
-    LEFT JOIN gen6_base g6
-      ON g5.route_url = g6.route_url
-     AND (g5.ip = g6.ip OR g6.ip IS NULL)
-     AND (g5.type = g6.type OR g6.type IS NULL)
+        g5.route_url
+    FROM gen5_non_siapp3 g5
+    LEFT JOIN LATERAL (
+        SELECT g6.gen6_lb_url
+        FROM gen6_non_siapp3 g6
+        WHERE g6.ip = g5.ip
+          AND g6.type = g5.type
+          AND g6.op = g5.op
+          AND g6.clean_path = g5.clean_path
+        ORDER BY g6.gen6_lb_url
+        FETCH FIRST 1 ROW ONLY
+    ) g6 ON 1=1
+),
+-- Siapp3 result
+result_siapp3 AS (
+    SELECT 
+        g5.ip,
+        g5.type,
+        g5.gen5_lb_url,
+        g6.gen6_lb_url,
+        g5.route_url
+    FROM gen5_siapp3 g5
+    LEFT JOIN LATERAL (
+        SELECT g6.gen6_lb_url
+        FROM gen6_siapp3 g6
+        WHERE g6.ip = g5.ip
+          AND g6.type = g5.type
+          AND g6.op = g5.op
+          AND g6.clean_path = g5.clean_path
+        ORDER BY g6.gen6_lb_url
+        FETCH FIRST 1 ROW ONLY
+    ) g6 ON 1=1
 )
-SELECT 
-    ip,
-    type,
-    gen5_lb_url,
-    gen6_lb_url,
-    route_url,
-    SYSDATE
-FROM gen5_matched
-WHERE rn = 1;
+SELECT ip, type, gen5_lb_url, gen6_lb_url, route_url, SYSDATE 
+FROM result_non_siapp3
+UNION ALL
+SELECT ip, type, gen5_lb_url, gen6_lb_url, route_url, SYSDATE 
+FROM result_siapp3;
