@@ -1,14 +1,113 @@
-115	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	17-09-26
-116	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	17-09-26
-120	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	17-09-26
-121	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	17-09-26
-122	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	17-09-26
-123	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	17-09-26
+WITH 
+gen5_non_siapp3 AS (
+    SELECT 
+        ip, type, route_url, 
+        lb_url AS gen5_lb_url,
+        REGEXP_SUBSTR(lb_url, '([^/]+/){2}[^/]+$') AS last3,
+        REGEXP_SUBSTR(lb_url, '[^/]+/[^/]+$') AS last2,
+        REGEXP_SUBSTR(lb_url, '[^/]+$') AS last1
+    FROM daily_dpg_url_data
+    WHERE (UPPER(lb_url) LIKE 'GEN5/GATEWAY%'
+        OR UPPER(lb_url) LIKE 'GEN5%GATEWAY%'
+        OR UPPER(lb_url) LIKE '%GEN5/GETWAY%')
+      AND UPPER(lb_url) NOT LIKE '%SIAPP3%'
+),
+gen6_non_siapp3 AS (
+    SELECT 
+        ip, type, 
+        lb_url AS gen6_lb_url,
+        REGEXP_SUBSTR(lb_url, '([^/]+/){2}[^/]+$') AS last3,
+        REGEXP_SUBSTR(lb_url, '[^/]+/[^/]+$') AS last2,
+        REGEXP_SUBSTR(lb_url, '[^/]+$') AS last1,
+        ROW_NUMBER() OVER (
+            PARTITION BY ip, type, REGEXP_SUBSTR(lb_url, '([^/]+/){2}[^/]+$')
+            ORDER BY lb_url
+        ) rn3,
+        ROW_NUMBER() OVER (
+            PARTITION BY ip, type, REGEXP_SUBSTR(lb_url, '[^/]+/[^/]+$')
+            ORDER BY lb_url
+        ) rn2,
+        ROW_NUMBER() OVER (
+            PARTITION BY ip, type, REGEXP_SUBSTR(lb_url, '[^/]+$')
+            ORDER BY lb_url
+        ) rn1
+    FROM daily_dpg_url_data
+    WHERE UPPER(lb_url) NOT LIKE '%GEN5%'
+      AND UPPER(lb_url) NOT LIKE '%SIAPP3%'
+),
+gen5_siapp3 AS (
+    SELECT 
+        ip, type, route_url, 
+        lb_url AS gen5_lb_url,
+        REGEXP_SUBSTR(lb_url, '([^/]+/){2}[^/]+$') AS last3,
+        REGEXP_SUBSTR(lb_url, '[^/]+/[^/]+$') AS last2,
+        REGEXP_SUBSTR(lb_url, '[^/]+$') AS last1
+    FROM daily_dpg_url_data
+    WHERE UPPER(lb_url) LIKE '%SIAPP3%GEN5%'
+),
+gen6_siapp3 AS (
+    SELECT 
+        ip, type, 
+        lb_url AS gen6_lb_url,
+        REGEXP_SUBSTR(lb_url, '([^/]+/){2}[^/]+$') AS last3,
+        REGEXP_SUBSTR(lb_url, '[^/]+/[^/]+$') AS last2,
+        REGEXP_SUBSTR(lb_url, '[^/]+$') AS last1,
+        ROW_NUMBER() OVER (
+            PARTITION BY ip, type, REGEXP_SUBSTR(lb_url, '([^/]+/){2}[^/]+$')
+            ORDER BY lb_url
+        ) rn3,
+        ROW_NUMBER() OVER (
+            PARTITION BY ip, type, REGEXP_SUBSTR(lb_url, '[^/]+/[^/]+$')
+            ORDER BY lb_url
+        ) rn2,
+        ROW_NUMBER() OVER (
+            PARTITION BY ip, type, REGEXP_SUBSTR(lb_url, '[^/]+$')
+            ORDER BY lb_url
+        ) rn1
+    FROM daily_dpg_url_data
+    WHERE UPPER(lb_url) LIKE '%SIAPP3%'
+      AND UPPER(lb_url) NOT LIKE '%GEN5/GATEWAY%'
+)
+-- Non-siapp3 gen5
+SELECT 
+    g5.ip, g5.type, g5.gen5_lb_url,
+    COALESCE(g6_3.gen6_lb_url, g6_2.gen6_lb_url, g6_1.gen6_lb_url,
+             g6s_3.gen6_lb_url, g6s_2.gen6_lb_url, g6s_1.gen6_lb_url) AS gen6_lb_url,
+    g5.route_url, SYSDATE
+FROM gen5_non_siapp3 g5
+LEFT JOIN gen6_non_siapp3 g6_3
+  ON g5.ip = g6_3.ip AND g5.type = g6_3.type 
+ AND g5.last3 = g6_3.last3 AND g6_3.rn3 = 1
+LEFT JOIN gen6_non_siapp3 g6_2
+  ON g5.ip = g6_2.ip AND g5.type = g6_2.type 
+ AND g5.last2 = g6_2.last2 AND g6_2.rn2 = 1
+LEFT JOIN gen6_non_siapp3 g6_1
+  ON g5.ip = g6_1.ip AND g5.type = g6_1.type 
+ AND g5.last1 = g6_1.last1 AND g6_1.rn1 = 1
+LEFT JOIN gen6_siapp3 g6s_3
+  ON g5.ip = g6s_3.ip AND g5.type = g6s_3.type 
+ AND g5.last3 = g6s_3.last3 AND g6s_3.rn3 = 1
+LEFT JOIN gen6_siapp3 g6s_2
+  ON g5.ip = g6s_2.ip AND g5.type = g6s_2.type 
+ AND g5.last2 = g6s_2.last2 AND g6s_2.rn2 = 1
+LEFT JOIN gen6_siapp3 g6s_1
+  ON g5.ip = g6s_1.ip AND g5.type = g6s_1.type 
+ AND g5.last1 = g6s_1.last1 AND g6s_1.rn1 = 1
 
+UNION ALL
 
-https://siapp3.sbi.co.in:7443/gen6/gateway/misc/payment/SITransaction/UpdateTransaction
-https://siapp3.sbi.co.in:7443/gen6/gateway/misc/payment/SITransaction/UpdateTransaction
-https://siapp3.sbi.co.in:7443/gen6/gateway/misc/payment/SITransaction/UpdateTransaction
-https://siapp3.sbi.co.in:7443/gen6/gateway/misc/payment/SITransaction/UpdateTransaction
-https://siapp3.sbi.co.in:7443/gen6/gateway/misc/payment/SITransaction/UpdateTransaction
-https://siapp3.sbi.co.in:7443/gen6/gateway/misc/payment/SITransaction/UpdateTransaction
+-- Siapp3 gen5
+SELECT 
+    g5.ip, g5.type, g5.gen5_lb_url,
+    COALESCE(g6_3.gen6_lb_url, g6_2.gen6_lb_url, g6_1.gen6_lb_url) AS gen6_lb_url,
+    g5.route_url, SYSDATE
+FROM gen5_siapp3 g5
+LEFT JOIN gen6_siapp3 g6_3
+  ON g5.ip = g6_3.ip AND g5.type = g6_3.type 
+ AND g5.last3 = g6_3.last3 AND g6_3.rn3 = 1
+LEFT JOIN gen6_siapp3 g6_2
+  ON g5.ip = g6_2.ip AND g5.type = g6_2.type 
+ AND g5.last2 = g6_2.last2 AND g6_2.rn2 = 1
+LEFT JOIN gen6_siapp3 g6_1
+  ON g5.ip = g6_1.ip AND g5.type = g6_1.type 
+ AND g5.last1 = g6_1.last1 AND g6_1.rn1 = 1;
