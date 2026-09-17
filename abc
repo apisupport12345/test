@@ -1,99 +1,83 @@
 WITH 
--- Gen5 rows (non-siapp3)
 gen5_non_siapp3 AS (
     SELECT 
-        ip, 
-        type, 
-        route_url, 
+        ip, type, route_url, 
         lb_url AS gen5_lb_url,
-        REGEXP_SUBSTR(lb_url, '[^/]+$') AS op,
-        REGEXP_REPLACE(lb_url, '^(.*?/)?gen5/(getway/)?', '', 1, 0, 'i') AS clean_path
+        REGEXP_SUBSTR(lb_url, '[^/]+$') AS op
     FROM daily_dpg_url_data
     WHERE (UPPER(lb_url) LIKE 'GEN5/GATEWAY%'
         OR UPPER(lb_url) LIKE 'GEN5%GATEWAY%'
         OR UPPER(lb_url) LIKE '%GEN5/GETWAY%')
       AND UPPER(lb_url) NOT LIKE '%SIAPP3%'
 ),
--- Gen6 rows (non-siapp3)
 gen6_non_siapp3 AS (
     SELECT 
-        ip, 
-        type, 
-        route_url, 
+        ip, type, route_url, 
         lb_url AS gen6_lb_url,
         REGEXP_SUBSTR(lb_url, '[^/]+$') AS op,
-        REGEXP_REPLACE(lb_url, '^(.*?/)?gen6/(getway/)?', '', 1, 0, 'i') AS clean_path
+        ROW_NUMBER() OVER (
+            PARTITION BY ip, type, REGEXP_SUBSTR(lb_url, '[^/]+$')
+            ORDER BY lb_url
+        ) rn
     FROM daily_dpg_url_data
     WHERE UPPER(lb_url) NOT LIKE '%GEN5%'
       AND UPPER(lb_url) NOT LIKE '%SIAPP3%'
 ),
--- Gen5 rows (siapp3 wale)
+gen6_non_siapp3_fb AS (
+    SELECT 
+        ip, type, lb_url AS gen6_lb_url,
+        ROW_NUMBER() OVER (PARTITION BY ip, type ORDER BY lb_url) rn
+    FROM daily_dpg_url_data
+    WHERE UPPER(lb_url) NOT LIKE '%GEN5%'
+      AND UPPER(lb_url) NOT LIKE '%SIAPP3%'
+),
 gen5_siapp3 AS (
     SELECT 
-        ip, 
-        type, 
-        route_url, 
+        ip, type, route_url, 
         lb_url AS gen5_lb_url,
-        REGEXP_SUBSTR(lb_url, '[^/]+$') AS op,
-        REGEXP_REPLACE(lb_url, '^(.*?/)?gen5/(getway/)?', '', 1, 0, 'i') AS clean_path
+        REGEXP_SUBSTR(lb_url, '[^/]+$') AS op
     FROM daily_dpg_url_data
     WHERE UPPER(lb_url) LIKE '%SIAPP3%GEN5%'
 ),
--- Gen6 rows (siapp3 wale)
 gen6_siapp3 AS (
     SELECT 
-        ip, 
-        type, 
-        route_url, 
+        ip, type, route_url, 
         lb_url AS gen6_lb_url,
         REGEXP_SUBSTR(lb_url, '[^/]+$') AS op,
-        REGEXP_REPLACE(lb_url, '^(.*?/)?gen6/(getway/)?', '', 1, 0, 'i') AS clean_path
+        ROW_NUMBER() OVER (
+            PARTITION BY ip, type, REGEXP_SUBSTR(lb_url, '[^/]+$')
+            ORDER BY lb_url
+        ) rn
     FROM daily_dpg_url_data
     WHERE UPPER(lb_url) LIKE '%SIAPP3%'
       AND UPPER(lb_url) NOT LIKE '%GEN5/GATEWAY%'
 ),
--- Non-siapp3 result
-result_non_siapp3 AS (
+gen6_siapp3_fb AS (
     SELECT 
-        g5.ip,
-        g5.type,
-        g5.gen5_lb_url,
-        g6.gen6_lb_url,
-        g5.route_url
-    FROM gen5_non_siapp3 g5
-    LEFT JOIN LATERAL (
-        SELECT g6.gen6_lb_url
-        FROM gen6_non_siapp3 g6
-        WHERE g6.ip = g5.ip
-          AND g6.type = g5.type
-          AND g6.op = g5.op
-          AND g6.clean_path = g5.clean_path
-        ORDER BY g6.gen6_lb_url
-        FETCH FIRST 1 ROW ONLY
-    ) g6 ON 1=1
-),
--- Siapp3 result
-result_siapp3 AS (
-    SELECT 
-        g5.ip,
-        g5.type,
-        g5.gen5_lb_url,
-        g6.gen6_lb_url,
-        g5.route_url
-    FROM gen5_siapp3 g5
-    LEFT JOIN LATERAL (
-        SELECT g6.gen6_lb_url
-        FROM gen6_siapp3 g6
-        WHERE g6.ip = g5.ip
-          AND g6.type = g5.type
-          AND g6.op = g5.op
-          AND g6.clean_path = g5.clean_path
-        ORDER BY g6.gen6_lb_url
-        FETCH FIRST 1 ROW ONLY
-    ) g6 ON 1=1
+        ip, type, lb_url AS gen6_lb_url,
+        ROW_NUMBER() OVER (PARTITION BY ip, type ORDER BY lb_url) rn
+    FROM daily_dpg_url_data
+    WHERE UPPER(lb_url) LIKE '%SIAPP3%'
+      AND UPPER(lb_url) NOT LIKE '%GEN5/GATEWAY%'
 )
-SELECT ip, type, gen5_lb_url, gen6_lb_url, route_url, SYSDATE 
-FROM result_non_siapp3
+SELECT 
+    g5.ip, g5.type, g5.gen5_lb_url,
+    COALESCE(g6.gen6_lb_url, fb.gen6_lb_url) AS gen6_lb_url,
+    g5.route_url, SYSDATE
+FROM gen5_non_siapp3 g5
+LEFT JOIN gen6_non_siapp3 g6
+  ON g5.ip = g6.ip AND g5.type = g6.type AND g5.op = g6.op AND g6.rn = 1
+LEFT JOIN gen6_non_siapp3_fb fb
+  ON g5.ip = fb.ip AND g5.type = fb.type AND fb.rn = 1
+
 UNION ALL
-SELECT ip, type, gen5_lb_url, gen6_lb_url, route_url, SYSDATE 
-FROM result_siapp3;
+
+SELECT 
+    g5.ip, g5.type, g5.gen5_lb_url,
+    COALESCE(g6.gen6_lb_url, fb.gen6_lb_url) AS gen6_lb_url,
+    g5.route_url, SYSDATE
+FROM gen5_siapp3 g5
+LEFT JOIN gen6_siapp3 g6
+  ON g5.ip = g6.ip AND g5.type = g6.type AND g5.op = g6.op AND g6.rn = 1
+LEFT JOIN gen6_siapp3_fb fb
+  ON g5.ip = fb.ip AND g5.type = fb.type AND fb.rn = 1;
