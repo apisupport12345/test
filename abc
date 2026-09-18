@@ -1,388 +1,3 @@
-package com.action;
-
-import java.sql.Connection;
-import java.sql.ResultSet;
-import java.sql.ResultSetMetaData;
-import java.sql.Statement;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-
-import com.jdbc.DBUtilityAuto;
-
-public class IPOMonitorService {
-
-    public static final int WINDOW_MINUTES = 5;
-
-    public static class QueryResult {
-        public boolean success;
-        public String message;
-        public List<String> columns = new ArrayList<>();
-        public List<Map<String, Object>> rows = new ArrayList<>();
-        public long executionTimeMs;
-        public String queryName;
-    }
-
-    // ============================================================
-    // QUERY 1 — BACKEND LOG  (12 IPs × 3 APIs = 36 combos)
-    // ============================================================
-    public static String getBackendQuery() {
-        return ""
-            + "WITH IP_LIST AS ( "
-            + "  SELECT '10.188.24.167' IP FROM DUAL UNION ALL "
-            + "  SELECT '10.188.24.168' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.24.169' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.24.170' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.24.171' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.24.172' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.25.167' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.25.168' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.25.169' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.25.170' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.25.171' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.25.172' FROM DUAL "
-            + "), "
-            + "API_LIST AS ( "
-            + "  SELECT 'thirdPartyINBIpo_sys' API_NAME FROM DUAL UNION ALL "
-            + "  SELECT 'thirdPartyNSEAuth_sys' FROM DUAL UNION ALL "
-            + "  SELECT 'thirdPartyBSEAuth_sys' FROM DUAL "
-            + "), "
-            + "COMBOS AS ( "
-            + "  SELECT i.IP, a.API_NAME FROM IP_LIST i CROSS JOIN API_LIST a "
-            + "), "
-            + "AGG AS ( "
-            + "  SELECT TRIM(sys_ip) SYS_IP, TRIM(api_name) API_NAME, "
-            + "    COUNT(1) TOTAL_HITS, "
-            + "    SUM(CASE WHEN error_code is null or error_code = 'CK001' THEN 1 ELSE 0 END) SUCCESS, "
-            + "    SUM(CASE WHEN error_code ='SI001' then 1 else 0 end) SI001, "
-            + "    SUM(CASE WHEN error_code ='SI002' then 1 else 0 end) SI002, "
-            + "    SUM(CASE WHEN substr(error_code,3,3) ='002' AND error_code <>'SI002' then 1 else 0 end) DYNAMIC_002, "
-            + "    SUM(CASE WHEN error_code ='SI007' and error_code<> '70007' then 1 else 0 end) SI007, "
-            + "    SUM(CASE WHEN error_code ='SI051' then 1 else 0 end) SI051, "
-            + "    SUM(CASE WHEN error_code ='SI052' then 1 else 0 end) SI052, "
-            + "    SUM(CASE WHEN substr(error_code,3,3) ='052' AND error_code <>'SI052' then 1 else 0 end) DYNAMIC_052, "
-            + "    SUM(CASE WHEN substr(error_code,3,3) ='014' and error_code <> '00014' then 1 else 0 end) DYNAMIC_014, "
-            + "    SUM(CASE WHEN error_code ='SI569' then 1 else 0 end) SI569, "
-            + "    SUM(CASE WHEN error_code ='SI570' then 1 else 0 end) SI570, "
-            + "    SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') or error_code in('SI001','SI007','SI017','SI569','SI570','SI052','SI077','SI051','SI111')) and error_code<>'00014' THEN 1 ELSE 0 END) TD, "
-            + "    ROUND((SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI052','SI077','SI569','SI570')) and error_code <> '00014' THEN 1 ELSE 0 END)*100)/COUNT(1),2) TD_PERCENT, "
-            + "    SUM(CASE WHEN ((nvl( substr(error_code,3,3),'A') not in ('002','014') and error_code not in('SI001','SI007','SI017','SI569','SI570','SI052','SI077','SI051','SI111')) AND error_code <> 'CK001' OR error_code IN ('00014','70007')) THEN 1 ELSE 0 END) BD, "
-            + "    ROUND((SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','052','051','014') OR error_code IN ('00014','70007')) AND error_code <> 'CK001' and error_code IS NOT NULL THEN 1 ELSE 0 END)*100)/COUNT(1),2) BD_PERCENT "
-            + "  FROM eisapp.BACKEND_LOG "
-            + "  WHERE api_name in ('thirdPartyINBIpo_sys','thirdPartyNSEAuth_sys','thirdPartyBSEAuth_sys') "
-            + "    AND creation_date_time >= sysdate - interval '" + WINDOW_MINUTES + "' minute "
-            + "  GROUP BY TRIM(sys_ip), TRIM(api_name) "
-            + ") "
-            + "SELECT "
-            + "  c.API_NAME API_NAME, "
-            + "  c.IP SYS_IP, "
-            + "  NVL(a.TOTAL_HITS,0) TOTAL_HITS, "
-            + "  NVL(a.SUCCESS,0) SUCCESS, "
-            + "  NVL(a.SI001,0) SI001, "
-            + "  NVL(a.SI002,0) SI002, "
-            + "  NVL(a.DYNAMIC_002,0) DYNAMIC_002, "
-            + "  NVL(a.SI007,0) SI007, "
-            + "  NVL(a.SI051,0) SI051, "
-            + "  NVL(a.SI052,0) SI052, "
-            + "  NVL(a.DYNAMIC_052,0) DYNAMIC_052, "
-            + "  NVL(a.DYNAMIC_014,0) DYNAMIC_014, "
-            + "  NVL(a.SI569,0) SI569, "
-            + "  NVL(a.SI570,0) SI570, "
-            + "  NVL(a.TD,0) TD, "
-            + "  NVL(a.TD_PERCENT,0) TD_PERCENT, "
-            + "  NVL(a.BD,0) BD, "
-            + "  NVL(a.BD_PERCENT,0) BD_PERCENT "
-            + "FROM COMBOS c LEFT JOIN AGG a ON c.IP = a.SYS_IP AND c.API_NAME = a.API_NAME "
-            + "ORDER BY c.API_NAME, c.IP";
-    }
-
-    // ============================================================
-    // QUERY 2 — API LOG NSE/INB  (8 IPs × 2 APIs = 16 combos)
-    // ============================================================
-    public static String getApiNseInbQuery() {
-        return ""
-            + "WITH IP_LIST AS ( "
-            + "  SELECT '10.188.24.63' IP FROM DUAL UNION ALL "
-            + "  SELECT '10.188.24.64' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.24.65' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.24.66' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.25.63' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.25.64' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.25.65' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.25.66' FROM DUAL "
-            + "), "
-            + "API_LIST AS ( "
-            + "  SELECT 'thirdPartyGenericRouting_NSE_expDS' API_NAME FROM DUAL UNION ALL "
-            + "  SELECT 'thirdPartyGenericRouting_INB_expDS' FROM DUAL "
-            + "), "
-            + "COMBOS AS ( "
-            + "  SELECT i.IP, a.API_NAME FROM IP_LIST i CROSS JOIN API_LIST a "
-            + "), "
-            + "AGG AS ( "
-            + "  SELECT TRIM(exp_ip) EXP_IP, TRIM(api_name) API_NAME, "
-            + "    COUNT(1) TOTAL_HITS, "
-            + "    SUM(CASE WHEN RESPONSE_STATUS in ('0','SUCCESS') THEN 1 ELSE 0 END) SUCCESS, "
-            + "    SUM(CASE WHEN error_code ='SI001' then 1 else 0 end) SI001, "
-            + "    SUM(CASE WHEN substr(error_code,3,3) ='002'then 1 else 0 end) DYNAMIC_002, "
-            + "    SUM(CASE WHEN error_code ='SI007' and error_code<> '70007' then 1 else 0 end) SI007, "
-            + "    SUM(CASE WHEN error_code ='SI051' then 1 else 0 end) SI051, "
-            + "    SUM(CASE WHEN substr(error_code,3,3) ='014' and error_code <> '00014' then 1 else 0 end) DYNAMIC_014, "
-            + "    SUM(CASE WHEN error_code ='SI569' then 1 else 0 end) SI569, "
-            + "    SUM(CASE WHEN error_code ='SI570' then 1 else 0 end) SI570, "
-            + "    SUM(CASE WHEN error_code ='SI052' then 1 else 0 end) SI052, "
-            + "    SUM(CASE WHEN error_code ='SI005' then 1 else 0 end) SI005, "
-            + "    SUM(CASE WHEN error_code ='SI077' then 1 else 0 end) SI077, "
-            + "    SUM(CASE WHEN error_code ='SI003' then 1 else 0 end) SI003, "
-            + "    SUM(CASE WHEN error_code ='SI017' then 1 else 0 end) SI017, "
-            + "    SUM(CASE WHEN error_code ='SI015' then 1 else 0 end) SI015, "
-            + "    SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI569','SI570','SI052','SI005','SI077','SI003','SI017','SI015')) and error_code <> '00014' THEN 1 ELSE 0 END) TD, "
-            + "    ROUND((SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI569','SI570','SI052','SI005','SI077','SI003','SI017','SI015')) and error_code <> '00014' THEN 1 ELSE 0 END)*100)/COUNT(1),2) TD_PERCENT, "
-            + "    SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','051','014','015') OR error_code IN ('00014','70007')) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END) BD, "
-            + "    ROUND((SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','051','014','015') OR error_code IN ('00014','70007')) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END)*100)/COUNT(1),2) BD_PERCENT "
-            + "  FROM eisapp.api_log "
-            + "  WHERE creation_date_time >= sysdate - interval '" + WINDOW_MINUTES + "' minute "
-            + "    AND api_name in ('thirdPartyGenericRouting_NSE_expDS','thirdPartyGenericRouting_INB_expDS') "
-            + "  GROUP BY TRIM(exp_ip), TRIM(api_name) "
-            + ") "
-            + "SELECT "
-            + "  c.API_NAME API_NAME, "
-            + "  c.IP EXP_IP, "
-            + "  NVL(a.TOTAL_HITS,0) TOTAL_HITS, "
-            + "  NVL(a.SUCCESS,0) SUCCESS, "
-            + "  NVL(a.SI001,0) SI001, "
-            + "  NVL(a.DYNAMIC_002,0) DYNAMIC_002, "
-            + "  NVL(a.SI007,0) SI007, "
-            + "  NVL(a.SI051,0) SI051, "
-            + "  NVL(a.DYNAMIC_014,0) DYNAMIC_014, "
-            + "  NVL(a.SI569,0) SI569, "
-            + "  NVL(a.SI570,0) SI570, "
-            + "  NVL(a.SI052,0) SI052, "
-            + "  NVL(a.SI005,0) SI005, "
-            + "  NVL(a.SI077,0) SI077, "
-            + "  NVL(a.SI003,0) SI003, "
-            + "  NVL(a.SI017,0) SI017, "
-            + "  NVL(a.SI015,0) SI015, "
-            + "  NVL(a.TD,0) TD, "
-            + "  NVL(a.TD_PERCENT,0) TD_PERCENT, "
-            + "  NVL(a.BD,0) BD, "
-            + "  NVL(a.BD_PERCENT,0) BD_PERCENT "
-            + "FROM COMBOS c LEFT JOIN AGG a ON c.IP = a.EXP_IP AND c.API_NAME = a.API_NAME "
-            + "ORDER BY c.API_NAME, c.IP";
-    }
-
-    // ============================================================
-    // QUERY 3 — API LOG BSE  (12 IPs × 1 API = 12 combos)
-    // ============================================================
-    public static String getApiBseQuery() {
-        return ""
-            + "WITH IP_LIST AS ( "
-            + "  SELECT '10.188.24.61' IP FROM DUAL UNION ALL "
-            + "  SELECT '10.188.24.62' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.24.63' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.24.64' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.24.65' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.24.66' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.25.61' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.25.62' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.25.63' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.25.64' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.25.65' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.25.66' FROM DUAL "
-            + "), "
-            + "API_LIST AS ( "
-            + "  SELECT 'thirdPartyGenericRouting_expDS' API_NAME FROM DUAL "
-            + "), "
-            + "COMBOS AS ( "
-            + "  SELECT i.IP, a.API_NAME FROM IP_LIST i CROSS JOIN API_LIST a "
-            + "), "
-            + "AGG AS ( "
-            + "  SELECT TRIM(exp_ip) EXP_IP, TRIM(api_name) API_NAME, "
-            + "    COUNT(1) TOTAL_HITS, "
-            + "    SUM(CASE WHEN RESPONSE_STATUS in ('0','SUCCESS') THEN 1 ELSE 0 END) SUCCESS, "
-            + "    SUM(CASE WHEN error_code ='SI001' then 1 else 0 end) SI001, "
-            + "    SUM(CASE WHEN substr(error_code,3,3) ='002'then 1 else 0 end) DYNAMIC_002, "
-            + "    SUM(CASE WHEN error_code ='SI007' and error_code<> '70007' then 1 else 0 end) SI007, "
-            + "    SUM(CASE WHEN error_code ='SI051' then 1 else 0 end) SI051, "
-            + "    SUM(CASE WHEN substr(error_code,3,3) ='014' and error_code <> '00014' then 1 else 0 end) DYNAMIC_014, "
-            + "    SUM(CASE WHEN error_code ='SI569' then 1 else 0 end) SI569, "
-            + "    SUM(CASE WHEN error_code ='SI570' then 1 else 0 end) SI570, "
-            + "    SUM(CASE WHEN error_code ='SI052' then 1 else 0 end) SI052, "
-            + "    SUM(CASE WHEN error_code ='SI005' then 1 else 0 end) SI005, "
-            + "    SUM(CASE WHEN error_code ='SI077' then 1 else 0 end) SI077, "
-            + "    SUM(CASE WHEN error_code ='SI003' then 1 else 0 end) SI003, "
-            + "    SUM(CASE WHEN error_code ='SI017' then 1 else 0 end) SI017, "
-            + "    SUM(CASE WHEN error_code ='SI015' then 1 else 0 end) SI015, "
-            + "    SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI569','SI570','SI052','SI005','SI077','SI003','SI017','SI015')) and error_code <> '00014' THEN 1 ELSE 0 END) TD, "
-            + "    ROUND((SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI569','SI570','SI052','SI005','SI077','SI003','SI017','SI015')) and error_code <> '00014' THEN 1 ELSE 0 END)*100)/COUNT(1),2) TD_PERCENT, "
-            + "    SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','051','014','015') OR error_code IN ('00014','70007')) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END) BD, "
-            + "    ROUND((SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','051','014','015') OR error_code IN ('00014','70007')) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END)*100)/COUNT(1),2) BD_PERCENT "
-            + "  FROM eisapp.api_log "
-            + "  WHERE creation_date_time >= sysdate - interval '" + WINDOW_MINUTES + "' minute "
-            + "    AND api_name = 'thirdPartyGenericRouting_expDS' "
-            + "    AND sup_url = 'BSE' "
-            + "    AND ORIGINAL_URN = 'IPO_ORDER' "
-            + "    AND transaction_urn = 'IPO_SERVICE' "
-            + "  GROUP BY TRIM(exp_ip), TRIM(api_name) "
-            + ") "
-            + "SELECT "
-            + "  c.API_NAME API_NAME, "
-            + "  c.IP EXP_IP, "
-            + "  NVL(a.TOTAL_HITS,0) TOTAL_HITS, "
-            + "  NVL(a.SUCCESS,0) SUCCESS, "
-            + "  NVL(a.SI001,0) SI001, "
-            + "  NVL(a.DYNAMIC_002,0) DYNAMIC_002, "
-            + "  NVL(a.SI007,0) SI007, "
-            + "  NVL(a.SI051,0) SI051, "
-            + "  NVL(a.DYNAMIC_014,0) DYNAMIC_014, "
-            + "  NVL(a.SI569,0) SI569, "
-            + "  NVL(a.SI570,0) SI570, "
-            + "  NVL(a.SI052,0) SI052, "
-            + "  NVL(a.SI005,0) SI005, "
-            + "  NVL(a.SI077,0) SI077, "
-            + "  NVL(a.SI003,0) SI003, "
-            + "  NVL(a.SI017,0) SI017, "
-            + "  NVL(a.SI015,0) SI015, "
-            + "  NVL(a.TD,0) TD, "
-            + "  NVL(a.TD_PERCENT,0) TD_PERCENT, "
-            + "  NVL(a.BD,0) BD, "
-            + "  NVL(a.BD_PERCENT,0) BD_PERCENT "
-            + "FROM COMBOS c LEFT JOIN AGG a ON c.IP = a.EXP_IP AND c.API_NAME = a.API_NAME "
-            + "ORDER BY c.API_NAME, c.IP";
-    }
-
-    // ============================================================
-    // RUN ALL 3 IN PARALLEL
-    // ============================================================
-    public static Map<String, QueryResult> runAll() {
-        Map<String, QueryResult> results = new LinkedHashMap<>();
-        ExecutorService pool = Executors.newFixedThreadPool(3);
-
-        try {
-            Future<QueryResult> f1 = pool.submit(new QueryTask("BACKEND_LOG", getBackendQuery()));
-            Future<QueryResult> f2 = pool.submit(new QueryTask("API_NSE_INB", getApiNseInbQuery()));
-            Future<QueryResult> f3 = pool.submit(new QueryTask("API_BSE", getApiBseQuery()));
-
-            results.put("BACKEND_LOG", safeGet(f1));
-            results.put("API_NSE_INB", safeGet(f2));
-            results.put("API_BSE", safeGet(f3));
-        } catch (Exception e) {
-            QueryResult err = new QueryResult();
-            err.success = false;
-            err.message = "Pool error: " + e.getMessage();
-            results.put("ERROR", err);
-        } finally {
-            pool.shutdown();
-            try { pool.awaitTermination(3, TimeUnit.SECONDS); } catch (InterruptedException ignored) {}
-        }
-        return results;
-    }
-
-    private static QueryResult safeGet(Future<QueryResult> f) {
-        try { return f.get(30, TimeUnit.MINUTES); }
-        catch (Exception e) {
-            QueryResult r = new QueryResult();
-            r.success = false;
-            r.message = "Timeout/Error: " + e.getMessage();
-            return r;
-        }
-    }
-
-    private static class QueryTask implements Callable<QueryResult> {
-        private final String name;
-        private final String sql;
-        QueryTask(String name, String sql) { this.name = name; this.sql = sql; }
-
-        @Override
-        public QueryResult call() {
-            QueryResult r = new QueryResult();
-            r.queryName = name;
-            long t0 = System.currentTimeMillis();
-            Connection conn = null;
-            Statement stmt = null;
-            ResultSet rs = null;
-            try {
-                conn = DBUtilityAuto.getIIBDBConnection();
-                if (conn == null) {
-                    r.success = false;
-                    r.message = "Could not obtain IIB connection.";
-                    return r;
-                }
-                stmt = conn.createStatement();
-                stmt.setFetchSize(500);
-                rs = stmt.executeQuery(sql);
-
-                ResultSetMetaData md = rs.getMetaData();
-                int colCount = md.getColumnCount();
-                for (int i = 1; i <= colCount; i++) r.columns.add(md.getColumnLabel(i));
-
-                while (rs.next()) {
-                    Map<String, Object> row = new LinkedHashMap<>();
-                    for (int i = 1; i <= colCount; i++) {
-                        row.put(md.getColumnLabel(i), rs.getObject(i));
-                    }
-                    r.rows.add(row);
-                }
-                r.success = true;
-                r.message = r.rows.size() + " rows";
-            } catch (Exception e) {
-                r.success = false;
-                r.message = "Error: " + e.getMessage();
-            } finally {
-                if (rs != null) try { rs.close(); } catch (Exception ignored) {}
-                if (stmt != null) try { stmt.close(); } catch (Exception ignored) {}
-                if (conn != null) try { conn.close(); } catch (Exception ignored) {}
-                r.executionTimeMs = System.currentTimeMillis() - t0;
-            }
-            return r;
-        }
-    }
-
-    public static String esc(String s) {
-        if (s == null) return "";
-        return s.replace("\\", "\\\\").replace("\"", "\\\"")
-                .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
-    }
-
-    public static String toJson(QueryResult qr) {
-        StringBuilder sb = new StringBuilder("{");
-        sb.append("\"name\":\"").append(esc(qr.queryName)).append("\",");
-        sb.append("\"success\":").append(qr.success).append(",");
-        sb.append("\"message\":\"").append(esc(qr.message)).append("\",");
-        sb.append("\"executionTimeMs\":").append(qr.executionTimeMs).append(",");
-        sb.append("\"columns\":[");
-        for (int i = 0; i < qr.columns.size(); i++) {
-            if (i > 0) sb.append(",");
-            sb.append("\"").append(esc(qr.columns.get(i))).append("\"");
-        }
-        sb.append("],\"rows\":[");
-        for (int r = 0; r < qr.rows.size(); r++) {
-            if (r > 0) sb.append(",");
-            sb.append("{");
-            Map<String, Object> row = qr.rows.get(r);
-            int c = 0;
-            for (String col : qr.columns) {
-                if (c++ > 0) sb.append(",");
-                Object v = row.get(col);
-                sb.append("\"").append(esc(col)).append("\":");
-                if (v == null) sb.append("null");
-                else sb.append("\"").append(esc(v.toString())).append("\"");
-            }
-            sb.append("}");
-        }
-        sb.append("]}");
-        return sb.toString();
-    }
-}
-
-
--------------------------------------------------------------------
-
 <%@ page language="java" contentType="text/html; charset=UTF-8" pageEncoding="UTF-8" isELIgnored="true"%>
 <%@ page import="com.action.IPOMonitorService" %>
 <%@ page import="com.action.IPOMonitorService.QueryResult" %>
@@ -390,15 +5,28 @@ public class IPOMonitorService {
 <%
     String ajax = request.getParameter("ajax");
     if ("fetch".equals(ajax)) {
-        Map<String, QueryResult> results = IPOMonitorService.runAll();
+        String mode      = request.getParameter("mode");       // "auto" | "manual"
+        String startTime = request.getParameter("startTime");   // "yyyy-MM-dd HH:mm:ss"
+        String endTime   = request.getParameter("endTime");
+
+        boolean useCustom = "manual".equalsIgnoreCase(mode)
+                         && startTime != null && !startTime.trim().isEmpty()
+                         && endTime   != null && !endTime.trim().isEmpty();
+
+        Map<String, QueryResult> results = IPOMonitorService.runAll(useCustom, startTime, endTime);
+
         StringBuilder sb = new StringBuilder("{");
+        sb.append("\"mode\":\"").append(useCustom ? "manual" : "auto").append("\",");
+        sb.append("\"startTime\":\"").append(startTime == null ? "" : IPOMonitorService.esc(startTime)).append("\",");
+        sb.append("\"endTime\":\"").append(endTime == null ? "" : IPOMonitorService.esc(endTime)).append("\",");
+        sb.append("\"results\":{");
         int i = 0;
         for (Map.Entry<String, QueryResult> e : results.entrySet()) {
             if (i++ > 0) sb.append(",");
             sb.append("\"").append(IPOMonitorService.esc(e.getKey())).append("\":");
             sb.append(IPOMonitorService.toJson(e.getValue()));
         }
-        sb.append("}");
+        sb.append("}}");
         response.setContentType("application/json");
         response.setCharacterEncoding("UTF-8");
         out.print(sb.toString()); out.flush();
@@ -518,17 +146,19 @@ public class IPOMonitorService {
         /* HEADER */
         .header {
             display: flex; align-items: center;
-            padding: 0 22px; gap: 14px;
+            padding: 0 18px; gap: 10px;
             border-bottom: 1px solid var(--glass-border);
             background: var(--glass);
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
             z-index: 100; flex-shrink: 0;
+            overflow: hidden;
         }
         .logo {
             display: flex; align-items: center; gap: 12px;
             font-size: 18px; font-weight: 800;
             letter-spacing: -0.4px; color: var(--text-0);
+            flex-shrink: 0;
         }
         .logo-mark {
             width: 36px; height: 36px;
@@ -563,14 +193,16 @@ public class IPOMonitorService {
 
         .hdr-stat {
             display: flex; align-items: center; gap: 7px;
-            padding: 7px 13px;
+            padding: 7px 11px;
             background: var(--glass-2);
             border: 1px solid var(--glass-border);
             border-radius: 10px;
-            font-size: 13px; font-weight: 700;
+            font-size: 12.5px; font-weight: 700;
             color: var(--text-1);
+            white-space: nowrap;
+            flex-shrink: 0;
         }
-        .hdr-stat .num { color: var(--text-0); font-weight: 800; font-size: 15px; }
+        .hdr-stat .num { color: var(--text-0); font-weight: 800; font-size: 14px; }
         .hdr-stat .num.green { color: var(--green); }
         .hdr-stat .num.amber { color: var(--amber); }
         .hdr-stat .num.red   { color: var(--red); }
@@ -582,16 +214,102 @@ public class IPOMonitorService {
         .hdr-stat .dot.p { background: var(--purple); box-shadow: 0 0 6px var(--purple); }
 
         .countdown-pill {
-            display: flex; align-items: center; gap: 9px;
-            padding: 8px 14px;
+            display: flex; align-items: center; gap: 8px;
+            padding: 8px 13px;
             background: linear-gradient(135deg, rgba(79, 140, 255, 0.15), rgba(180, 124, 255, 0.12));
             border: 1px solid rgba(79, 140, 255, 0.35);
             border-radius: 10px;
-            font-size: 13px; font-weight: 700;
+            font-size: 12.5px; font-weight: 700;
             color: var(--text-0);
             font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+            flex-shrink: 0;
         }
-        .countdown-pill .cd-val { color: var(--accent); font-size: 15px; font-weight: 800; letter-spacing: 0.3px; }
+        .countdown-pill .cd-val { color: var(--accent); font-size: 14px; font-weight: 800; letter-spacing: 0.3px; }
+        .countdown-pill.manual {
+            background: linear-gradient(135deg, rgba(34, 230, 164, 0.15), rgba(79, 209, 255, 0.12));
+            border-color: rgba(34, 230, 164, 0.45);
+        }
+        .countdown-pill.manual .cd-val { color: var(--green); }
+
+        /* TIME CONTROLS */
+        .time-controls {
+            display: flex; align-items: center; gap: 8px;
+            padding: 6px 10px;
+            background: var(--glass-2);
+            border: 1px solid var(--glass-border);
+            border-radius: 10px;
+            flex-shrink: 0;
+        }
+        .time-controls.manual-active {
+            border-color: rgba(34, 230, 164, 0.55);
+            background: var(--green-dim);
+        }
+        .tc-group { display: flex; flex-direction: column; gap: 2px; }
+        .tc-label {
+            font-size: 9px; font-weight: 800;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+            color: var(--text-3);
+        }
+        .tc-input {
+            background: var(--glass-3);
+            border: 1px solid var(--glass-border);
+            border-radius: 6px;
+            color: var(--text-0);
+            font-size: 11.5px;
+            font-family: 'JetBrains Mono', 'Consolas', monospace;
+            font-weight: 700;
+            padding: 5px 7px;
+            outline: none;
+            width: 168px;
+            transition: 0.2s;
+        }
+        .tc-input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 2px rgba(79,140,255,0.18);
+        }
+        .tc-input::-webkit-calendar-picker-indicator {
+            filter: invert(0.7);
+            cursor: pointer;
+        }
+        html[data-theme="light"] .tc-input::-webkit-calendar-picker-indicator {
+            filter: invert(0.2);
+        }
+        .btn-manual, .btn-reset {
+            border: none;
+            border-radius: 8px;
+            padding: 8px 13px;
+            font-size: 12px;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+            transition: 0.2s;
+            font-family: inherit;
+            height: 34px;
+            align-self: flex-end;
+            white-space: nowrap;
+        }
+        .btn-manual {
+            background: linear-gradient(135deg, #22e6a4, #17c78a);
+            color: #05221a;
+            box-shadow: 0 4px 14px rgba(34, 230, 164, 0.4);
+        }
+        .btn-manual:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 22px rgba(34, 230, 164, 0.6);
+        }
+        .btn-manual:disabled { opacity: 0.55; cursor: not-allowed; }
+        .btn-reset {
+            background: var(--glass-2);
+            color: var(--text-1);
+            border: 1px solid var(--glass-border);
+        }
+        .btn-reset:hover:not(:disabled) {
+            background: var(--glass-3);
+            border-color: var(--glass-border-hi);
+            color: var(--text-0);
+        }
 
         .theme-toggle {
             width: 52px; height: 28px;
@@ -642,7 +360,7 @@ public class IPOMonitorService {
         .btn-refresh.spinning { animation: spin 1s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
 
-        /* MAIN LAYOUT — Info | Content */
+        /* MAIN LAYOUT */
         .main-wrap {
             display: grid;
             grid-template-columns: 270px 1fr;
@@ -652,9 +370,7 @@ public class IPOMonitorService {
             overflow: hidden;
         }
 
-        /* ============================================================
-         * INFO PANEL
-         * ============================================================ */
+        /* INFO PANEL */
         .info-panel {
             background: var(--glass);
             border: 1px solid var(--glass-border);
@@ -700,6 +416,10 @@ public class IPOMonitorService {
             line-height: 1.1;
         }
         .info-mini-value.small { font-size: 11px; }
+        .info-mini-value.mono {
+            font-family: 'JetBrains Mono', 'Consolas', monospace;
+            font-size: 11px;
+        }
 
         .info-status {
             display: flex; align-items: center; gap: 7px;
@@ -715,6 +435,11 @@ public class IPOMonitorService {
             background: var(--amber-dim);
             border-color: rgba(255,184,77,0.3);
             color: var(--amber);
+        }
+        .info-status.manual {
+            background: linear-gradient(135deg, rgba(34,230,164,0.14), rgba(79,209,255,0.10));
+            border-color: rgba(34,230,164,0.45);
+            color: var(--green);
         }
         .info-status-dot {
             width: 7px; height: 7px;
@@ -759,10 +484,7 @@ public class IPOMonitorService {
         .info-section-title.amber .count-pill  { background: var(--amber-dim); color: var(--amber); border-color: rgba(255,184,77,0.35); }
         .info-section-title.purple .count-pill { background: var(--purple-dim); color: var(--purple); border-color: rgba(180,124,255,0.35); }
 
-        /* Short list */
-        .short-list {
-            display: flex; flex-direction: column; gap: 4px;
-        }
+        .short-list { display: flex; flex-direction: column; gap: 4px; }
         .short-item {
             display: grid;
             grid-template-columns: 1fr auto;
@@ -784,26 +506,19 @@ public class IPOMonitorService {
         .short-item.purple { border-left-color: var(--purple); background: var(--purple-dim); }
 
         .short-item .ip-line {
-            grid-column: 1;
-            grid-row: 1;
+            grid-column: 1; grid-row: 1;
             font-family: 'JetBrains Mono', 'Consolas', monospace;
-            font-size: 12px;
-            font-weight: 800;
+            font-size: 12px; font-weight: 800;
             color: var(--text-0);
             letter-spacing: 0.2px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
         .short-item .api-line {
-            grid-column: 1;
-            grid-row: 2;
+            grid-column: 1; grid-row: 2;
             font-size: 10px;
             color: var(--text-2);
             font-weight: 700;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
             font-family: 'JetBrains Mono', 'Consolas', monospace;
         }
         .short-item .api-line.red    { color: var(--red); }
@@ -811,11 +526,9 @@ public class IPOMonitorService {
         .short-item .api-line.purple { color: var(--purple); }
 
         .short-item .value-line {
-            grid-column: 2;
-            grid-row: 1 / span 2;
+            grid-column: 2; grid-row: 1 / span 2;
             align-self: center;
-            font-size: 14px;
-            font-weight: 800;
+            font-size: 14px; font-weight: 800;
             font-variant-numeric: tabular-nums;
             padding: 3px 9px;
             border-radius: 6px;
@@ -837,9 +550,7 @@ public class IPOMonitorService {
             letter-spacing: 0.3px;
         }
 
-        /* ============================================================
-         * CONTENT
-         * ============================================================ */
+        /* CONTENT */
         .main-content {
             display: grid;
             grid-template-rows: 100px 1fr;
@@ -960,7 +671,6 @@ public class IPOMonitorService {
             border: 1px solid var(--glass-border);
         }
 
-        /* 2 CARDS PER ROW — simple 1fr 1fr */
         .panel-body {
             flex: 1; min-height: 0;
             overflow-y: auto; overflow-x: hidden;
@@ -1109,7 +819,6 @@ public class IPOMonitorService {
             font-family: 'JetBrains Mono', 'Consolas', monospace;
         }
 
-        /* 4 BOX GRID — Fixed proper fit */
         .ip-metrics {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -1205,7 +914,6 @@ public class IPOMonitorService {
             letter-spacing: 0.6px;
         }
 
-        /* STATES */
         .state {
             grid-column: 1 / -1;
             padding: 40px 20px;
@@ -1655,7 +1363,6 @@ public class IPOMonitorService {
         .raw-row .val.green { color: var(--green); }
         .raw-row .val.purple{ color: var(--purple); }
 
-        /* TOAST */
         .toast {
             position: fixed;
             bottom: 24px; right: 24px;
@@ -1673,20 +1380,30 @@ public class IPOMonitorService {
             animation: slideIn 0.25s ease;
         }
         .toast.err { border-left-color: var(--red); }
+        .toast.manual { border-left-color: var(--green); }
         @keyframes slideIn {
             from { opacity: 0; transform: translateX(30px); }
             to   { opacity: 1; transform: translateX(0); }
         }
 
         /* RESPONSIVE */
+        @media (max-width: 1700px) {
+            .hdr-stat { padding: 6px 9px; font-size: 11.5px; }
+            .tc-input { width: 150px; }
+        }
         @media (max-width: 1500px) {
             .kpis { grid-template-columns: repeat(3, 1fr); }
             .main-content { grid-template-rows: 200px 1fr; }
             .panel-body { grid-template-columns: 1fr; }
+            .time-controls { padding: 4px 7px; gap: 5px; }
+            .tc-input { width: 130px; font-size: 10.5px; }
+            .logo { font-size: 16px; }
+            .logo-pill { display: none; }
         }
         @media (max-width: 1300px) {
             .main-wrap { grid-template-columns: 240px 1fr; }
             .panel-body { grid-template-columns: 1fr; }
+            .hdr-stat { display: none; }
         }
         @media (max-width: 1100px) {
             .main-wrap { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
@@ -1707,6 +1424,7 @@ public class IPOMonitorService {
             .tiles-grid { grid-template-columns: 1fr 1fr; }
             .err-row { grid-template-columns: 100px 1fr 70px; gap: 10px; padding: 10px; }
             .modal-title { font-size: 20px; }
+            .time-controls { display: none; }
         }
     </style>
 </head>
@@ -1721,6 +1439,7 @@ public class IPOMonitorService {
             <span class="logo-pill"><span class="pulse-dot"></span> LIVE</span>
         </div>
         <div class="hdr-spacer"></div>
+
         <div class="hdr-stat">
             <span class="dot p"></span> Zero <span class="num purple" id="hdrZero">0</span>
         </div>
@@ -1731,17 +1450,37 @@ public class IPOMonitorService {
             <span class="dot a"></span> BD <span class="num amber" id="hdrWarn">0</span>
         </div>
         <div class="hdr-stat">
-            <span class="dot g"></span> Healthy <span class="num green" id="hdrHealthy">0</span>
+            <span class="dot g"></span> OK <span class="num green" id="hdrHealthy">0</span>
         </div>
-        <div class="countdown-pill">
+
+        <!-- MANUAL TIME RANGE CONTROLS -->
+        <div class="time-controls" id="timeControls">
+            <div class="tc-group">
+                <label class="tc-label">From</label>
+                <input type="datetime-local" id="startTimeInput" class="tc-input" step="1">
+            </div>
+            <div class="tc-group">
+                <label class="tc-label">To</label>
+                <input type="datetime-local" id="endTimeInput" class="tc-input" step="1">
+            </div>
+            <button class="btn-manual" id="manualRunBtn" onclick="runManual()" title="Run with selected time range">
+                &#9654; Run
+            </button>
+            <button class="btn-reset" id="resetBtn" onclick="resetToAuto()" title="Back to auto 5-min rolling window">
+                &#8634; Auto
+            </button>
+        </div>
+
+        <div class="countdown-pill" id="countdownPill">
             <span>&#9202;</span> Next <span class="cd-val" id="cdVal">--:--</span>
         </div>
-        <div class="theme-toggle" onclick="toggleTheme()" title="Toggle theme">
+
+        <div class="theme-toggle" onclick="toggleTheme()" title="Toggle theme (Ctrl+T)">
             <span class="icon moon">&#9789;</span>
             <span class="icon sun">&#9728;</span>
             <div class="knob"></div>
         </div>
-        <button class="btn-refresh" id="refreshBtn" onclick="refreshNow()" title="Refresh now">&#8635;</button>
+        <button class="btn-refresh" id="refreshBtn" onclick="refreshNow()" title="Refresh now (Ctrl+R)">&#8635;</button>
     </div>
 
     <div class="main-wrap">
@@ -1763,12 +1502,12 @@ public class IPOMonitorService {
                     <div class="info-mini-value" id="infoTotalCombos">—</div>
                 </div>
                 <div class="info-mini">
-                    <div class="info-mini-label">Refresh #</div>
+                    <div class="info-mini-label">Run #</div>
                     <div class="info-mini-value" id="infoRefreshCount">0</div>
                 </div>
                 <div class="info-mini">
-                    <div class="info-mini-label">Window</div>
-                    <div class="info-mini-value small">5 min</div>
+                    <div class="info-mini-label">Mode</div>
+                    <div class="info-mini-value small" id="infoMode">Auto · 5m</div>
                 </div>
             </div>
 
@@ -1893,7 +1632,7 @@ public class IPOMonitorService {
 
 <script>
 /* ============================================================
- * IPO MONITORING DASHBOARD — v12.2
+ * IPO MONITORING DASHBOARD — v13 (manual time range)
  * ============================================================ */
 
 var REFRESH_INTERVAL_SEC = 300;
@@ -1903,6 +1642,13 @@ var isRefreshing = false;
 var refreshCount = 0;
 var __panelRows = {};
 
+// mode state
+var isManualMode = false;         // true = user wants last run's manual range re-used for next auto-run? -> NO
+var lastRunMode = 'auto';         // what was actually executed last
+var lastRunStart = null;          // echo from server
+var lastRunEnd = null;
+var autoPausedByManual = false;   // when user clicks manual, we pause auto until reset
+
 (function initTheme() {
     try {
         var saved = localStorage.getItem('ipo_theme');
@@ -1910,7 +1656,31 @@ var __panelRows = {};
             document.documentElement.setAttribute('data-theme', saved);
         }
     } catch(e) {}
+    // Pre-fill time inputs with last 15 min range as a helpful default
+    try {
+        var now = new Date();
+        var past = new Date(now.getTime() - 15 * 60 * 1000);
+        var s = toLocalInputValue(past);
+        var e = toLocalInputValue(now);
+        document.getElementById('startTimeInput').value = s;
+        document.getElementById('endTimeInput').value = e;
+    } catch(e) {}
 })();
+
+function toLocalInputValue(d) {
+    // returns "YYYY-MM-DDTHH:mm:ss" suitable for datetime-local
+    var pad = function(n){ return n < 10 ? '0'+n : ''+n; };
+    return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate())
+        + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+}
+
+function toSqlDateTime(v) {
+    // convert "YYYY-MM-DDTHH:mm:ss" or "YYYY-MM-DDTHH:mm" -> "YYYY-MM-DD HH:mm:ss"
+    if (!v) return '';
+    var s = v.replace('T', ' ');
+    if (s.length === 16) s += ':00';
+    return s;
+}
 
 function toggleTheme() {
     var current = document.documentElement.getAttribute('data-theme') || 'dark';
@@ -1923,19 +1693,37 @@ function toggleTheme() {
 /* ============ COUNTDOWN ============ */
 function startCountdown() {
     if (countdownTimer) clearInterval(countdownTimer);
+    if (autoPausedByManual) { renderCountdown(); return; }
     secondsLeft = REFRESH_INTERVAL_SEC;
     renderCountdown();
     countdownTimer = setInterval(function() {
         secondsLeft--;
-        if (secondsLeft <= 0) { secondsLeft = REFRESH_INTERVAL_SEC; refreshNow(); }
+        if (secondsLeft <= 0) {
+            secondsLeft = REFRESH_INTERVAL_SEC;
+            refreshNow();
+        }
         renderCountdown();
     }, 1000);
 }
 function stopCountdown() { if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; } }
+
 function renderCountdown() {
     var el = document.getElementById('cdVal');
+    var pill = document.getElementById('countdownPill');
     if (!el) return;
-    if (isRefreshing) { el.textContent = '...'; el.style.color = 'var(--amber)'; return; }
+
+    if (autoPausedByManual) {
+        pill.classList.add('manual');
+        el.textContent = 'PAUSED';
+        el.style.color = '';
+        return;
+    }
+    pill.classList.remove('manual');
+    if (isRefreshing) {
+        el.textContent = '...';
+        el.style.color = 'var(--amber)';
+        return;
+    }
     el.style.color = '';
     var m = Math.floor(secondsLeft / 60);
     var s = secondsLeft % 60;
@@ -1947,6 +1735,19 @@ function setInfoStatus(text, isLoading) {
     var statusEl = document.getElementById('infoStatus');
     document.getElementById('infoStatusText').textContent = text;
     statusEl.classList.toggle('loading', !!isLoading);
+    statusEl.classList.toggle('manual', !isLoading && lastRunMode === 'manual');
+}
+
+function setModeDisplay(mode, start, end) {
+    var el = document.getElementById('infoMode');
+    if (!el) return;
+    if (mode === 'manual') {
+        el.textContent = 'Manual';
+        el.classList.remove('small');
+    } else {
+        el.textContent = 'Auto · 5m';
+        el.classList.add('small');
+    }
 }
 
 function renderShortList(containerId, countId, items, type) {
@@ -1959,7 +1760,6 @@ function renderShortList(containerId, countId, items, type) {
     }
     var html = '';
     items.slice(0, 20).forEach(function(it) {
-        // FULL service name — no trimming
         var serviceName = it.api || '—';
         var cls = type;
         var valueText = '';
@@ -1976,7 +1776,7 @@ function renderShortList(containerId, countId, items, type) {
     container.innerHTML = html;
 }
 
-function updateInfoPanel(allRows, elapsed) {
+function updateInfoPanel(allRows) {
     var tdItems = [];
     var bdItems = [];
     var zeroItems = [];
@@ -2005,50 +1805,116 @@ function updateInfoPanel(allRows, elapsed) {
     document.getElementById('infoRefreshCount').textContent = refreshCount;
 }
 
-/* ============ REFRESH ============ */
+/* ============ REFRESH (AUTO) ============ */
 function refreshNow() {
     if (isRefreshing) return;
-    isRefreshing = true;
+    // Auto refresh: if user has paused auto (manual mode active), do nothing
+    if (autoPausedByManual) {
+        toast('Auto-refresh paused (Manual mode active)', true);
+        return;
+    }
+    doFetch('auto', null, null);
+}
+
+/* ============ MANUAL RUN ============ */
+function runManual() {
+    if (isRefreshing) return;
+    var sv = document.getElementById('startTimeInput').value;
+    var ev = document.getElementById('endTimeInput').value;
+    if (!sv || !ev) {
+        toast('Please select both Start and End time', true);
+        return;
+    }
+    var s = toSqlDateTime(sv);
+    var e = toSqlDateTime(ev);
+    if (s >= e) {
+        toast('Start time must be before End time', true);
+        return;
+    }
+    autoPausedByManual = true;
     stopCountdown();
     renderCountdown();
-    setInfoStatus('Refreshing...', true);
+    doFetch('manual', s, e);
+}
+
+function resetToAuto() {
+    autoPausedByManual = false;
+    lastRunMode = 'auto';
+    setModeDisplay('auto');
+    toast('Back to Auto mode (5-min rolling window)', false);
+    refreshNow();
+}
+
+/* ============ CORE FETCH ============ */
+function doFetch(mode, startTime, endTime) {
+    isRefreshing = true;
+    setInfoStatus(mode === 'manual' ? 'Running manual query...' : 'Refreshing...', true);
 
     var btn = document.getElementById('refreshBtn');
+    var runBtn = document.getElementById('manualRunBtn');
+    var resetBtn = document.getElementById('resetBtn');
     btn.classList.add('spinning');
     btn.disabled = true;
+    if (runBtn) runBtn.disabled = true;
+    if (resetBtn) resetBtn.disabled = true;
 
-    showState('apiNBody', 'Loading NSE/INB data...');
-    showState('apiBBody', 'Loading BSE data...');
-    showState('backendBody', 'Loading backend data...');
+    showState('apiNBody', mode === 'manual' ? 'Running manual query (NSE/INB)...' : 'Loading NSE/INB data...');
+    showState('apiBBody', mode === 'manual' ? 'Running manual query (BSE)...'     : 'Loading BSE data...');
+    showState('backendBody', mode === 'manual' ? 'Running manual query (Backend)...' : 'Loading backend data...');
+
+    var url = 'ipo-monitor.jsp?ajax=fetch&mode=' + encodeURIComponent(mode) + '&_=' + Date.now();
+    if (mode === 'manual') {
+        url += '&startTime=' + encodeURIComponent(startTime);
+        url += '&endTime='   + encodeURIComponent(endTime);
+    }
 
     var t0 = Date.now();
     var xhr = new XMLHttpRequest();
-    xhr.open('GET', 'ipo-monitor.jsp?ajax=fetch&_=' + Date.now(), true);
+    xhr.open('GET', url, true);
     xhr.onreadystatechange = function() {
         if (xhr.readyState !== 4) return;
         btn.classList.remove('spinning');
         btn.disabled = false;
+        if (runBtn) runBtn.disabled = false;
+        if (resetBtn) resetBtn.disabled = false;
         isRefreshing = false;
         var elapsed = Date.now() - t0;
 
         if (xhr.status !== 200) {
             toast('HTTP ' + xhr.status + ' — refresh failed', true);
             setInfoStatus('Error ' + xhr.status, false);
-            startCountdown();
+            if (mode === 'auto') { startCountdown(); }
             renderCountdown();
             return;
         }
         try {
             var data = JSON.parse(xhr.responseText);
-            renderAll(data, elapsed);
-            toast('Data refreshed');
-            setInfoStatus('Live · Active', false);
+            lastRunMode  = data.mode || mode;
+            lastRunStart = data.startTime || '';
+            lastRunEnd   = data.endTime   || '';
+            renderAll(data.results, elapsed);
+            setModeDisplay(lastRunMode, lastRunStart, lastRunEnd);
+            toast(lastRunMode === 'manual'
+                ? ('Manual run complete · ' + lastRunStart + ' → ' + lastRunEnd)
+                : 'Data refreshed (auto 5-min window)',
+                false,
+                lastRunMode === 'manual');
+
+            if (lastRunMode === 'manual') {
+                setInfoStatus('Manual result · ' + lastRunStart + ' → ' + lastRunEnd, false);
+            } else {
+                setInfoStatus('Live · Active (auto 5-min)', false);
+            }
         } catch(e) {
             toast('Parse error', true);
             setInfoStatus('Parse error', false);
             console.error(e);
         }
-        startCountdown();
+
+        // Restart auto countdown only when in auto mode (not paused)
+        if (!autoPausedByManual && lastRunMode === 'auto') {
+            startCountdown();
+        }
         renderCountdown();
     };
     xhr.send();
@@ -2061,12 +1927,12 @@ function showState(id, text) {
 }
 
 /* ============ RENDER ALL ============ */
-function renderAll(data, elapsed) {
-    var s1 = renderPanel(data.API_NSE_INB, 'apiNBody', 'apiNBadge');
-    var s2 = renderPanel(data.API_BSE, 'apiBBody', 'apiBBadge');
-    var s3 = renderPanel(data.BACKEND_LOG, 'backendBody', 'backendBadge');
+function renderAll(results, elapsed) {
+    var s1 = renderPanel(results.API_NSE_INB, 'apiNBody', 'apiNBadge');
+    var s2 = renderPanel(results.API_BSE, 'apiBBody', 'apiBBadge');
+    var s3 = renderPanel(results.BACKEND_LOG, 'backendBody', 'backendBadge');
 
-    updateKpis(data);
+    updateKpis(results);
 
     var totals = {
         healthy: s1.healthy + s2.healthy + s3.healthy,
@@ -2083,7 +1949,7 @@ function renderAll(data, elapsed) {
     var totalCombos = totals.healthy + totals.td + totals.bd + totals.zero;
     document.getElementById('infoTotalCombos').textContent = totalCombos;
 
-    updateInfoPanel(__panelRows, elapsed);
+    updateInfoPanel(__panelRows);
 }
 
 /* ============ PANEL RENDER ============ */
@@ -2189,23 +2055,18 @@ function renderPanel(qr, bodyId, badgeId) {
         var apiDisplay = r.api || '—';
 
         html += '<div class="ip-card ' + r.category + '" onclick="openIpModal(\'' + panelKey + '\',' + idx + ')">';
-
         html +=   '<div class="ip-head">';
         html +=     '<div class="ip-addr">' + escapeHtml(r.ip) + '</div>';
         html +=     '<div class="ip-badge ' + r.category + '">' + badgeText + '</div>';
         html +=   '</div>';
-
         html += '<div class="ip-api" title="' + escapeHtml(r.api) + '">' + escapeHtml(apiDisplay) + '</div>';
-
         html +=   '<div class="ip-metrics">';
         html +=     '<div class="ip-metric"><div class="ip-metric-label">Hits</div><div class="ip-metric-value ' + (r.hits === 0 ? 'purple' : '') + '">' + r.hits + '</div></div>';
         html +=     '<div class="ip-metric"><div class="ip-metric-label">Success</div><div class="ip-metric-value ' + succCls + '">' + r.succ + '</div></div>';
         html +=     '<div class="ip-metric"><div class="ip-metric-label">TD%</div><div class="ip-metric-value ' + tdColorCls + '">' + r.tdPct.toFixed(2) + '%</div></div>';
         html +=     '<div class="ip-metric"><div class="ip-metric-label">BD%</div><div class="ip-metric-value ' + bdColorCls + '">' + r.bdPct.toFixed(2) + '%</div></div>';
         html +=   '</div>';
-
         html +=   '<div class="succ-bar"><div class="succ-bar-inner ' + barCls + '" style="width:' + barWidth.toFixed(1) + '%"></div></div>';
-
         html +=   '<div class="err-chips">';
         if (r.hits === 0) {
             html += '<span class="err-chip zero">&#9888; ZERO HITS</span>';
@@ -2215,7 +2076,6 @@ function renderPanel(qr, bodyId, badgeId) {
             html += '<span class="err-chip ok">&#10003; No errors</span>';
         }
         html +=   '</div>';
-
         html += '</div>';
     });
 
@@ -2391,8 +2251,8 @@ function closeModalFromBackdrop(e) {
 }
 
 /* ============ KPIS ============ */
-function updateKpis(data) {
-    var b = data.BACKEND_LOG, n = data.API_NSE_INB, x = data.API_BSE;
+function updateKpis(results) {
+    var b = results.BACKEND_LOG, n = results.API_NSE_INB, x = results.API_BSE;
     function agg(qr) {
         var hits = 0, tdSum = 0, count = 0;
         if (qr && qr.success && qr.rows) {
@@ -2446,9 +2306,9 @@ function escapeHtml(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
             .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
-function toast(msg, isErr) {
+function toast(msg, isErr, isManual) {
     var el = document.createElement('div');
-    el.className = 'toast' + (isErr ? ' err' : '');
+    el.className = 'toast' + (isErr ? ' err' : '') + (isManual ? ' manual' : '');
     el.textContent = msg;
     document.body.appendChild(el);
     setTimeout(function() {
@@ -2456,7 +2316,7 @@ function toast(msg, isErr) {
         el.style.opacity = '0';
         el.style.transform = 'translateX(30px)';
         setTimeout(function() { el.remove(); }, 320);
-    }, 2200);
+    }, 2400);
 }
 
 /* ============ KEYBOARD ============ */
@@ -2472,3 +2332,397 @@ window.addEventListener('load', function() { refreshNow(); });
 
 </body>
 </html>
+
+
+-----------------------------------------------------------
+
+
+package com.action;
+
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
+import java.sql.Statement;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+
+import com.jdbc.DBUtilityAuto;
+
+public class IPOMonitorService {
+
+    // Default rolling window (used when no custom range is supplied)
+    public static final int WINDOW_MINUTES = 5;
+
+    public static class QueryResult {
+        public boolean success;
+        public String message;
+        public List<String> columns = new ArrayList<>();
+        public List<Map<String, Object>> rows = new ArrayList<>();
+        public long executionTimeMs;
+        public String queryName;
+    }
+
+    // ============================================================
+    // PARTITION NAME BUILDER
+    //   Sep 2026 -> SEP_26
+    //   Oct 2026 -> OCT_26
+    //   Jan 2027 -> JAN_27
+    // ============================================================
+    public static String getCurrentPartitionName() {
+        Calendar cal = Calendar.getInstance();
+        String month = new SimpleDateFormat("MMM").format(cal.getTime()).toUpperCase(); // SEP
+        int year = cal.get(Calendar.YEAR);       // 2026
+        int shortYear = year % 100;              // 26
+        return month + "_" + String.format("%02d", shortYear);
+    }
+
+    // ============================================================
+    // TIME FILTER BUILDER
+    // ============================================================
+    private static String buildTimeFilter(boolean useCustom, String startTime, String endTime) {
+        if (useCustom && startTime != null && !startTime.trim().isEmpty()
+                       && endTime   != null && !endTime.trim().isEmpty()) {
+            return " creation_date_time >= TO_DATE('" + sanitize(startTime)
+                 + "','YYYY-MM-DD HH24:MI:SS') "
+                 + " AND creation_date_time <= TO_DATE('" + sanitize(endTime)
+                 + "','YYYY-MM-DD HH24:MI:SS') ";
+        }
+        return " creation_date_time >= sysdate - interval '" + WINDOW_MINUTES + "' minute ";
+    }
+
+    private static String sanitize(String s) {
+        if (s == null) return "";
+        return s.replace("'", "").replace(";", "").replace("--", "");
+    }
+
+    // ============================================================
+    // QUERY 1 — BACKEND LOG  (12 IPs × 3 APIs = 36 combos)
+    // ============================================================
+    public static String getBackendQuery(boolean useCustom, String startTime, String endTime) {
+        String timeFilter = buildTimeFilter(useCustom, startTime, endTime);
+        String partition  = getCurrentPartitionName();
+        return ""
+            + "WITH IP_LIST AS ( "
+            + "  SELECT '10.188.24.167' IP FROM DUAL UNION ALL "
+            + "  SELECT '10.188.24.168' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.24.169' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.24.170' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.24.171' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.24.172' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.25.167' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.25.168' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.25.169' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.25.170' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.25.171' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.25.172' FROM DUAL "
+            + "), "
+            + "API_LIST AS ( "
+            + "  SELECT 'thirdPartyINBIpo_sys' API_NAME FROM DUAL UNION ALL "
+            + "  SELECT 'thirdPartyNSEAuth_sys' FROM DUAL UNION ALL "
+            + "  SELECT 'thirdPartyBSEAuth_sys' FROM DUAL "
+            + "), "
+            + "COMBOS AS ( "
+            + "  SELECT i.IP, a.API_NAME FROM IP_LIST i CROSS JOIN API_LIST a "
+            + "), "
+            + "AGG AS ( "
+            + "  SELECT TRIM(sys_ip) SYS_IP, TRIM(api_name) API_NAME, "
+            + "    COUNT(1) TOTAL_HITS, "
+            + "    SUM(CASE WHEN error_code is null or error_code = 'CK001' THEN 1 ELSE 0 END) SUCCESS, "
+            + "    SUM(CASE WHEN error_code ='SI001' then 1 else 0 end) SI001, "
+            + "    SUM(CASE WHEN error_code ='SI002' then 1 else 0 end) SI002, "
+            + "    SUM(CASE WHEN substr(error_code,3,3) ='002' AND error_code <>'SI002' then 1 else 0 end) DYNAMIC_002, "
+            + "    SUM(CASE WHEN error_code ='SI007' and error_code<> '70007' then 1 else 0 end) SI007, "
+            + "    SUM(CASE WHEN error_code ='SI051' then 1 else 0 end) SI051, "
+            + "    SUM(CASE WHEN error_code ='SI052' then 1 else 0 end) SI052, "
+            + "    SUM(CASE WHEN substr(error_code,3,3) ='052' AND error_code <>'SI052' then 1 else 0 end) DYNAMIC_052, "
+            + "    SUM(CASE WHEN substr(error_code,3,3) ='014' and error_code <> '00014' then 1 else 0 end) DYNAMIC_014, "
+            + "    SUM(CASE WHEN error_code ='SI569' then 1 else 0 end) SI569, "
+            + "    SUM(CASE WHEN error_code ='SI570' then 1 else 0 end) SI570, "
+            + "    SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') or error_code in('SI001','SI007','SI017','SI569','SI570','SI052','SI077','SI051','SI111')) and error_code<>'00014' THEN 1 ELSE 0 END) TD, "
+            + "    ROUND((SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI052','SI077','SI569','SI570')) and error_code <> '00014' THEN 1 ELSE 0 END)*100)/COUNT(1),2) TD_PERCENT, "
+            + "    SUM(CASE WHEN ((nvl( substr(error_code,3,3),'A') not in ('002','014') and error_code not in('SI001','SI007','SI017','SI569','SI570','SI052','SI077','SI051','SI111')) AND error_code <> 'CK001' OR error_code IN ('00014','70007')) THEN 1 ELSE 0 END) BD, "
+            + "    ROUND((SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','052','051','014') OR error_code IN ('00014','70007')) AND error_code <> 'CK001' and error_code IS NOT NULL THEN 1 ELSE 0 END)*100)/COUNT(1),2) BD_PERCENT "
+            + "  FROM eisapp.BACKEND_LOG PARTITION (" + partition + ") "
+            + "  WHERE api_name in ('thirdPartyINBIpo_sys','thirdPartyNSEAuth_sys','thirdPartyBSEAuth_sys') "
+            + "    AND " + timeFilter
+            + "  GROUP BY TRIM(sys_ip), TRIM(api_name) "
+            + ") "
+            + "SELECT "
+            + "  c.API_NAME API_NAME, c.IP SYS_IP, "
+            + "  NVL(a.TOTAL_HITS,0) TOTAL_HITS, NVL(a.SUCCESS,0) SUCCESS, "
+            + "  NVL(a.SI001,0) SI001, NVL(a.SI002,0) SI002, NVL(a.DYNAMIC_002,0) DYNAMIC_002, "
+            + "  NVL(a.SI007,0) SI007, NVL(a.SI051,0) SI051, NVL(a.SI052,0) SI052, "
+            + "  NVL(a.DYNAMIC_052,0) DYNAMIC_052, NVL(a.DYNAMIC_014,0) DYNAMIC_014, "
+            + "  NVL(a.SI569,0) SI569, NVL(a.SI570,0) SI570, "
+            + "  NVL(a.TD,0) TD, NVL(a.TD_PERCENT,0) TD_PERCENT, "
+            + "  NVL(a.BD,0) BD, NVL(a.BD_PERCENT,0) BD_PERCENT "
+            + "FROM COMBOS c LEFT JOIN AGG a ON c.IP = a.SYS_IP AND c.API_NAME = a.API_NAME "
+            + "ORDER BY c.API_NAME, c.IP";
+    }
+
+    // ============================================================
+    // QUERY 2 — API LOG NSE/INB  (8 IPs × 2 APIs = 16 combos)
+    // ============================================================
+    public static String getApiNseInbQuery(boolean useCustom, String startTime, String endTime) {
+        String timeFilter = buildTimeFilter(useCustom, startTime, endTime);
+        String partition  = getCurrentPartitionName();
+        return ""
+            + "WITH IP_LIST AS ( "
+            + "  SELECT '10.188.24.63' IP FROM DUAL UNION ALL "
+            + "  SELECT '10.188.24.64' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.24.65' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.24.66' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.25.63' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.25.64' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.25.65' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.25.66' FROM DUAL "
+            + "), "
+            + "API_LIST AS ( "
+            + "  SELECT 'thirdPartyGenericRouting_NSE_expDS' API_NAME FROM DUAL UNION ALL "
+            + "  SELECT 'thirdPartyGenericRouting_INB_expDS' FROM DUAL "
+            + "), "
+            + "COMBOS AS ( SELECT i.IP, a.API_NAME FROM IP_LIST i CROSS JOIN API_LIST a ), "
+            + "AGG AS ( "
+            + "  SELECT TRIM(exp_ip) EXP_IP, TRIM(api_name) API_NAME, "
+            + "    COUNT(1) TOTAL_HITS, "
+            + "    SUM(CASE WHEN RESPONSE_STATUS in ('0','SUCCESS') THEN 1 ELSE 0 END) SUCCESS, "
+            + "    SUM(CASE WHEN error_code ='SI001' then 1 else 0 end) SI001, "
+            + "    SUM(CASE WHEN substr(error_code,3,3) ='002'then 1 else 0 end) DYNAMIC_002, "
+            + "    SUM(CASE WHEN error_code ='SI007' and error_code<> '70007' then 1 else 0 end) SI007, "
+            + "    SUM(CASE WHEN error_code ='SI051' then 1 else 0 end) SI051, "
+            + "    SUM(CASE WHEN substr(error_code,3,3) ='014' and error_code <> '00014' then 1 else 0 end) DYNAMIC_014, "
+            + "    SUM(CASE WHEN error_code ='SI569' then 1 else 0 end) SI569, "
+            + "    SUM(CASE WHEN error_code ='SI570' then 1 else 0 end) SI570, "
+            + "    SUM(CASE WHEN error_code ='SI052' then 1 else 0 end) SI052, "
+            + "    SUM(CASE WHEN error_code ='SI005' then 1 else 0 end) SI005, "
+            + "    SUM(CASE WHEN error_code ='SI077' then 1 else 0 end) SI077, "
+            + "    SUM(CASE WHEN error_code ='SI003' then 1 else 0 end) SI003, "
+            + "    SUM(CASE WHEN error_code ='SI017' then 1 else 0 end) SI017, "
+            + "    SUM(CASE WHEN error_code ='SI015' then 1 else 0 end) SI015, "
+            + "    SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI569','SI570','SI052','SI005','SI077','SI003','SI017','SI015')) and error_code <> '00014' THEN 1 ELSE 0 END) TD, "
+            + "    ROUND((SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI569','SI570','SI052','SI005','SI077','SI003','SI017','SI015')) and error_code <> '00014' THEN 1 ELSE 0 END)*100)/COUNT(1),2) TD_PERCENT, "
+            + "    SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','051','014','015') OR error_code IN ('00014','70007')) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END) BD, "
+            + "    ROUND((SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','051','014','015') OR error_code IN ('00014','70007')) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END)*100)/COUNT(1),2) BD_PERCENT "
+            + "  FROM eisapp.api_log PARTITION (" + partition + ") "
+            + "  WHERE " + timeFilter
+            + "    AND api_name in ('thirdPartyGenericRouting_NSE_expDS','thirdPartyGenericRouting_INB_expDS') "
+            + "  GROUP BY TRIM(exp_ip), TRIM(api_name) "
+            + ") "
+            + "SELECT "
+            + "  c.API_NAME API_NAME, c.IP EXP_IP, "
+            + "  NVL(a.TOTAL_HITS,0) TOTAL_HITS, NVL(a.SUCCESS,0) SUCCESS, "
+            + "  NVL(a.SI001,0) SI001, NVL(a.DYNAMIC_002,0) DYNAMIC_002, "
+            + "  NVL(a.SI007,0) SI007, NVL(a.SI051,0) SI051, NVL(a.DYNAMIC_014,0) DYNAMIC_014, "
+            + "  NVL(a.SI569,0) SI569, NVL(a.SI570,0) SI570, NVL(a.SI052,0) SI052, "
+            + "  NVL(a.SI005,0) SI005, NVL(a.SI077,0) SI077, NVL(a.SI003,0) SI003, "
+            + "  NVL(a.SI017,0) SI017, NVL(a.SI015,0) SI015, "
+            + "  NVL(a.TD,0) TD, NVL(a.TD_PERCENT,0) TD_PERCENT, "
+            + "  NVL(a.BD,0) BD, NVL(a.BD_PERCENT,0) BD_PERCENT "
+            + "FROM COMBOS c LEFT JOIN AGG a ON c.IP = a.EXP_IP AND c.API_NAME = a.API_NAME "
+            + "ORDER BY c.API_NAME, c.IP";
+    }
+
+    // ============================================================
+    // QUERY 3 — API LOG BSE  (12 IPs × 1 API = 12 combos)
+    // ============================================================
+    public static String getApiBseQuery(boolean useCustom, String startTime, String endTime) {
+        String timeFilter = buildTimeFilter(useCustom, startTime, endTime);
+        String partition  = getCurrentPartitionName();
+        return ""
+            + "WITH IP_LIST AS ( "
+            + "  SELECT '10.188.24.61' IP FROM DUAL UNION ALL "
+            + "  SELECT '10.188.24.62' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.24.63' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.24.64' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.24.65' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.24.66' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.25.61' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.25.62' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.25.63' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.25.64' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.25.65' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.25.66' FROM DUAL "
+            + "), "
+            + "API_LIST AS ( SELECT 'thirdPartyGenericRouting_expDS' API_NAME FROM DUAL ), "
+            + "COMBOS AS ( SELECT i.IP, a.API_NAME FROM IP_LIST i CROSS JOIN API_LIST a ), "
+            + "AGG AS ( "
+            + "  SELECT TRIM(exp_ip) EXP_IP, TRIM(api_name) API_NAME, "
+            + "    COUNT(1) TOTAL_HITS, "
+            + "    SUM(CASE WHEN RESPONSE_STATUS in ('0','SUCCESS') THEN 1 ELSE 0 END) SUCCESS, "
+            + "    SUM(CASE WHEN error_code ='SI001' then 1 else 0 end) SI001, "
+            + "    SUM(CASE WHEN substr(error_code,3,3) ='002'then 1 else 0 end) DYNAMIC_002, "
+            + "    SUM(CASE WHEN error_code ='SI007' and error_code<> '70007' then 1 else 0 end) SI007, "
+            + "    SUM(CASE WHEN error_code ='SI051' then 1 else 0 end) SI051, "
+            + "    SUM(CASE WHEN substr(error_code,3,3) ='014' and error_code <> '00014' then 1 else 0 end) DYNAMIC_014, "
+            + "    SUM(CASE WHEN error_code ='SI569' then 1 else 0 end) SI569, "
+            + "    SUM(CASE WHEN error_code ='SI570' then 1 else 0 end) SI570, "
+            + "    SUM(CASE WHEN error_code ='SI052' then 1 else 0 end) SI052, "
+            + "    SUM(CASE WHEN error_code ='SI005' then 1 else 0 end) SI005, "
+            + "    SUM(CASE WHEN error_code ='SI077' then 1 else 0 end) SI077, "
+            + "    SUM(CASE WHEN error_code ='SI003' then 1 else 0 end) SI003, "
+            + "    SUM(CASE WHEN error_code ='SI017' then 1 else 0 end) SI017, "
+            + "    SUM(CASE WHEN error_code ='SI015' then 1 else 0 end) SI015, "
+            + "    SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI569','SI570','SI052','SI005','SI077','SI003','SI017','SI015')) and error_code <> '00014' THEN 1 ELSE 0 END) TD, "
+            + "    ROUND((SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI569','SI570','SI052','SI005','SI077','SI003','SI017','SI015')) and error_code <> '00014' THEN 1 ELSE 0 END)*100)/COUNT(1),2) TD_PERCENT, "
+            + "    SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','051','014','015') OR error_code IN ('00014','70007')) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END) BD, "
+            + "    ROUND((SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','051','014','015') OR error_code IN ('00014','70007')) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END)*100)/COUNT(1),2) BD_PERCENT "
+            + "  FROM eisapp.api_log PARTITION (" + partition + ") "
+            + "  WHERE " + timeFilter
+            + "    AND api_name = 'thirdPartyGenericRouting_expDS' "
+            + "    AND sup_url = 'BSE' "
+            + "    AND ORIGINAL_URN = 'IPO_ORDER' "
+            + "    AND transaction_urn = 'IPO_SERVICE' "
+            + "  GROUP BY TRIM(exp_ip), TRIM(api_name) "
+            + ") "
+            + "SELECT "
+            + "  c.API_NAME API_NAME, c.IP EXP_IP, "
+            + "  NVL(a.TOTAL_HITS,0) TOTAL_HITS, NVL(a.SUCCESS,0) SUCCESS, "
+            + "  NVL(a.SI001,0) SI001, NVL(a.DYNAMIC_002,0) DYNAMIC_002, "
+            + "  NVL(a.SI007,0) SI007, NVL(a.SI051,0) SI051, NVL(a.DYNAMIC_014,0) DYNAMIC_014, "
+            + "  NVL(a.SI569,0) SI569, NVL(a.SI570,0) SI570, NVL(a.SI052,0) SI052, "
+            + "  NVL(a.SI005,0) SI005, NVL(a.SI077,0) SI077, NVL(a.SI003,0) SI003, "
+            + "  NVL(a.SI017,0) SI017, NVL(a.SI015,0) SI015, "
+            + "  NVL(a.TD,0) TD, NVL(a.TD_PERCENT,0) TD_PERCENT, "
+            + "  NVL(a.BD,0) BD, NVL(a.BD_PERCENT,0) BD_PERCENT "
+            + "FROM COMBOS c LEFT JOIN AGG a ON c.IP = a.EXP_IP AND c.API_NAME = a.API_NAME "
+            + "ORDER BY c.API_NAME, c.IP";
+    }
+
+    // ============================================================
+    // RUN ALL 3 IN PARALLEL
+    // ============================================================
+    public static Map<String, QueryResult> runAll() {
+        return runAll(false, null, null);
+    }
+
+    public static Map<String, QueryResult> runAll(boolean useCustom, String startTime, String endTime) {
+        Map<String, QueryResult> results = new LinkedHashMap<>();
+        ExecutorService pool = Executors.newFixedThreadPool(3);
+        try {
+            Future<QueryResult> f1 = pool.submit(new QueryTask("BACKEND_LOG",
+                    getBackendQuery(useCustom, startTime, endTime)));
+            Future<QueryResult> f2 = pool.submit(new QueryTask("API_NSE_INB",
+                    getApiNseInbQuery(useCustom, startTime, endTime)));
+            Future<QueryResult> f3 = pool.submit(new QueryTask("API_BSE",
+                    getApiBseQuery(useCustom, startTime, endTime)));
+
+            results.put("BACKEND_LOG", safeGet(f1));
+            results.put("API_NSE_INB", safeGet(f2));
+            results.put("API_BSE", safeGet(f3));
+        } catch (Exception e) {
+            QueryResult err = new QueryResult();
+            err.success = false;
+            err.message = "Pool error: " + e.getMessage();
+            results.put("ERROR", err);
+        } finally {
+            pool.shutdown();
+            try { pool.awaitTermination(3, TimeUnit.SECONDS); } catch (InterruptedException ignored) {}
+        }
+        return results;
+    }
+
+    private static QueryResult safeGet(Future<QueryResult> f) {
+        try { return f.get(30, TimeUnit.MINUTES); }
+        catch (Exception e) {
+            QueryResult r = new QueryResult();
+            r.success = false;
+            r.message = "Timeout/Error: " + e.getMessage();
+            return r;
+        }
+    }
+
+    private static class QueryTask implements Callable<QueryResult> {
+        private final String name;
+        private final String sql;
+        QueryTask(String name, String sql) { this.name = name; this.sql = sql; }
+
+        @Override
+        public QueryResult call() {
+            QueryResult r = new QueryResult();
+            r.queryName = name;
+            long t0 = System.currentTimeMillis();
+            Connection conn = null;
+            Statement stmt = null;
+            ResultSet rs = null;
+            try {
+                conn = DBUtilityAuto.getIIBDBConnection();
+                if (conn == null) {
+                    r.success = false;
+                    r.message = "Could not obtain IIB connection.";
+                    return r;
+                }
+                stmt = conn.createStatement();
+                stmt.setFetchSize(500);
+                rs = stmt.executeQuery(sql);
+
+                ResultSetMetaData md = rs.getMetaData();
+                int colCount = md.getColumnCount();
+                for (int i = 1; i <= colCount; i++) r.columns.add(md.getColumnLabel(i));
+
+                while (rs.next()) {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    for (int i = 1; i <= colCount; i++) {
+                        row.put(md.getColumnLabel(i), rs.getObject(i));
+                    }
+                    r.rows.add(row);
+                }
+                r.success = true;
+                r.message = r.rows.size() + " rows";
+            } catch (Exception e) {
+                r.success = false;
+                r.message = "Error: " + e.getMessage();
+            } finally {
+                if (rs != null) try { rs.close(); } catch (Exception ignored) {}
+                if (stmt != null) try { stmt.close(); } catch (Exception ignored) {}
+                if (conn != null) try { conn.close(); } catch (Exception ignored) {}
+                r.executionTimeMs = System.currentTimeMillis() - t0;
+            }
+            return r;
+        }
+    }
+
+    public static String esc(String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\").replace("\"", "\\\"")
+                .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
+    }
+
+    public static String toJson(QueryResult qr) {
+        StringBuilder sb = new StringBuilder("{");
+        sb.append("\"name\":\"").append(esc(qr.queryName)).append("\",");
+        sb.append("\"success\":").append(qr.success).append(",");
+        sb.append("\"message\":\"").append(esc(qr.message)).append("\",");
+        sb.append("\"executionTimeMs\":").append(qr.executionTimeMs).append(",");
+        sb.append("\"columns\":[");
+        for (int i = 0; i < qr.columns.size(); i++) {
+            if (i > 0) sb.append(",");
+            sb.append("\"").append(esc(qr.columns.get(i))).append("\"");
+        }
+        sb.append("],\"rows\":[");
+        for (int r = 0; r < qr.rows.size(); r++) {
+            if (r > 0) sb.append(",");
+            sb.append("{");
+            Map<String, Object> row = qr.rows.get(r);
+            int c = 0;
+            for (String col : qr.columns) {
+                if (c++ > 0) sb.append(",");
+                Object v = row.get(col);
+                sb.append("\"").append(esc(col)).append("\":");
+                if (v == null) sb.append("null");
+                else sb.append("\"").append(esc(v.toString())).append("\"");
+            }
+            sb.append("}");
+        }
+        sb.append("]}");
+        return sb.toString();
+    }
+}
