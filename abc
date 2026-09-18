@@ -17,24 +17,6 @@ gen6_data AS (
       AND UPPER(lb_url) LIKE '%GEN6%'
       AND UPPER(lb_url) NOT LIKE '%GEN5%'
 ),
-gen6_best AS (
-    SELECT 
-        g5.ip, g5.type, g5.route_url,
-        g5.gen5_lb_url, g5.gen5_path,
-        g6.gen6_lb_url,
-        ROW_NUMBER() OVER (
-            PARTITION BY g5.ip, g5.type, g5.route_url, g5.gen5_lb_url
-            ORDER BY 
-                CASE WHEN g6.gen6_path = g5.gen5_path THEN 1 ELSE 2 END,
-                g6.gen6_lb_url
-        ) AS rn
-    FROM gen5_data g5
-    LEFT JOIN gen6_data g6
-      ON g5.ip = g6.ip
-     AND g5.type = g6.type
-     AND g5.route_url = g6.route_url
-     AND g5.gen5_path = g6.gen6_path   -- ✅ path match
-),
 -- SIAPP3 Gen5
 gen5_siapp3 AS (
     SELECT 
@@ -62,13 +44,12 @@ gen6_siapp3 AS (
 -- 1. Gen5 (non-siapp3) + Gen6 (path match)
 SELECT 
     g5.ip, g5.type, g5.gen5_lb_url, g6.gen6_lb_url, g5.route_url, SYSDATE
-FROM gen5_best g5
+FROM gen5_data g5
 LEFT JOIN gen6_data g6
   ON g5.ip = g6.ip
  AND g5.type = g6.type
  AND g5.route_url = g6.route_url
  AND g5.gen5_path = g6.gen6_path
- AND g5.rn = 1
 
 UNION ALL
 
