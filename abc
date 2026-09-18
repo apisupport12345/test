@@ -1,17 +1,117 @@
-IP	TYPE	GEN5_LB_URL	GEN6_LB_URL	ROUTE_URL
-115	MZ	https://siapp3.sbi.co.in:7443/gen5/gateway/inbAccountStatement		http://eispri.sbi.co.in:3001/inbAccountStatement/accounts
-115	MZ	https://siapp3.sbi.co.in:7443/gen5/gateway/accounts/modeOfOperation_th/enquiry		http://eispri.sbi.co.in:3001/modeOfOperation_th/enquiry/accounts
-115	MZ	https://siapp3.sbi.co.in:7443/gen5/gateway/customerNormalDetails_th/enquiry		http://eispri.sbi.co.in:3002/customerNormalDetails_th/enquiry/customers
-115	MZ	https://siapp3.sbi.co.in:7443/gen5/gateway/payments/fee/enquiry		http://eispri.sbi.co.in:3003/fee/enquiry/payments
-115	MZ	https://siapp3.sbi.co.in:7443/gen5/gateway/payments/fee_th/enquiry	https://siapp3.sbi.co.in:7443/gen6/gateway/payments/fee_th/enquiry	http://eispri.sbi.co.in:3003/fee_th/enquiry/payments
-115	MZ	https://siapp3.sbi.co.in:7443/gen5/gateway/fundTransfer/CtoC	https://siapp3.sbi.co.in:7443/gen6/gateway/fundTransfer/CtoC	http://eispri.sbi.co.in:3003/fundTransfer/CtoC/payments
-115	MZ	https://siapp3.sbi.co.in:7443/gen5/gateway/payments/glCash/posting		http://eispri.sbi.co.in:3003/glCash/posting/payments
-115	MZ	https://siapp3.sbi.co.in:7443/gen5/gateway/passbook_th/negativeAck		http://eispri.sbi.co.in:3010/passbook_th/negativeAck/accounts
-115	MZ	https://siapp3.sbi.co.in:7443/gen5/gateway/passbook_th/printTxn		http://eispri.sbi.co.in:3010/passbook_th/printTxn/accounts
-115	MZ	https://siapp3.sbi.co.in:7443/gen5/gateway/accounts/passbook_th/rePrintTxn	https://siapp3.sbi.co.in:7443/gen6/gateway/accounts/passbook_th/rePrintTxn	http://eispri.sbi.co.in:3010/passbook_th/rePrintTxn/accounts
+WITH gen5_base AS (
+    SELECT 
+        ip, type, route_url, 
+        lb_url AS gen5_lb_url,
+        REPLACE(REPLACE(REPLACE(
+            CASE 
+                WHEN INSTR(lb_url, '/gateway/') > 0 
+                    THEN SUBSTR(lb_url, INSTR(lb_url, '/gateway/') + 9)
+                WHEN INSTR(lb_url, '/getway/') > 0 
+                    THEN SUBSTR(lb_url, INSTR(lb_url, '/getway/') + 8)
+                ELSE NULL
+            END, CHR(10), ''), CHR(13), ''), CHR(9), '') AS gen5_path_op
+    FROM daily_dpg_url_data
+    WHERE UPPER(lb_url) LIKE '%GEN5%'
+      AND (UPPER(lb_url) LIKE '%GATEWAY%' OR UPPER(lb_url) LIKE '%GETWAY%')
+      AND UPPER(lb_url) NOT LIKE '%SIAPP3%'
+),
+gen6_base AS (
+    SELECT 
+        ip, type, route_url, 
+        lb_url AS gen6_lb_url,
+        REPLACE(REPLACE(REPLACE(
+            CASE 
+                WHEN INSTR(lb_url, '/gateway/') > 0 
+                    THEN SUBSTR(lb_url, INSTR(lb_url, '/gateway/') + 9)
+                WHEN INSTR(lb_url, '/getway/') > 0 
+                    THEN SUBSTR(lb_url, INSTR(lb_url, '/getway/') + 8)
+                ELSE NULL
+            END, CHR(10), ''), CHR(13), ''), CHR(9), '') AS gen6_path_op
+    FROM daily_dpg_url_data
+    WHERE UPPER(lb_url) LIKE '%GEN6%'
+      AND UPPER(lb_url) NOT LIKE '%SIAPP3%'
+),
+gen6_best AS (
+    SELECT 
+        g5.ip, g5.type, g5.route_url, g5.gen5_lb_url, g5.gen5_path_op,
+        g6.gen6_lb_url,
+        ROW_NUMBER() OVER (
+            PARTITION BY g5.ip, g5.type, g5.route_url, g5.gen5_lb_url
+            ORDER BY g6.gen6_lb_url
+        ) AS rn
+    FROM gen5_base g5
+    LEFT JOIN gen6_base g6
+      ON g5.ip = g6.ip AND g5.type = g6.type AND g5.route_url = g6.route_url
+     AND g5.gen5_path_op = g6.gen6_path_op
+),
+gen6_siapp3 AS (
+    SELECT 
+        ip, type, route_url, 
+        lb_url AS gen6_lb_url,
+        REPLACE(REPLACE(REPLACE(
+            CASE 
+                WHEN INSTR(lb_url, '/gateway/') > 0 
+                    THEN SUBSTR(lb_url, INSTR(lb_url, '/gateway/') + 9)
+                WHEN INSTR(lb_url, '/getway/') > 0 
+                    THEN SUBSTR(lb_url, INSTR(lb_url, '/getway/') + 8)
+                ELSE NULL
+            END, CHR(10), ''), CHR(13), ''), CHR(9), '') AS gen6_path_op,
+        ROW_NUMBER() OVER (PARTITION BY ip, type, route_url ORDER BY lb_url) AS rn
+    FROM daily_dpg_url_data
+    WHERE UPPER(lb_url) LIKE '%SIAPP3%'
+      AND UPPER(lb_url) LIKE '%GEN6%'
+),
+gen5_siapp3 AS (
+    SELECT 
+        ip, type, route_url, 
+        lb_url AS gen5_lb_url,
+        REPLACE(REPLACE(REPLACE(
+            CASE 
+                WHEN INSTR(lb_url, '/gateway/') > 0 
+                    THEN SUBSTR(lb_url, INSTR(lb_url, '/gateway/') + 9)
+                WHEN INSTR(lb_url, '/getway/') > 0 
+                    THEN SUBSTR(lb_url, INSTR(lb_url, '/getway/') + 8)
+                ELSE NULL
+            END, CHR(10), ''), CHR(13), ''), CHR(9), '') AS gen5_path_op,
+        ROW_NUMBER() OVER (PARTITION BY ip, type, route_url ORDER BY lb_url) AS rn
+    FROM daily_dpg_url_data
+    WHERE UPPER(lb_url) LIKE '%SIAPP3%'
+      AND UPPER(lb_url) LIKE '%GEN5%'
+)
+SELECT 
+    g5.ip, g5.type, g5.gen5_lb_url, g6.gen6_lb_url, g5.route_url, SYSDATE
+FROM gen5_base g5
+LEFT JOIN gen6_best g6
+  ON g5.ip = g6.ip AND g5.type = g6.type AND g5.route_url = g6.route_url
+ AND g5.gen5_lb_url = g6.gen5_lb_url AND g6.rn = 1
 
+UNION ALL
 
------------------------------------------------------------------
+SELECT 
+    g5.ip, g5.type, g5.gen5_lb_url, g6.gen6_lb_url, g5.route_url, SYSDATE
+FROM gen5_siapp3 g5
+LEFT JOIN gen6_siapp3 g6
+  ON g5.ip = g6.ip AND g5.type = g6.type AND g5.route_url = g6.route_url
+ AND g5.gen5_path_op = g6.gen6_path_op AND g6.rn = 1
+WHERE g5.rn = 1
 
-GEN5_COUNT	GEN6_COUNT	GEN5_SIAPP3_COUNT	GEN6_SIAPP3_COUNT
-6776	3415	258	384
+UNION ALL
+
+SELECT NULL, NULL, NULL, g6.gen6_lb_url, g6.route_url, SYSDATE
+FROM gen6_siapp3 g6
+WHERE NOT EXISTS (
+    SELECT 1 FROM gen5_siapp3 g5
+    WHERE g5.ip = g6.ip AND g5.type = g6.type AND g5.route_url = g6.route_url
+      AND g5.gen5_path_op = g6.gen6_path_op
+)
+AND g6.rn = 1
+
+UNION ALL
+
+SELECT NULL, NULL, NULL, g6.gen6_lb_url, g6.route_url, SYSDATE
+FROM gen6_base g6
+WHERE NOT EXISTS (
+    SELECT 1 FROM gen5_base g5
+    WHERE g5.ip = g6.ip AND g5.type = g6.type AND g5.route_url = g6.route_url
+      AND g5.gen5_path_op = g6.gen6_path_op
+);
