@@ -1,37 +1,7 @@
-WITH base AS (
-    SELECT 
-        ip, type, route_url,
-        lb_url,
-        gen6_lb_url,
-        ROW_NUMBER() OVER (
-            PARTITION BY ip, type, route_url, lb_url 
-            ORDER BY gen6_lb_url NULLS LAST
-        ) AS rn
-    FROM daily_dpg_url_data
-    WHERE lb_url IS NOT NULL
-),
--- SIAPP3 Gen5 rows (sirf mapping ke liye)
-siapp3_gen5_map AS (
-    SELECT 
-        route_url,
-        lb_url AS gen5_lb_url,
-        REGEXP_SUBSTR(lb_url, '(gen5)/(gateway|getway)/(.*)$', 1, 1, 'i', 3) AS path_key
-    FROM daily_dpg_url_data
-    WHERE lb_url IS NOT NULL
-      AND UPPER(lb_url) LIKE '%SIAPP3%'
-      AND UPPER(lb_url) LIKE '%GEN5%'
-)
-SELECT 
-    b.ip, b.type,
-    COALESCE(b.lb_url, sg5.gen5_lb_url) AS gen5_lb_url,
-    b.gen6_lb_url,
-    b.route_url,
-    SYSDATE
-FROM base b
-LEFT JOIN siapp3_gen5_map sg5
-  ON b.route_url = sg5.route_url
- AND b.lb_url IS NULL
- AND b.gen6_lb_url LIKE '%SIAPP3%'
- AND b.gen6_lb_url LIKE '%GEN6%'
- AND REGEXP_SUBSTR(b.gen6_lb_url, '(gen6)/(gateway|getway)/(.*)$', 1, 1, 'i', 3) = sg5.path_key
-WHERE b.rn = 1;
+Name        Null? Type          
+----------- ----- ------------- 
+IP                NUMBER(3)     
+TYPE              VARCHAR2(100) 
+LB_URL            VARCHAR2(500) 
+ROUTE_URL         VARCHAR2(500) 
+INSERT_DATE       TIMESTAMP(6)  
