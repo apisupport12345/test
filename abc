@@ -6,8 +6,9 @@ WITH gen5_base AS (
         lb_url AS gen5_lb_url,
         REGEXP_SUBSTR(lb_url, '(gen5|gen6)/(gateway|getway)/(.*)$', 1, 1, 'i', 3) AS gen5_path_op
     FROM daily_dpg_url_data
-    WHERE UPPER(lb_url) LIKE '%GEN5%'
-      AND (UPPER(lb_url) LIKE '%GATEWAY%' OR UPPER(lb_url) LIKE '%GETWAY%')
+    WHERE (UPPER(lb_url) LIKE 'GEN5/GATEWAY%'
+        OR UPPER(lb_url) LIKE 'GEN5%GATEWAY%'
+        OR UPPER(lb_url) LIKE '%GEN5/GETWAY%')
       AND UPPER(lb_url) NOT LIKE '%SIAPP3%'
 ),
 gen6_base AS (
@@ -18,22 +19,35 @@ gen6_base AS (
         lb_url AS gen6_lb_url,
         REGEXP_SUBSTR(lb_url, '(gen5|gen6)/(gateway|getway)/(.*)$', 1, 1, 'i', 3) AS gen6_path_op
     FROM daily_dpg_url_data
-    WHERE UPPER(lb_url) LIKE '%GEN6%'
-      AND UPPER(lb_url) NOT LIKE '%GEN5%'
+    WHERE UPPER(lb_url) NOT LIKE '%GEN5%'
       AND UPPER(lb_url) NOT LIKE '%SIAPP3%'
 ),
-gen5_siapp3 AS (
+-- Har gen5 row ke liye best gen6 row (path match priority)
+gen6_best AS (
     SELECT 
-        ip, 
-        type, 
-        route_url, 
-        lb_url AS gen5_lb_url,
-        REGEXP_SUBSTR(lb_url, '(gen5|gen6)/(gateway|getway)/(.*)$', 1, 1, 'i', 3) AS gen5_path_op,
-        ROW_NUMBER() OVER (PARTITION BY ip, type, route_url ORDER BY lb_url) AS rn
-    FROM daily_dpg_url_data
-    WHERE UPPER(lb_url) LIKE '%SIAPP3%'
-      AND UPPER(lb_url) LIKE '%GEN5%'
+        g5.ip,
+        g5.type,
+        g5.route_url,
+        g5.gen5_lb_url,
+        g5.gen5_path_op,
+        g6.gen6_lb_url,
+        ROW_NUMBER() OVER (
+            PARTITION BY g5.ip, g5.type, g5.route_url, g5.gen5_lb_url
+            ORDER BY 
+                CASE 
+                    WHEN g6.gen6_path_op = g5.gen5_path_op THEN 1 
+                    ELSE 2 
+                END,
+                g6.gen6_lb_url
+        ) AS rn
+    FROM gen5_base g5
+    LEFT JOIN gen6_base g6
+      ON g5.ip = g6.ip
+     AND g5.type = g6.type
+     AND g5.route_url = g6.route_url
+     AND g5.gen5_path_op = g6.gen6_path_op   -- sirf path match wale join honge
 ),
+-- Siapp3 wali gen6 rows
 gen6_siapp3 AS (
     SELECT 
         ip, 
@@ -45,8 +59,21 @@ gen6_siapp3 AS (
     FROM daily_dpg_url_data
     WHERE UPPER(lb_url) LIKE '%SIAPP3%'
       AND UPPER(lb_url) LIKE '%GEN6%'
+),
+-- Siapp3 wali gen5 rows
+gen5_siapp3 AS (
+    SELECT 
+        ip, 
+        type, 
+        route_url, 
+        lb_url AS gen5_lb_url,
+        REGEXP_SUBSTR(lb_url, '(gen5|gen6)/(gateway|getway)/(.*)$', 1, 1, 'i', 3) AS gen5_path_op,
+        ROW_NUMBER() OVER (PARTITION BY ip, type, route_url ORDER BY lb_url) AS rn
+    FROM daily_dpg_url_data
+    WHERE UPPER(lb_url) LIKE '%SIAPP3%'
+      AND UPPER(lb_url) LIKE '%GEN5%'
 )
--- Gen5 non-siapp3 with best gen6 match
+-- Main output: Gen5 (non-siapp3) with best gen6 match
 SELECT 
     g5.ip, 
     g5.type, 
@@ -55,11 +82,12 @@ SELECT
     g5.route_url,
     SYSDATE
 FROM gen5_base g5
-LEFT JOIN gen6_base g6
+LEFT JOIN gen6_best g6
   ON g5.ip = g6.ip
  AND g5.type = g6.type
  AND g5.route_url = g6.route_url
- AND g5.gen5_path_op = g6.gen6_path_op
+ AND g5.gen5_lb_url = g6.gen5_lb_url
+ AND g6.rn = 1
 
 UNION ALL
 
