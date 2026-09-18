@@ -1,6 +1,2 @@
-SELECT 
-    (SELECT COUNT(*) FROM daily_dpg_url_data WHERE lb_url LIKE '%gen5/gateway/EKYC%' AND ip IS NULL) AS gen5_null_ip,
-    (SELECT COUNT(*) FROM daily_dpg_url_data WHERE lb_url LIKE '%gen6/gateway/EKYC%' AND ip IS NULL) AS gen6_null_ip,
-    (SELECT COUNT(*) FROM daily_dpg_url_data WHERE lb_url LIKE '%gen5/gateway/EKYC%' AND ip IS NOT NULL) AS gen5_ip,
-    (SELECT COUNT(*) FROM daily_dpg_url_data WHERE lb_url LIKE '%gen6/gateway/EKYC%' AND ip IS NOT NULL) AS gen6_ip
-FROM dual;
+GEN5_NULL_IP	GEN6_NULL_IP	GEN5_IP	GEN6_IP
+0	0	42	54
