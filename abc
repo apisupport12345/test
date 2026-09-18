@@ -1640,14 +1640,14 @@
 
 <script>
 /* ============================================================
- * IPO MONITORING DASHBOARD — v14
- * - Manual time range with auto-reset back to AUTO after 5 min
- * - Clear all old data on every refresh
- * - Console logs on Java side
+ * IPO MONITORING DASHBOARD — v15
+ * - Manual timer starts ONLY after output is rendered
+ * - Auto-reset back to AUTO mode after 5 min (post-output)
+ * - Clears all old data on every refresh
  * ============================================================ */
 
 var REFRESH_INTERVAL_SEC = 300;     // auto refresh every 5 min
-var MANUAL_RESET_AFTER_SEC = 300;   // manual view auto-resets after 5 min
+var MANUAL_RESET_AFTER_SEC = 300;   // manual view auto-reset after 5 min
 var secondsLeft = 0;
 var countdownTimer = null;
 var isRefreshing = false;
@@ -1701,23 +1701,19 @@ function toggleTheme() {
 }
 
 /* ============================================================
- * CLEAR ALL OLD DATA — called at the start of every fetch
+ * CLEAR ALL OLD DATA — called at start of every fetch
  * ============================================================ */
 function clearAllData() {
-    // Panels -> loader
     showState('apiNBody', 'Loading NSE/INB data...');
     showState('apiBBody', 'Loading BSE data...');
     showState('backendBody', 'Loading backend data...');
 
-    // Panel badges
     setText('apiNBadge', '—');
     setText('apiBBadge', '—');
     setText('backendBadge', '—');
 
-    // Clear panel rows cache (so no stale modal opens)
     __panelRows = {};
 
-    // KPI values
     ['kpiApiNHitsVal','kpiApiNTDVal','kpiApiBHitsVal','kpiApiBTDVal',
      'kpiBackendHitsVal','kpiBackendTDVal'].forEach(function(id) {
         var el = document.getElementById(id);
@@ -1728,13 +1724,11 @@ function clearAllData() {
         }
     });
 
-    // KPI subs
     ['kpiApiNHitsSub','kpiApiNTDSub','kpiApiBHitsSub','kpiApiBTDSub',
      'kpiBackendHitsSub','kpiBackendTDSub'].forEach(function(id) {
         setText(id, '—');
     });
 
-    // KPI wrapper accent colors reset
     ['kpiApiNHits','kpiApiNTD','kpiApiBHits','kpiApiBTD',
      'kpiBackendHits','kpiBackendTD'].forEach(function(id) {
         var el = document.getElementById(id);
@@ -1744,16 +1738,13 @@ function clearAllData() {
         }
     });
 
-    // Header stats
     setText('hdrHealthy', '0');
     setText('hdrWarn', '0');
     setText('hdrCrit', '0');
     setText('hdrZero', '0');
 
-    // Info summary
     setText('infoTotalCombos', '—');
 
-    // Short lists -> show loading placeholder
     ['tdList','bdList','zeroList'].forEach(function(id) {
         var el = document.getElementById(id);
         if (el) el.innerHTML = '<div class="short-empty loading">Loading…</div>';
@@ -1795,7 +1786,9 @@ function renderCountdown() {
 
     if (autoPausedByManual) {
         pill.classList.add('manual');
-        if (manualSecondsLeft > 0) {
+        if (isRefreshing && manualSecondsLeft <= 0) {
+            el.textContent = 'Waiting…';
+        } else if (manualSecondsLeft > 0) {
             var mm = Math.floor(manualSecondsLeft / 60);
             var ss = manualSecondsLeft % 60;
             el.textContent = 'Auto in ' + (mm < 10 ? '0' : '') + mm + ':' + (ss < 10 ? '0' : '') + ss;
@@ -1919,17 +1912,29 @@ function runManual() {
         return;
     }
 
-    // Clear any previous manual timeout / countdown
+    // Clear any previous manual timer (in case user runs again)
     if (manualTimeoutId) { clearTimeout(manualTimeoutId); manualTimeoutId = null; }
     if (manualCountdownTimer) { clearInterval(manualCountdownTimer); manualCountdownTimer = null; }
+    manualSecondsLeft = 0;
 
     autoPausedByManual = true;
     document.getElementById('timeControls').classList.add('manual-active');
     stopCountdown();
     renderCountdown();
 
-    // Start countdown display for manual auto-reset
+    // Fetch — timer starts AFTER response in doFetch()
+    doFetch('manual', s, e);
+}
+
+/* ============ START MANUAL AUTO-RESET TIMER ============ */
+/* Called ONLY after manual output is successfully rendered */
+function startManualAutoResetTimer() {
+    if (manualTimeoutId) { clearTimeout(manualTimeoutId); manualTimeoutId = null; }
+    if (manualCountdownTimer) { clearInterval(manualCountdownTimer); manualCountdownTimer = null; }
+
     manualSecondsLeft = MANUAL_RESET_AFTER_SEC;
+    renderCountdown();
+
     manualCountdownTimer = setInterval(function() {
         manualSecondsLeft--;
         if (manualSecondsLeft <= 0) {
@@ -1939,19 +1944,16 @@ function runManual() {
         renderCountdown();
     }, 1000);
 
-    // Do the fetch
-    doFetch('manual', s, e);
-
-    // Schedule auto-reset back to AUTO mode after 5 min
     manualTimeoutId = setTimeout(function() {
         console.log('[IPO] Manual view expired — switching back to AUTO');
         toast('Manual view expired — back to Auto mode', false, false);
         resetToAuto();
     }, MANUAL_RESET_AFTER_SEC * 1000);
+
+    console.log('[IPO] Manual auto-reset timer started — will reset in ' + MANUAL_RESET_AFTER_SEC + 's');
 }
 
 function resetToAuto() {
-    // Clear manual timers
     if (manualTimeoutId) { clearTimeout(manualTimeoutId); manualTimeoutId = null; }
     if (manualCountdownTimer) { clearInterval(manualCountdownTimer); manualCountdownTimer = null; }
     manualSecondsLeft = 0;
@@ -1961,10 +1963,7 @@ function resetToAuto() {
     setModeDisplay('auto');
     document.getElementById('timeControls').classList.remove('manual-active');
 
-    // Update info status
     setInfoStatus('Switching back to Auto…', true);
-
-    // Fetch fresh auto data
     refreshNow();
 }
 
@@ -1973,7 +1972,6 @@ function doFetch(mode, startTime, endTime) {
     isRefreshing = true;
     setInfoStatus(mode === 'manual' ? 'Running manual query...' : 'Refreshing...', true);
 
-    // 🧹 CLEAR ALL OLD DATA before fetching
     clearAllData();
 
     var btn = document.getElementById('refreshBtn');
@@ -2019,6 +2017,10 @@ function doFetch(mode, startTime, endTime) {
             if (lastRunMode === 'manual') {
                 toast('Manual run complete · ' + lastRunStart + ' → ' + lastRunEnd, false, true);
                 setInfoStatus('Manual · ' + lastRunStart + ' → ' + lastRunEnd, false);
+
+                // ✅ Timer starts ONLY here — after output is rendered
+                startManualAutoResetTimer();
+
             } else {
                 toast('Data refreshed (auto 5-min window)', false, false);
                 setInfoStatus('Live · Auto 5-min', false);
@@ -2029,7 +2031,6 @@ function doFetch(mode, startTime, endTime) {
             console.error(e);
         }
 
-        // Only restart auto countdown if we're NOT in manual mode
         if (!autoPausedByManual && lastRunMode === 'auto') {
             startCountdown();
         }
