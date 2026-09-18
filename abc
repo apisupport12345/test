@@ -1,7 +1,55 @@
-IP	TYPE	GEN5_LB_URL	GEN6_LB_URL	ROUTE_URL
-115	MZ	gen5/gateway/EKYC/AuthenticatEkycCertificate	gen6/gateway/EKYC/AuthenticatEkycCertificate	http://eispri.sbi.co.in:3038/EKYC/AuthenticatEkycCertificate/misc
-116	MZ	gen5/gateway/EKYC/AuthenticatEkycCertificate	gen6/gateway/EKYC/AuthenticatEkycCertificate	http://eispri.sbi.co.in:3038/EKYC/AuthenticatEkycCertificate/misc
-120	MZ	gen5/gateway/EKYC/AuthenticatEkycCertificate	gen6/gateway/EKYC/AuthenticatEkycCertificate	http://eispri.sbi.co.in:3038/EKYC/AuthenticatEkycCertificate/misc
-121	MZ	gen5/gateway/EKYC/AuthenticatEkycCertificate	gen6/gateway/EKYC/AuthenticatEkycCertificate	http://eispri.sbi.co.in:3038/EKYC/AuthenticatEkycCertificate/misc
-122	MZ	gen5/gateway/EKYC/AuthenticatEkycCertificate	gen6/gateway/EKYC/AuthenticatEkycCertificate	http://eispri.sbi.co.in:3038/EKYC/AuthenticatEkycCertificate/misc
-123	MZ	gen5/gateway/EKYC/AuthenticatEkycCertificate	gen6/gateway/EKYC/AuthenticatEkycCertificate	http://eispri.sbi.co.in:3038/EKYC/AuthenticatEkycCertificate/misc
+WITH gen6_siapp3 AS (
+    SELECT 
+        ip, type, route_url, 
+        lb_url AS gen6_lb_url,
+        REPLACE(REPLACE(REPLACE(
+            CASE 
+                WHEN INSTR(lb_url, '/gateway/') > 0 
+                    THEN SUBSTR(lb_url, INSTR(lb_url, '/gateway/') + 9)
+                WHEN INSTR(lb_url, '/getway/') > 0 
+                    THEN SUBSTR(lb_url, INSTR(lb_url, '/getway/') + 8)
+                ELSE NULL
+            END, CHR(10), ''), CHR(13), ''), CHR(9), '') AS gen6_path_op,
+        ROW_NUMBER() OVER (PARTITION BY ip, type, route_url ORDER BY lb_url) AS rn
+    FROM daily_dpg_url_data
+    WHERE UPPER(lb_url) LIKE '%SIAPP3%'
+      AND UPPER(lb_url) LIKE '%GEN6%'
+),
+gen5_siapp3 AS (
+    SELECT 
+        ip, type, route_url, 
+        lb_url AS gen5_lb_url,
+        REPLACE(REPLACE(REPLACE(
+            CASE 
+                WHEN INSTR(lb_url, '/gateway/') > 0 
+                    THEN SUBSTR(lb_url, INSTR(lb_url, '/gateway/') + 9)
+                WHEN INSTR(lb_url, '/getway/') > 0 
+                    THEN SUBSTR(lb_url, INSTR(lb_url, '/getway/') + 8)
+                ELSE NULL
+            END, CHR(10), ''), CHR(13), ''), CHR(9), '') AS gen5_path_op,
+        ROW_NUMBER() OVER (PARTITION BY ip, type, route_url ORDER BY lb_url) AS rn
+    FROM daily_dpg_url_data
+    WHERE UPPER(lb_url) LIKE '%SIAPP3%'
+      AND UPPER(lb_url) LIKE '%GEN5%'
+)
+SELECT 
+    g5.ip, g5.type, g5.gen5_lb_url, g6.gen6_lb_url, g5.route_url
+FROM gen5_siapp3 g5
+LEFT JOIN gen6_siapp3 g6
+  ON g5.ip = g6.ip
+ AND g5.type = g6.type
+ AND g5.route_url = g6.route_url
+ AND g5.gen5_path_op = g6.gen6_path_op
+ AND g6.rn = 1
+WHERE g5.rn = 1
+FETCH FIRST 10 ROWS ONLY;
+
+
+------------------------------
+
+SELECT 
+    (SELECT COUNT(*) FROM daily_dpg_url_data WHERE UPPER(lb_url) LIKE '%GEN5%' AND UPPER(lb_url) LIKE '%GATEWAY%' AND UPPER(lb_url) NOT LIKE '%SIAPP3%') AS gen5_count,
+    (SELECT COUNT(*) FROM daily_dpg_url_data WHERE UPPER(lb_url) LIKE '%GEN6%' AND UPPER(lb_url) NOT LIKE '%SIAPP3%') AS gen6_count,
+    (SELECT COUNT(*) FROM daily_dpg_url_data WHERE UPPER(lb_url) LIKE '%SIAPP3%' AND UPPER(lb_url) LIKE '%GEN5%') AS gen5_siapp3_count,
+    (SELECT COUNT(*) FROM daily_dpg_url_data WHERE UPPER(lb_url) LIKE '%SIAPP3%' AND UPPER(lb_url) LIKE '%GEN6%') AS gen6_siapp3_count
+FROM dual;
