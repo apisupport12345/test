@@ -1,492 +1,2452 @@
-package com.action;
+<%@ page language="java" contentType="text/html; charset=UTF-8" pageEncoding="UTF-8" isELIgnored="true"%>
+<%@ page import="com.action.IPOMonitorService" %>
+<%@ page import="com.action.IPOMonitorService.QueryResult" %>
+<%@ page import="java.util.*" %>
+<%
+    String ajax = request.getParameter("ajax");
+    if ("fetch".equals(ajax)) {
+        String mode      = request.getParameter("mode");       // "auto" | "manual"
+        String startTime = request.getParameter("startTime");   // "yyyy-MM-dd HH:mm:ss"
+        String endTime   = request.getParameter("endTime");
 
-import java.sql.Connection;
-import java.sql.DatabaseMetaData;
-import java.sql.ResultSet;
-import java.sql.ResultSetMetaData;
-import java.sql.Statement;
-import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Calendar;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
+        boolean useCustom = "manual".equalsIgnoreCase(mode)
+                         && startTime != null && !startTime.trim().isEmpty()
+                         && endTime   != null && !endTime.trim().isEmpty();
 
-import com.jdbc.DBUtilityAuto;
+        Map<String, QueryResult> results = IPOMonitorService.runAll(useCustom, startTime, endTime);
 
-public class IPOMonitorService {
-
-    // Default rolling window (used when no custom range is supplied)
-    public static final int WINDOW_MINUTES = 5;
-
-    // Debug flag - set false in production to reduce log noise
-    public static final boolean DEBUG_SQL = true;
-    public static final boolean DEBUG_PARTITIONS = true;
-
-    public static class QueryResult {
-        public boolean success;
-        public String message;
-        public List<String> columns = new ArrayList<>();
-        public List<Map<String, Object>> rows = new ArrayList<>();
-        public long executionTimeMs;
-        public String queryName;
-    }
-
-    // ============================================================
-    // PARTITION NAME BUILDER
-    //   Sep 2026 -> SEP_26
-    //   Oct 2026 -> OCT_26
-    //   Jan 2027 -> JAN_27
-    //
-    // IMPORTANT: Locale.ENGLISH forced so server locale
-    // (Hindi/Chinese/Japanese) does not break month name.
-    // ============================================================
-    public static String getCurrentPartitionName() {
-        Calendar cal = Calendar.getInstance();
-        SimpleDateFormat sdf = new SimpleDateFormat("MMM", Locale.ENGLISH);
-        String month = sdf.format(cal.getTime()).toUpperCase(Locale.ENGLISH);
-        int year = cal.get(Calendar.YEAR);
-        int shortYear = year % 100;
-        String result = month + "_" + String.format(Locale.ENGLISH, "%02d", shortYear);
-
-        if (DEBUG_PARTITIONS) {
-            System.out.println("[IPO-PARTITION] Current calendar date = " + cal.getTime());
-            System.out.println("[IPO-PARTITION] Year = " + year + ", shortYear = " + shortYear);
-            System.out.println("[IPO-PARTITION] Locale = " + Locale.getDefault());
-            System.out.println("[IPO-PARTITION] Generated partition name = [" + result + "]");
-        }
-        return result;
-    }
-
-    // ============================================================
-    // TIME FILTER BUILDER
-    // ============================================================
-    private static String buildTimeFilter(boolean useCustom, String startTime, String endTime) {
-        if (useCustom && startTime != null && !startTime.trim().isEmpty()
-                       && endTime   != null && !endTime.trim().isEmpty()) {
-            return " creation_date_time >= TO_DATE('" + sanitize(startTime)
-                 + "','YYYY-MM-DD HH24:MI:SS') "
-                 + " AND creation_date_time <= TO_DATE('" + sanitize(endTime)
-                 + "','YYYY-MM-DD HH24:MI:SS') ";
-        }
-        return " creation_date_time >= sysdate - interval '" + WINDOW_MINUTES + "' minute ";
-    }
-
-    private static String sanitize(String s) {
-        if (s == null) return "";
-        return s.replace("'", "").replace(";", "").replace("--", "");
-    }
-
-    // ============================================================
-    // LOGGING HELPERS
-    // ============================================================
-    private static void logSql(String name, String sql) {
-        if (!DEBUG_SQL) return;
-        System.out.println("============================================================");
-        System.out.println("[IPO-SQL] QUERY: " + name);
-        System.out.println("------------------------------------------------------------");
-        System.out.println(sql);
-        System.out.println("============================================================");
-    }
-
-    private static void logConnection(String name, Connection conn) {
-        if (!DEBUG_PARTITIONS) return;
-        try {
-            DatabaseMetaData md = conn.getMetaData();
-            System.out.println("[IPO-CONN][" + name + "] URL  = " + md.getURL());
-            System.out.println("[IPO-CONN][" + name + "] User = " + md.getUserName());
-            System.out.println("[IPO-CONN][" + name + "] DB   = "
-                    + md.getDatabaseProductName() + " "
-                    + md.getDatabaseProductVersion());
-        } catch (Exception e) {
-            System.out.println("[IPO-CONN][" + name + "] metadata fail: " + e.getMessage());
-        }
-    }
-
-    private static void logVisiblePartitions(String name, Connection conn) {
-        if (!DEBUG_PARTITIONS) return;
-        Statement st = null;
-        ResultSet rs = null;
-        try {
-            st = conn.createStatement();
-            rs = st.executeQuery(
-                "SELECT table_name, partition_name FROM all_tab_partitions " +
-                "WHERE table_owner='EISAPP' " +
-                "AND table_name IN ('BACKEND_LOG','API_LOG','API_LOG_BSE') " +
-                "ORDER BY table_name, partition_position DESC");
-            System.out.println("[IPO-PARTS][" + name + "] ---- visible partitions ----");
-            int cnt = 0;
-            while (rs.next() && cnt++ < 50) {
-                System.out.println("[IPO-PARTS][" + name + "] "
-                        + rs.getString(1) + " -> [" + rs.getString(2) + "]");
-            }
-            if (cnt == 0) {
-                System.out.println("[IPO-PARTS][" + name + "] (none found)");
-            }
-        } catch (Exception e) {
-            System.out.println("[IPO-PARTS][" + name + "] query fail: " + e.getMessage());
-        } finally {
-            if (rs != null) try { rs.close(); } catch (Exception x) {}
-            if (st != null) try { st.close(); } catch (Exception x) {}
-        }
-    }
-
-    // ============================================================
-    // QUERY 1 — BACKEND LOG  (12 IPs × 3 APIs = 36 combos)
-    // ============================================================
-    public static String getBackendQuery(boolean useCustom, String startTime, String endTime) {
-        String timeFilter = buildTimeFilter(useCustom, startTime, endTime);
-        String partition  = getCurrentPartitionName();
-        return ""
-            + "WITH IP_LIST AS ( "
-            + "  SELECT '10.188.24.167' IP FROM DUAL UNION ALL "
-            + "  SELECT '10.188.24.168' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.24.169' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.24.170' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.24.171' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.24.172' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.25.167' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.25.168' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.25.169' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.25.170' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.25.171' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.25.172' FROM DUAL "
-            + "), "
-            + "API_LIST AS ( "
-            + "  SELECT 'thirdPartyINBIpo_sys' API_NAME FROM DUAL UNION ALL "
-            + "  SELECT 'thirdPartyNSEAuth_sys' FROM DUAL UNION ALL "
-            + "  SELECT 'thirdPartyBSEAuth_sys' FROM DUAL "
-            + "), "
-            + "COMBOS AS ( "
-            + "  SELECT i.IP, a.API_NAME FROM IP_LIST i CROSS JOIN API_LIST a "
-            + "), "
-            + "AGG AS ( "
-            + "  SELECT TRIM(sys_ip) SYS_IP, TRIM(api_name) API_NAME, "
-            + "    COUNT(1) TOTAL_HITS, "
-            + "    SUM(CASE WHEN error_code is null or error_code = 'CK001' THEN 1 ELSE 0 END) SUCCESS, "
-            + "    SUM(CASE WHEN error_code ='SI001' then 1 else 0 end) SI001, "
-            + "    SUM(CASE WHEN error_code ='SI002' then 1 else 0 end) SI002, "
-            + "    SUM(CASE WHEN substr(error_code,3,3) ='002' AND error_code <>'SI002' then 1 else 0 end) DYNAMIC_002, "
-            + "    SUM(CASE WHEN error_code ='SI007' and error_code<> '70007' then 1 else 0 end) SI007, "
-            + "    SUM(CASE WHEN error_code ='SI051' then 1 else 0 end) SI051, "
-            + "    SUM(CASE WHEN error_code ='SI052' then 1 else 0 end) SI052, "
-            + "    SUM(CASE WHEN substr(error_code,3,3) ='052' AND error_code <>'SI052' then 1 else 0 end) DYNAMIC_052, "
-            + "    SUM(CASE WHEN substr(error_code,3,3) ='014' and error_code <> '00014' then 1 else 0 end) DYNAMIC_014, "
-            + "    SUM(CASE WHEN error_code ='SI569' then 1 else 0 end) SI569, "
-            + "    SUM(CASE WHEN error_code ='SI570' then 1 else 0 end) SI570, "
-            + "    SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') or error_code in('SI001','SI007','SI017','SI569','SI570','SI052','SI077','SI051','SI111')) and error_code<>'00014' THEN 1 ELSE 0 END) TD, "
-            + "    ROUND((SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI052','SI077','SI569','SI570')) and error_code <> '00014' THEN 1 ELSE 0 END)*100)/COUNT(1),2) TD_PERCENT, "
-            + "    SUM(CASE WHEN ((nvl( substr(error_code,3,3),'A') not in ('002','014') and error_code not in('SI001','SI007','SI017','SI569','SI570','SI052','SI077','SI051','SI111')) AND error_code <> 'CK001' OR error_code IN ('00014','70007')) THEN 1 ELSE 0 END) BD, "
-            + "    ROUND((SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','052','051','014') OR error_code IN ('00014','70007')) AND error_code <> 'CK001' and error_code IS NOT NULL THEN 1 ELSE 0 END)*100)/COUNT(1),2) BD_PERCENT "
-            + "  FROM eisapp.BACKEND_LOG PARTITION (" + partition + ") "
-            + "  WHERE api_name in ('thirdPartyINBIpo_sys','thirdPartyNSEAuth_sys','thirdPartyBSEAuth_sys') "
-            + "    AND " + timeFilter
-            + "  GROUP BY TRIM(sys_ip), TRIM(api_name) "
-            + ") "
-            + "SELECT "
-            + "  c.API_NAME API_NAME, c.IP SYS_IP, "
-            + "  NVL(a.TOTAL_HITS,0) TOTAL_HITS, NVL(a.SUCCESS,0) SUCCESS, "
-            + "  NVL(a.SI001,0) SI001, NVL(a.SI002,0) SI002, NVL(a.DYNAMIC_002,0) DYNAMIC_002, "
-            + "  NVL(a.SI007,0) SI007, NVL(a.SI051,0) SI051, NVL(a.SI052,0) SI052, "
-            + "  NVL(a.DYNAMIC_052,0) DYNAMIC_052, NVL(a.DYNAMIC_014,0) DYNAMIC_014, "
-            + "  NVL(a.SI569,0) SI569, NVL(a.SI570,0) SI570, "
-            + "  NVL(a.TD,0) TD, NVL(a.TD_PERCENT,0) TD_PERCENT, "
-            + "  NVL(a.BD,0) BD, NVL(a.BD_PERCENT,0) BD_PERCENT "
-            + "FROM COMBOS c LEFT JOIN AGG a ON c.IP = a.SYS_IP AND c.API_NAME = a.API_NAME "
-            + "ORDER BY c.API_NAME, c.IP";
-    }
-
-    // ============================================================
-    // QUERY 2 — API LOG NSE/INB  (8 IPs × 2 APIs = 16 combos)
-    // ============================================================
-    public static String getApiNseInbQuery(boolean useCustom, String startTime, String endTime) {
-        String timeFilter = buildTimeFilter(useCustom, startTime, endTime);
-        String partition  = getCurrentPartitionName();
-        return ""
-            + "WITH IP_LIST AS ( "
-            + "  SELECT '10.188.24.63' IP FROM DUAL UNION ALL "
-            + "  SELECT '10.188.24.64' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.24.65' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.24.66' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.25.63' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.25.64' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.25.65' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.25.66' FROM DUAL "
-            + "), "
-            + "API_LIST AS ( "
-            + "  SELECT 'thirdPartyGenericRouting_NSE_expDS' API_NAME FROM DUAL UNION ALL "
-            + "  SELECT 'thirdPartyGenericRouting_INB_expDS' FROM DUAL "
-            + "), "
-            + "COMBOS AS ( SELECT i.IP, a.API_NAME FROM IP_LIST i CROSS JOIN API_LIST a ), "
-            + "AGG AS ( "
-            + "  SELECT TRIM(exp_ip) EXP_IP, TRIM(api_name) API_NAME, "
-            + "    COUNT(1) TOTAL_HITS, "
-            + "    SUM(CASE WHEN RESPONSE_STATUS in ('0','SUCCESS') THEN 1 ELSE 0 END) SUCCESS, "
-            + "    SUM(CASE WHEN error_code ='SI001' then 1 else 0 end) SI001, "
-            + "    SUM(CASE WHEN substr(error_code,3,3) ='002'then 1 else 0 end) DYNAMIC_002, "
-            + "    SUM(CASE WHEN error_code ='SI007' and error_code<> '70007' then 1 else 0 end) SI007, "
-            + "    SUM(CASE WHEN error_code ='SI051' then 1 else 0 end) SI051, "
-            + "    SUM(CASE WHEN substr(error_code,3,3) ='014' and error_code <> '00014' then 1 else 0 end) DYNAMIC_014, "
-            + "    SUM(CASE WHEN error_code ='SI569' then 1 else 0 end) SI569, "
-            + "    SUM(CASE WHEN error_code ='SI570' then 1 else 0 end) SI570, "
-            + "    SUM(CASE WHEN error_code ='SI052' then 1 else 0 end) SI052, "
-            + "    SUM(CASE WHEN error_code ='SI005' then 1 else 0 end) SI005, "
-            + "    SUM(CASE WHEN error_code ='SI077' then 1 else 0 end) SI077, "
-            + "    SUM(CASE WHEN error_code ='SI003' then 1 else 0 end) SI003, "
-            + "    SUM(CASE WHEN error_code ='SI017' then 1 else 0 end) SI017, "
-            + "    SUM(CASE WHEN error_code ='SI015' then 1 else 0 end) SI015, "
-            + "    SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI569','SI570','SI052','SI005','SI077','SI003','SI017','SI015')) and error_code <> '00014' THEN 1 ELSE 0 END) TD, "
-            + "    ROUND((SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI569','SI570','SI052','SI005','SI077','SI003','SI017','SI015')) and error_code <> '00014' THEN 1 ELSE 0 END)*100)/COUNT(1),2) TD_PERCENT, "
-            + "    SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','051','014','015') OR error_code IN ('00014','70007')) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END) BD, "
-            + "    ROUND((SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','051','014','015') OR error_code IN ('00014','70007')) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END)*100)/COUNT(1),2) BD_PERCENT "
-            + "  FROM eisapp.api_log PARTITION (" + partition + ") "
-            + "  WHERE " + timeFilter
-            + "    AND api_name in ('thirdPartyGenericRouting_NSE_expDS','thirdPartyGenericRouting_INB_expDS') "
-            + "  GROUP BY TRIM(exp_ip), TRIM(api_name) "
-            + ") "
-            + "SELECT "
-            + "  c.API_NAME API_NAME, c.IP EXP_IP, "
-            + "  NVL(a.TOTAL_HITS,0) TOTAL_HITS, NVL(a.SUCCESS,0) SUCCESS, "
-            + "  NVL(a.SI001,0) SI001, NVL(a.DYNAMIC_002,0) DYNAMIC_002, "
-            + "  NVL(a.SI007,0) SI007, NVL(a.SI051,0) SI051, NVL(a.DYNAMIC_014,0) DYNAMIC_014, "
-            + "  NVL(a.SI569,0) SI569, NVL(a.SI570,0) SI570, NVL(a.SI052,0) SI052, "
-            + "  NVL(a.SI005,0) SI005, NVL(a.SI077,0) SI077, NVL(a.SI003,0) SI003, "
-            + "  NVL(a.SI017,0) SI017, NVL(a.SI015,0) SI015, "
-            + "  NVL(a.TD,0) TD, NVL(a.TD_PERCENT,0) TD_PERCENT, "
-            + "  NVL(a.BD,0) BD, NVL(a.BD_PERCENT,0) BD_PERCENT "
-            + "FROM COMBOS c LEFT JOIN AGG a ON c.IP = a.EXP_IP AND c.API_NAME = a.API_NAME "
-            + "ORDER BY c.API_NAME, c.IP";
-    }
-
-    // ============================================================
-    // QUERY 3 — API LOG BSE  (12 IPs × 1 API = 12 combos)
-    // ============================================================
-    public static String getApiBseQuery(boolean useCustom, String startTime, String endTime) {
-        String timeFilter = buildTimeFilter(useCustom, startTime, endTime);
-        String partition  = getCurrentPartitionName();
-        return ""
-            + "WITH IP_LIST AS ( "
-            + "  SELECT '10.188.24.61' IP FROM DUAL UNION ALL "
-            + "  SELECT '10.188.24.62' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.24.63' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.24.64' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.24.65' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.24.66' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.25.61' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.25.62' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.25.63' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.25.64' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.25.65' FROM DUAL UNION ALL "
-            + "  SELECT '10.188.25.66' FROM DUAL "
-            + "), "
-            + "API_LIST AS ( SELECT 'thirdPartyGenericRouting_expDS' API_NAME FROM DUAL ), "
-            + "COMBOS AS ( SELECT i.IP, a.API_NAME FROM IP_LIST i CROSS JOIN API_LIST a ), "
-            + "AGG AS ( "
-            + "  SELECT TRIM(exp_ip) EXP_IP, TRIM(api_name) API_NAME, "
-            + "    COUNT(1) TOTAL_HITS, "
-            + "    SUM(CASE WHEN RESPONSE_STATUS in ('0','SUCCESS') THEN 1 ELSE 0 END) SUCCESS, "
-            + "    SUM(CASE WHEN error_code ='SI001' then 1 else 0 end) SI001, "
-            + "    SUM(CASE WHEN substr(error_code,3,3) ='002'then 1 else 0 end) DYNAMIC_002, "
-            + "    SUM(CASE WHEN error_code ='SI007' and error_code<> '70007' then 1 else 0 end) SI007, "
-            + "    SUM(CASE WHEN error_code ='SI051' then 1 else 0 end) SI051, "
-            + "    SUM(CASE WHEN substr(error_code,3,3) ='014' and error_code <> '00014' then 1 else 0 end) DYNAMIC_014, "
-            + "    SUM(CASE WHEN error_code ='SI569' then 1 else 0 end) SI569, "
-            + "    SUM(CASE WHEN error_code ='SI570' then 1 else 0 end) SI570, "
-            + "    SUM(CASE WHEN error_code ='SI052' then 1 else 0 end) SI052, "
-            + "    SUM(CASE WHEN error_code ='SI005' then 1 else 0 end) SI005, "
-            + "    SUM(CASE WHEN error_code ='SI077' then 1 else 0 end) SI077, "
-            + "    SUM(CASE WHEN error_code ='SI003' then 1 else 0 end) SI003, "
-            + "    SUM(CASE WHEN error_code ='SI017' then 1 else 0 end) SI017, "
-            + "    SUM(CASE WHEN error_code ='SI015' then 1 else 0 end) SI015, "
-            + "    SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI569','SI570','SI052','SI005','SI077','SI003','SI017','SI015')) and error_code <> '00014' THEN 1 ELSE 0 END) TD, "
-            + "    ROUND((SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI569','SI570','SI052','SI005','SI077','SI003','SI017','SI015')) and error_code <> '00014' THEN 1 ELSE 0 END)*100)/COUNT(1),2) TD_PERCENT, "
-            + "    SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','051','014','015') OR error_code IN ('00014','70007')) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END) BD, "
-            + "    ROUND((SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','051','014','015') OR error_code IN ('00014','70007')) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END)*100)/COUNT(1),2) BD_PERCENT "
-            + "  FROM eisapp.api_log PARTITION (" + partition + ") "
-            + "  WHERE " + timeFilter
-            + "    AND api_name = 'thirdPartyGenericRouting_expDS' "
-            + "    AND sup_url = 'BSE' "
-            + "    AND ORIGINAL_URN = 'IPO_ORDER' "
-            + "    AND transaction_urn = 'IPO_SERVICE' "
-            + "  GROUP BY TRIM(exp_ip), TRIM(api_name) "
-            + ") "
-            + "SELECT "
-            + "  c.API_NAME API_NAME, c.IP EXP_IP, "
-            + "  NVL(a.TOTAL_HITS,0) TOTAL_HITS, NVL(a.SUCCESS,0) SUCCESS, "
-            + "  NVL(a.SI001,0) SI001, NVL(a.DYNAMIC_002,0) DYNAMIC_002, "
-            + "  NVL(a.SI007,0) SI007, NVL(a.SI051,0) SI051, NVL(a.DYNAMIC_014,0) DYNAMIC_014, "
-            + "  NVL(a.SI569,0) SI569, NVL(a.SI570,0) SI570, NVL(a.SI052,0) SI052, "
-            + "  NVL(a.SI005,0) SI005, NVL(a.SI077,0) SI077, NVL(a.SI003,0) SI003, "
-            + "  NVL(a.SI017,0) SI017, NVL(a.SI015,0) SI015, "
-            + "  NVL(a.TD,0) TD, NVL(a.TD_PERCENT,0) TD_PERCENT, "
-            + "  NVL(a.BD,0) BD, NVL(a.BD_PERCENT,0) BD_PERCENT "
-            + "FROM COMBOS c LEFT JOIN AGG a ON c.IP = a.EXP_IP AND c.API_NAME = a.API_NAME "
-            + "ORDER BY c.API_NAME, c.IP";
-    }
-
-    // ============================================================
-    // RUN ALL 3 IN PARALLEL
-    // ============================================================
-    public static Map<String, QueryResult> runAll() {
-        return runAll(false, null, null);
-    }
-
-    public static Map<String, QueryResult> runAll(boolean useCustom, String startTime, String endTime) {
-        System.out.println("############################################################");
-        System.out.println("[IPO-RUN] START runAll() mode=" + (useCustom ? "MANUAL" : "AUTO")
-                + " start=" + startTime + " end=" + endTime);
-        System.out.println("[IPO-RUN] Current partition = [" + getCurrentPartitionName() + "]");
-        System.out.println("############################################################");
-
-        Map<String, QueryResult> results = new LinkedHashMap<>();
-        ExecutorService pool = Executors.newFixedThreadPool(3);
-        try {
-            Future<QueryResult> f1 = pool.submit(new QueryTask("BACKEND_LOG",
-                    getBackendQuery(useCustom, startTime, endTime)));
-            Future<QueryResult> f2 = pool.submit(new QueryTask("API_NSE_INB",
-                    getApiNseInbQuery(useCustom, startTime, endTime)));
-            Future<QueryResult> f3 = pool.submit(new QueryTask("API_BSE",
-                    getApiBseQuery(useCustom, startTime, endTime)));
-
-            results.put("BACKEND_LOG", safeGet(f1));
-            results.put("API_NSE_INB", safeGet(f2));
-            results.put("API_BSE", safeGet(f3));
-        } catch (Exception e) {
-            System.out.println("[IPO-RUN] Pool error: " + e);
-            e.printStackTrace();
-            QueryResult err = new QueryResult();
-            err.success = false;
-            err.message = "Pool error: " + e.getMessage();
-            results.put("ERROR", err);
-        } finally {
-            pool.shutdown();
-            try { pool.awaitTermination(3, TimeUnit.SECONDS); } catch (InterruptedException ignored) {}
-        }
-        System.out.println("[IPO-RUN] END runAll() - done");
-        return results;
-    }
-
-    private static QueryResult safeGet(Future<QueryResult> f) {
-        try { return f.get(30, TimeUnit.MINUTES); }
-        catch (Exception e) {
-            QueryResult r = new QueryResult();
-            r.success = false;
-            r.message = "Timeout/Error: " + e.getMessage();
-            return r;
-        }
-    }
-
-    private static class QueryTask implements Callable<QueryResult> {
-        private final String name;
-        private final String sql;
-        QueryTask(String name, String sql) { this.name = name; this.sql = sql; }
-
-        @Override
-        public QueryResult call() {
-            QueryResult r = new QueryResult();
-            r.queryName = name;
-            long t0 = System.currentTimeMillis();
-            Connection conn = null;
-            Statement stmt = null;
-            ResultSet rs = null;
-
-            // Print the SQL that will be executed
-            logSql(name, sql);
-
-            try {
-                conn = DBUtilityAuto.getIIBDBConnection();
-                if (conn == null) {
-                    r.success = false;
-                    r.message = "Could not obtain IIB connection.";
-                    System.out.println("[IPO-ERR][" + name + "] null connection");
-                    return r;
-                }
-
-                // Print connection details
-                logConnection(name, conn);
-
-                // Print visible partitions
-                logVisiblePartitions(name, conn);
-
-                stmt = conn.createStatement();
-                stmt.setFetchSize(500);
-                long q0 = System.currentTimeMillis();
-                rs = stmt.executeQuery(sql);
-                long q1 = System.currentTimeMillis();
-                System.out.println("[IPO-TIME][" + name + "] query execution took "
-                        + (q1 - q0) + " ms");
-
-                ResultSetMetaData md = rs.getMetaData();
-                int colCount = md.getColumnCount();
-                for (int i = 1; i <= colCount; i++) r.columns.add(md.getColumnLabel(i));
-
-                while (rs.next()) {
-                    Map<String, Object> row = new LinkedHashMap<>();
-                    for (int i = 1; i <= colCount; i++) {
-                        row.put(md.getColumnLabel(i), rs.getObject(i));
-                    }
-                    r.rows.add(row);
-                }
-                r.success = true;
-                r.message = r.rows.size() + " rows";
-                System.out.println("[IPO-OK][" + name + "] fetched " + r.rows.size() + " rows");
-            } catch (Exception e) {
-                r.success = false;
-                r.message = "Error: " + e.getMessage();
-                System.out.println("[IPO-ERR][" + name + "] " + e.getClass().getName()
-                        + ": " + e.getMessage());
-                e.printStackTrace();
-            } finally {
-                if (rs != null) try { rs.close(); } catch (Exception ignored) {}
-                if (stmt != null) try { stmt.close(); } catch (Exception ignored) {}
-                if (conn != null) try { conn.close(); } catch (Exception ignored) {}
-                r.executionTimeMs = System.currentTimeMillis() - t0;
-                System.out.println("[IPO-TIME][" + name + "] total = "
-                        + r.executionTimeMs + " ms, success=" + r.success);
-            }
-            return r;
-        }
-    }
-
-    public static String esc(String s) {
-        if (s == null) return "";
-        return s.replace("\\", "\\\\").replace("\"", "\\\"")
-                .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
-    }
-
-    public static String toJson(QueryResult qr) {
         StringBuilder sb = new StringBuilder("{");
-        sb.append("\"name\":\"").append(esc(qr.queryName)).append("\",");
-        sb.append("\"success\":").append(qr.success).append(",");
-        sb.append("\"message\":\"").append(esc(qr.message)).append("\",");
-        sb.append("\"executionTimeMs\":").append(qr.executionTimeMs).append(",");
-        sb.append("\"columns\":[");
-        for (int i = 0; i < qr.columns.size(); i++) {
-            if (i > 0) sb.append(",");
-            sb.append("\"").append(esc(qr.columns.get(i))).append("\"");
+        sb.append("\"mode\":\"").append(useCustom ? "manual" : "auto").append("\",");
+        sb.append("\"startTime\":\"").append(startTime == null ? "" : IPOMonitorService.esc(startTime)).append("\",");
+        sb.append("\"endTime\":\"").append(endTime == null ? "" : IPOMonitorService.esc(endTime)).append("\",");
+        sb.append("\"results\":{");
+        int i = 0;
+        for (Map.Entry<String, QueryResult> e : results.entrySet()) {
+            if (i++ > 0) sb.append(",");
+            sb.append("\"").append(IPOMonitorService.esc(e.getKey())).append("\":");
+            sb.append(IPOMonitorService.toJson(e.getValue()));
         }
-        sb.append("],\"rows\":[");
-        for (int r = 0; r < qr.rows.size(); r++) {
-            if (r > 0) sb.append(",");
-            sb.append("{");
-            Map<String, Object> row = qr.rows.get(r);
-            int c = 0;
-            for (String col : qr.columns) {
-                if (c++ > 0) sb.append(",");
-                Object v = row.get(col);
-                sb.append("\"").append(esc(col)).append("\":");
-                if (v == null) sb.append("null");
-                else sb.append("\"").append(esc(v.toString())).append("\"");
-            }
-            sb.append("}");
+        sb.append("}}");
+        response.setContentType("application/json");
+        response.setCharacterEncoding("UTF-8");
+        out.print(sb.toString()); out.flush();
+        return;
+    }
+%>
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IPO Monitoring Dashboard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        html[data-theme="dark"] {
+            --bg-base: #070b14;
+            --bg-grad-1: #0a0f1e;
+            --bg-grad-2: #151228;
+            --bg-grad-3: #0d1424;
+            --glass: rgba(20, 28, 45, 0.55);
+            --glass-2: rgba(255, 255, 255, 0.035);
+            --glass-3: rgba(0, 0, 0, 0.18);
+            --glass-border: rgba(120, 150, 210, 0.14);
+            --glass-border-hi: rgba(120, 150, 210, 0.32);
+            --text-0: #f5f7fb;
+            --text-1: #c8d0e0;
+            --text-2: #7e8899;
+            --text-3: #5a6478;
+            --accent: #4f8cff;
+            --green: #22e6a4;
+            --green-dim: rgba(34, 230, 164, 0.14);
+            --amber: #ffb84d;
+            --amber-dim: rgba(255, 184, 77, 0.14);
+            --red: #ff5577;
+            --red-dim: rgba(255, 85, 119, 0.14);
+            --purple: #b47cff;
+            --purple-dim: rgba(180, 124, 255, 0.14);
+            --cyan: #4fd1ff;
+            --bg-scroll: rgba(120, 150, 210, 0.22);
+            --bg-scroll-hover: rgba(120, 150, 210, 0.4);
+            --modal-backdrop: rgba(0, 0, 0, 0.78);
         }
-        sb.append("]}");
-        return sb.toString();
+
+        html[data-theme="light"] {
+            --bg-base: #eef2f8;
+            --bg-grad-1: #e6ecf5;
+            --bg-grad-2: #f3eef8;
+            --bg-grad-3: #eaf0f8;
+            --glass: rgba(255, 255, 255, 0.85);
+            --glass-2: rgba(255, 255, 255, 0.7);
+            --glass-3: rgba(0, 0, 0, 0.04);
+            --glass-border: rgba(70, 100, 160, 0.15);
+            --glass-border-hi: rgba(70, 100, 160, 0.35);
+            --text-0: #0a1124;
+            --text-1: #2e3a52;
+            --text-2: #64738c;
+            --text-3: #8895ab;
+            --accent: #2f6ee0;
+            --green: #0ea875;
+            --green-dim: rgba(14, 168, 117, 0.12);
+            --amber: #e08a12;
+            --amber-dim: rgba(224, 138, 18, 0.12);
+            --red: #e02550;
+            --red-dim: rgba(224, 37, 80, 0.12);
+            --purple: #8243e0;
+            --purple-dim: rgba(130, 67, 224, 0.12);
+            --cyan: #0e9ec8;
+            --bg-scroll: rgba(70, 100, 160, 0.28);
+            --bg-scroll-hover: rgba(70, 100, 160, 0.5);
+            --modal-backdrop: rgba(20, 30, 50, 0.6);
+        }
+
+        html, body {
+            height: 100vh;
+            overflow: hidden;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            color: var(--text-0);
+            background: var(--bg-base);
+            font-size: 14px;
+            -webkit-font-smoothing: antialiased;
+            transition: background 0.3s, color 0.3s;
+        }
+
+        body::before {
+            content: '';
+            position: fixed; inset: 0;
+            background:
+                radial-gradient(ellipse at 0% 0%, rgba(79, 140, 255, 0.20), transparent 45%),
+                radial-gradient(ellipse at 100% 0%, rgba(180, 124, 255, 0.16), transparent 45%),
+                radial-gradient(ellipse at 50% 100%, rgba(34, 230, 164, 0.10), transparent 50%),
+                linear-gradient(180deg, var(--bg-grad-1) 0%, var(--bg-grad-3) 50%, var(--bg-grad-2) 100%);
+            z-index: -2;
+        }
+        body::after {
+            content: '';
+            position: fixed; inset: 0;
+            background-image:
+                linear-gradient(rgba(255,255,255,0.012) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255,255,255,0.012) 1px, transparent 1px);
+            background-size: 40px 40px;
+            z-index: -1; pointer-events: none;
+        }
+        html[data-theme="light"] body::after {
+            background-image:
+                linear-gradient(rgba(0,0,0,0.02) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0,0,0,0.02) 1px, transparent 1px);
+        }
+
+        .app {
+            height: 100vh;
+            display: grid;
+            grid-template-rows: 64px 1fr;
+            overflow: hidden;
+        }
+
+        /* HEADER */
+        .header {
+            display: flex; align-items: center;
+            padding: 0 18px; gap: 10px;
+            border-bottom: 1px solid var(--glass-border);
+            background: var(--glass);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            z-index: 100; flex-shrink: 0;
+            overflow: hidden;
+        }
+        .logo {
+            display: flex; align-items: center; gap: 12px;
+            font-size: 18px; font-weight: 800;
+            letter-spacing: -0.4px; color: var(--text-0);
+            flex-shrink: 0;
+        }
+        .logo-mark {
+            width: 36px; height: 36px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, #4f8cff 0%, #b47cff 100%);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 17px;
+            box-shadow: 0 6px 20px rgba(79, 140, 255, 0.45), inset 0 1px 0 rgba(255,255,255,0.3);
+        }
+        .logo-pill {
+            font-size: 10.5px; font-weight: 800;
+            padding: 3px 9px;
+            background: var(--green-dim);
+            border: 1px solid rgba(34, 230, 164, 0.35);
+            color: var(--green);
+            border-radius: 6px;
+            letter-spacing: 1.2px;
+            text-transform: uppercase;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .pulse-dot {
+            width: 6px; height: 6px; border-radius: 50%;
+            background: var(--green);
+            box-shadow: 0 0 8px var(--green);
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.35; transform: scale(0.85); }
+        }
+        .hdr-spacer { flex: 1; }
+
+        .hdr-stat {
+            display: flex; align-items: center; gap: 7px;
+            padding: 7px 11px;
+            background: var(--glass-2);
+            border: 1px solid var(--glass-border);
+            border-radius: 10px;
+            font-size: 12.5px; font-weight: 700;
+            color: var(--text-1);
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .hdr-stat .num { color: var(--text-0); font-weight: 800; font-size: 14px; }
+        .hdr-stat .num.green { color: var(--green); }
+        .hdr-stat .num.amber { color: var(--amber); }
+        .hdr-stat .num.red   { color: var(--red); }
+        .hdr-stat .num.purple{ color: var(--purple); }
+        .hdr-stat .dot { width: 8px; height: 8px; border-radius: 50%; }
+        .hdr-stat .dot.g { background: var(--green); box-shadow: 0 0 6px var(--green); }
+        .hdr-stat .dot.a { background: var(--amber); box-shadow: 0 0 6px var(--amber); }
+        .hdr-stat .dot.r { background: var(--red); box-shadow: 0 0 6px var(--red); }
+        .hdr-stat .dot.p { background: var(--purple); box-shadow: 0 0 6px var(--purple); }
+
+        .countdown-pill {
+            display: flex; align-items: center; gap: 8px;
+            padding: 8px 13px;
+            background: linear-gradient(135deg, rgba(79, 140, 255, 0.15), rgba(180, 124, 255, 0.12));
+            border: 1px solid rgba(79, 140, 255, 0.35);
+            border-radius: 10px;
+            font-size: 12.5px; font-weight: 700;
+            color: var(--text-0);
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+        .countdown-pill .cd-val { color: var(--accent); font-size: 14px; font-weight: 800; letter-spacing: 0.3px; }
+        .countdown-pill.manual {
+            background: linear-gradient(135deg, rgba(34, 230, 164, 0.15), rgba(79, 209, 255, 0.12));
+            border-color: rgba(34, 230, 164, 0.45);
+        }
+        .countdown-pill.manual .cd-val { color: var(--green); }
+
+        /* TIME CONTROLS */
+        .time-controls {
+            display: flex; align-items: center; gap: 8px;
+            padding: 6px 10px;
+            background: var(--glass-2);
+            border: 1px solid var(--glass-border);
+            border-radius: 10px;
+            flex-shrink: 0;
+            transition: 0.2s;
+        }
+        .time-controls.manual-active {
+            border-color: rgba(34, 230, 164, 0.55);
+            background: var(--green-dim);
+            box-shadow: 0 0 0 2px rgba(34,230,164,0.12);
+        }
+        .tc-group { display: flex; flex-direction: column; gap: 2px; }
+        .tc-label {
+            font-size: 9px; font-weight: 800;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+            color: var(--text-3);
+        }
+        .tc-input {
+            background: var(--glass-3);
+            border: 1px solid var(--glass-border);
+            border-radius: 6px;
+            color: var(--text-0);
+            font-size: 11.5px;
+            font-family: 'JetBrains Mono', 'Consolas', monospace;
+            font-weight: 700;
+            padding: 5px 7px;
+            outline: none;
+            width: 168px;
+            transition: 0.2s;
+        }
+        .tc-input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 2px rgba(79,140,255,0.18);
+        }
+        .tc-input::-webkit-calendar-picker-indicator {
+            filter: invert(0.7);
+            cursor: pointer;
+        }
+        html[data-theme="light"] .tc-input::-webkit-calendar-picker-indicator {
+            filter: invert(0.2);
+        }
+        .btn-manual, .btn-reset {
+            border: none;
+            border-radius: 8px;
+            padding: 8px 13px;
+            font-size: 12px;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+            transition: 0.2s;
+            font-family: inherit;
+            height: 34px;
+            align-self: flex-end;
+            white-space: nowrap;
+        }
+        .btn-manual {
+            background: linear-gradient(135deg, #22e6a4, #17c78a);
+            color: #05221a;
+            box-shadow: 0 4px 14px rgba(34, 230, 164, 0.4);
+        }
+        .btn-manual:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 22px rgba(34, 230, 164, 0.6);
+        }
+        .btn-manual:disabled { opacity: 0.55; cursor: not-allowed; }
+        .btn-reset {
+            background: var(--glass-2);
+            color: var(--text-1);
+            border: 1px solid var(--glass-border);
+        }
+        .btn-reset:hover:not(:disabled) {
+            background: var(--glass-3);
+            border-color: var(--glass-border-hi);
+            color: var(--text-0);
+        }
+        .btn-reset:disabled { opacity: 0.55; cursor: not-allowed; }
+
+        .theme-toggle {
+            width: 52px; height: 28px;
+            border-radius: 14px;
+            background: var(--glass-2);
+            border: 1px solid var(--glass-border);
+            position: relative; cursor: pointer;
+            transition: 0.25s; flex-shrink: 0;
+        }
+        .theme-toggle:hover { border-color: var(--accent); }
+        .theme-toggle .icon {
+            position: absolute; top: 50%; transform: translateY(-50%);
+            font-size: 13px; transition: 0.25s; pointer-events: none;
+        }
+        .theme-toggle .icon.sun  { left: 6px;  opacity: 0; }
+        .theme-toggle .icon.moon { right: 6px; opacity: 1; }
+        html[data-theme="light"] .theme-toggle .icon.sun  { opacity: 1; }
+        html[data-theme="light"] .theme-toggle .icon.moon { opacity: 0; }
+        .theme-toggle .knob {
+            position: absolute;
+            top: 3px; left: 3px;
+            width: 20px; height: 20px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #4f8cff, #3866dd);
+            transition: 0.25s cubic-bezier(0.4,0,0.2,1);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+        }
+        html[data-theme="light"] .theme-toggle .knob {
+            left: 27px;
+            background: linear-gradient(135deg, #fbbf24, #f59e0b);
+        }
+
+        .btn-refresh {
+            width: 40px; height: 40px;
+            background: linear-gradient(135deg, #4f8cff, #3866dd);
+            border: none; border-radius: 10px;
+            color: #fff; font-size: 17px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: 0.22s;
+            box-shadow: 0 6px 18px rgba(79, 140, 255, 0.4);
+            flex-shrink: 0;
+        }
+        .btn-refresh:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 26px rgba(79, 140, 255, 0.6);
+        }
+        .btn-refresh:disabled { opacity: 0.7; cursor: not-allowed; }
+        .btn-refresh.spinning { animation: spin 1s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* MAIN LAYOUT */
+        .main-wrap {
+            display: grid;
+            grid-template-columns: 270px 1fr;
+            gap: 12px;
+            padding: 12px 16px;
+            min-height: 0;
+            overflow: hidden;
+        }
+
+        /* INFO PANEL */
+        .info-panel {
+            background: var(--glass);
+            border: 1px solid var(--glass-border);
+            border-radius: 14px;
+            padding: 10px;
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            display: flex; flex-direction: column;
+            gap: 8px;
+            overflow-y: auto;
+            box-shadow: 0 4px 22px rgba(0,0,0,0.2);
+        }
+        .info-panel::-webkit-scrollbar { width: 5px; }
+        .info-panel::-webkit-scrollbar-thumb {
+            background: var(--bg-scroll);
+            border-radius: 3px;
+        }
+
+        .info-top-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+        }
+        .info-mini {
+            background: var(--glass-2);
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+            padding: 6px 8px;
+            display: flex; flex-direction: column; gap: 2px;
+        }
+        .info-mini-label {
+            font-size: 9px;
+            font-weight: 800;
+            letter-spacing: 0.8px;
+            text-transform: uppercase;
+            color: var(--text-3);
+        }
+        .info-mini-value {
+            font-size: 13px;
+            font-weight: 800;
+            color: var(--text-0);
+            font-variant-numeric: tabular-nums;
+            line-height: 1.1;
+        }
+        .info-mini-value.small { font-size: 11px; }
+        .info-mini-value.mono {
+            font-family: 'JetBrains Mono', 'Consolas', monospace;
+            font-size: 11px;
+        }
+
+        .info-status {
+            display: flex; align-items: center; gap: 7px;
+            padding: 7px 10px;
+            background: var(--green-dim);
+            border: 1px solid rgba(34,230,164,0.3);
+            border-radius: 8px;
+            font-size: 11.5px;
+            font-weight: 700;
+            color: var(--green);
+        }
+        .info-status.loading {
+            background: var(--amber-dim);
+            border-color: rgba(255,184,77,0.3);
+            color: var(--amber);
+        }
+        .info-status.manual {
+            background: linear-gradient(135deg, rgba(34,230,164,0.14), rgba(79,209,255,0.10));
+            border-color: rgba(34,230,164,0.45);
+            color: var(--green);
+        }
+        .info-status-dot {
+            width: 7px; height: 7px;
+            border-radius: 50%;
+            background: currentColor;
+            box-shadow: 0 0 8px currentColor;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+
+        .info-section-title {
+            font-size: 10px;
+            font-weight: 800;
+            letter-spacing: 1.1px;
+            text-transform: uppercase;
+            color: var(--text-3);
+            display: flex; align-items: center; gap: 6px;
+            padding: 3px 0 2px;
+            margin-top: 4px;
+        }
+        .info-section-title::before {
+            content: '';
+            width: 3px; height: 10px;
+            background: var(--accent);
+            border-radius: 2px;
+            box-shadow: 0 0 8px rgba(79,140,255,0.5);
+        }
+        .info-section-title.red::before    { background: var(--red);    box-shadow: 0 0 8px rgba(255,85,119,0.6); }
+        .info-section-title.amber::before  { background: var(--amber);  box-shadow: 0 0 8px rgba(255,184,77,0.6); }
+        .info-section-title.purple::before { background: var(--purple); box-shadow: 0 0 8px rgba(180,124,255,0.6); }
+
+        .info-section-title .count-pill {
+            margin-left: auto;
+            font-size: 10px;
+            padding: 1px 7px;
+            border-radius: 5px;
+            background: var(--glass-2);
+            border: 1px solid var(--glass-border);
+            color: var(--text-1);
+            letter-spacing: 0.3px;
+        }
+        .info-section-title.red .count-pill    { background: var(--red-dim); color: var(--red); border-color: rgba(255,85,119,0.35); }
+        .info-section-title.amber .count-pill  { background: var(--amber-dim); color: var(--amber); border-color: rgba(255,184,77,0.35); }
+        .info-section-title.purple .count-pill { background: var(--purple-dim); color: var(--purple); border-color: rgba(180,124,255,0.35); }
+
+        .short-list { display: flex; flex-direction: column; gap: 4px; }
+        .short-item {
+            display: grid;
+            grid-template-columns: 1fr auto;
+            grid-template-rows: auto auto;
+            gap: 2px 6px;
+            padding: 6px 9px;
+            background: var(--glass-2);
+            border: 1px solid var(--glass-border);
+            border-radius: 7px;
+            border-left: 3px solid var(--glass-border);
+            transition: 0.15s;
+        }
+        .short-item:hover {
+            background: var(--glass-3);
+            transform: translateX(2px);
+        }
+        .short-item.red    { border-left-color: var(--red);    background: var(--red-dim); }
+        .short-item.amber  { border-left-color: var(--amber);  background: var(--amber-dim); }
+        .short-item.purple { border-left-color: var(--purple); background: var(--purple-dim); }
+
+        .short-item .ip-line {
+            grid-column: 1; grid-row: 1;
+            font-family: 'JetBrains Mono', 'Consolas', monospace;
+            font-size: 12px; font-weight: 800;
+            color: var(--text-0);
+            letter-spacing: 0.2px;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .short-item .api-line {
+            grid-column: 1; grid-row: 2;
+            font-size: 10px;
+            color: var(--text-2);
+            font-weight: 700;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+            font-family: 'JetBrains Mono', 'Consolas', monospace;
+        }
+        .short-item .api-line.red    { color: var(--red); }
+        .short-item .api-line.amber  { color: var(--amber); }
+        .short-item .api-line.purple { color: var(--purple); }
+
+        .short-item .value-line {
+            grid-column: 2; grid-row: 1 / span 2;
+            align-self: center;
+            font-size: 14px; font-weight: 800;
+            font-variant-numeric: tabular-nums;
+            padding: 3px 9px;
+            border-radius: 6px;
+            white-space: nowrap;
+        }
+        .short-item .value-line.red    { color: var(--red);    background: var(--red-dim); }
+        .short-item .value-line.amber  { color: var(--amber);  background: var(--amber-dim); }
+        .short-item .value-line.purple { color: var(--purple); background: var(--purple-dim); }
+
+        .short-empty {
+            padding: 8px 10px;
+            text-align: center;
+            background: var(--green-dim);
+            border: 1px solid rgba(34,230,164,0.25);
+            border-radius: 7px;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--green);
+            letter-spacing: 0.3px;
+        }
+        .short-empty.loading {
+            background: var(--amber-dim);
+            border-color: rgba(255,184,77,0.25);
+            color: var(--amber);
+        }
+
+        /* CONTENT */
+        .main-content {
+            display: grid;
+            grid-template-rows: 100px 1fr;
+            gap: 12px;
+            min-height: 0;
+            overflow: hidden;
+            min-width: 0;
+        }
+
+        .kpis {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 10px;
+            min-height: 0;
+        }
+        .kpi {
+            background: var(--glass);
+            border: 1px solid var(--glass-border);
+            border-radius: 13px;
+            padding: 10px 14px;
+            display: flex; flex-direction: column; justify-content: center;
+            position: relative; overflow: hidden;
+            backdrop-filter: blur(20px);
+            transition: 0.22s;
+        }
+        .kpi:hover {
+            transform: translateY(-2px);
+            border-color: var(--glass-border-hi);
+            box-shadow: 0 12px 32px rgba(0,0,0,0.35);
+        }
+        .kpi::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 3px;
+            background: var(--accent);
+            box-shadow: 0 0 16px rgba(79, 140, 255, 0.5);
+        }
+        .kpi.green::before { background: var(--green); box-shadow: 0 0 16px rgba(34, 230, 164, 0.6); }
+        .kpi.amber::before { background: var(--amber); box-shadow: 0 0 16px rgba(255, 184, 77, 0.6); }
+        .kpi.red::before   { background: var(--red); box-shadow: 0 0 16px rgba(255, 85, 119, 0.6); }
+
+        .kpi-label {
+            font-size: 11px; font-weight: 800;
+            letter-spacing: 1.1px; text-transform: uppercase;
+            color: var(--text-3);
+            margin-bottom: 4px;
+        }
+        .kpi-value {
+            font-size: 26px; font-weight: 800;
+            color: var(--text-0);
+            letter-spacing: -0.7px; line-height: 1;
+            font-variant-numeric: tabular-nums;
+        }
+        .kpi-value.green { color: var(--green); }
+        .kpi-value.amber { color: var(--amber); }
+        .kpi-value.red   { color: var(--red); }
+        .kpi-sub {
+            font-size: 11.5px; color: var(--text-3);
+            font-weight: 600; margin-top: 3px;
+        }
+
+        .panels {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            min-height: 0;
+            overflow: hidden;
+        }
+        .panel {
+            background: var(--glass);
+            border: 1px solid var(--glass-border);
+            border-radius: 14px;
+            display: flex; flex-direction: column;
+            overflow: hidden;
+            min-height: 0;
+            backdrop-filter: blur(20px);
+            box-shadow: 0 4px 22px rgba(0,0,0,0.2);
+        }
+        .panel-head {
+            padding: 11px 14px;
+            border-bottom: 1px solid var(--glass-border);
+            display: flex; align-items: center; gap: 10px;
+            background: var(--glass-2);
+            flex-shrink: 0;
+        }
+        .ph-icon {
+            width: 32px; height: 32px;
+            border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 16px;
+            flex-shrink: 0;
+        }
+        .ph-icon.green  { background: var(--green-dim); color: var(--green); }
+        .ph-icon.blue   { background: rgba(79, 140, 255, 0.15); color: var(--accent); }
+        .ph-icon.purple { background: var(--purple-dim); color: var(--purple); }
+
+        .ph-text { flex: 1; min-width: 0; }
+        .ph-title {
+            font-size: 15px; font-weight: 800;
+            color: var(--text-0);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .ph-sub {
+            font-size: 11px; color: var(--text-3);
+            font-weight: 700;
+            letter-spacing: 0.6px; text-transform: uppercase;
+            margin-top: 1px;
+        }
+        .ph-badge {
+            font-size: 11px; font-weight: 800;
+            padding: 3px 9px;
+            border-radius: 7px;
+            background: var(--glass-2);
+            color: var(--text-2);
+            letter-spacing: 0.4px;
+            white-space: nowrap;
+            border: 1px solid var(--glass-border);
+        }
+
+        .panel-body {
+            flex: 1; min-height: 0;
+            overflow-y: auto; overflow-x: hidden;
+            padding: 12px;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            align-content: start;
+        }
+        .panel-body::-webkit-scrollbar { width: 8px; }
+        .panel-body::-webkit-scrollbar-track { background: transparent; }
+        .panel-body::-webkit-scrollbar-thumb {
+            background: var(--bg-scroll);
+            border-radius: 4px;
+        }
+
+        /* IP CARD */
+        .ip-card {
+            background: var(--glass-2);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 12px 14px;
+            display: flex; flex-direction: column; gap: 10px;
+            transition: 0.22s;
+            position: relative; overflow: hidden;
+            min-height: 225px;
+            cursor: pointer;
+            min-width: 0;
+        }
+        .ip-card:hover {
+            background: var(--glass-3);
+            border-color: var(--glass-border-hi);
+            transform: translateY(-3px);
+            box-shadow: 0 14px 34px rgba(0,0,0,0.4);
+        }
+        .ip-card::after {
+            content: '👁';
+            position: absolute;
+            top: 12px; right: 12px;
+            font-size: 14px;
+            opacity: 0;
+            transition: opacity 0.22s;
+            color: var(--text-2);
+            pointer-events: none;
+        }
+        .ip-card:hover::after { opacity: 0.7; }
+
+        .ip-card.td-card {
+            background: var(--red-dim);
+            border: 2px solid rgba(255, 85, 119, 0.55);
+            animation: tdPulse 2.6s ease-in-out infinite;
+        }
+        .ip-card.td-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; bottom: 0;
+            width: 6px;
+            background: var(--red);
+            box-shadow: 0 0 20px var(--red);
+        }
+        @keyframes tdPulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(255, 85, 119, 0.0); }
+            50%      { box-shadow: 0 0 28px 3px rgba(255, 85, 119, 0.4); }
+        }
+
+        .ip-card.bd-card {
+            background: var(--amber-dim);
+            border: 2px solid rgba(255, 184, 77, 0.55);
+            animation: bdPulse 2.6s ease-in-out infinite;
+        }
+        .ip-card.bd-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; bottom: 0;
+            width: 6px;
+            background: var(--amber);
+            box-shadow: 0 0 20px var(--amber);
+        }
+        @keyframes bdPulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(255, 184, 77, 0.0); }
+            50%      { box-shadow: 0 0 28px 3px rgba(255, 184, 77, 0.4); }
+        }
+
+        .ip-card.zero-card {
+            background: linear-gradient(135deg, rgba(180, 124, 255, 0.16), rgba(90, 100, 120, 0.10));
+            border: 2px solid rgba(180, 124, 255, 0.55);
+            animation: zeroPulse 2.6s ease-in-out infinite;
+        }
+        .ip-card.zero-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; bottom: 0;
+            width: 6px;
+            background: var(--purple);
+            box-shadow: 0 0 20px var(--purple);
+        }
+        @keyframes zeroPulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(180, 124, 255, 0.0); }
+            50%      { box-shadow: 0 0 28px 3px rgba(180, 124, 255, 0.4); }
+        }
+
+        .ip-card.healthy-card { border-color: var(--glass-border); }
+        .ip-card.healthy-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; bottom: 0;
+            width: 4px;
+            background: var(--green);
+        }
+
+        .ip-head {
+            display: flex; align-items: center; justify-content: space-between; gap: 8px;
+        }
+        .ip-addr {
+            font-family: 'JetBrains Mono', 'SF Mono', 'Consolas', monospace;
+            font-size: 16px; font-weight: 800;
+            color: var(--text-0);
+            letter-spacing: 0.3px;
+        }
+        .ip-badge {
+            font-size: 11px; font-weight: 900;
+            padding: 4px 11px;
+            border-radius: 7px;
+            letter-spacing: 1.3px;
+            text-transform: uppercase;
+            flex-shrink: 0;
+        }
+        .ip-badge.healthy-card { background: var(--green-dim); color: var(--green); border: 1px solid rgba(34,230,164,0.4); }
+        .ip-badge.td-card      { background: var(--red-dim);   color: var(--red);   border: 1px solid rgba(255,85,119,0.45); }
+        .ip-badge.bd-card      { background: var(--amber-dim); color: var(--amber); border: 1px solid rgba(255,184,77,0.45); }
+        .ip-badge.zero-card    { background: var(--purple-dim); color: var(--purple); border: 1px solid rgba(180,124,255,0.5); }
+
+        .ip-api {
+            font-size: 12px;
+            color: var(--text-2);
+            font-weight: 700;
+            line-height: 1.4;
+            margin-top: -4px;
+            word-break: break-all;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            min-height: 34px;
+            font-family: 'JetBrains Mono', 'Consolas', monospace;
+        }
+
+        .ip-metrics {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            width: 100%;
+        }
+        .ip-metric {
+            background: var(--glass-3);
+            border-radius: 8px;
+            padding: 10px 12px;
+            border: 1px solid var(--glass-border);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            min-height: 56px;
+        }
+        .ip-metric-label {
+            font-size: 10.5px;
+            color: var(--text-3);
+            font-weight: 800;
+            letter-spacing: 0.7px;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+            white-space: nowrap;
+        }
+        .ip-metric-value {
+            font-size: 18px;
+            font-weight: 800;
+            color: var(--text-0);
+            font-variant-numeric: tabular-nums;
+            line-height: 1;
+            white-space: nowrap;
+        }
+        .ip-metric-value.green { color: var(--green); }
+        .ip-metric-value.amber { color: var(--amber); }
+        .ip-metric-value.red   { color: var(--red); }
+        .ip-metric-value.purple{ color: var(--purple); }
+
+        .succ-bar {
+            height: 8px;
+            background: var(--glass-3);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 2px;
+        }
+        .succ-bar-inner {
+            height: 100%;
+            background: linear-gradient(90deg, var(--green), var(--cyan));
+            border-radius: 4px;
+            transition: width 0.4s ease;
+            box-shadow: 0 0 12px rgba(34, 230, 164, 0.5);
+        }
+        .succ-bar-inner.warn { background: linear-gradient(90deg, var(--amber), #ff8a4d); box-shadow: 0 0 12px rgba(255,184,77,0.5); }
+        .succ-bar-inner.bad  { background: linear-gradient(90deg, var(--red), #ff3d5f); box-shadow: 0 0 12px rgba(255,85,119,0.5); }
+        .succ-bar-inner.zero { background: linear-gradient(90deg, var(--purple), #c4a6ff); box-shadow: 0 0 12px rgba(180,124,255,0.5); }
+
+        .err-chips {
+            display: flex; flex-wrap: wrap; gap: 5px;
+            padding-top: 8px;
+            border-top: 1px dashed var(--glass-border);
+            min-height: 28px;
+        }
+        .err-chip {
+            font-family: 'JetBrains Mono', 'Consolas', monospace;
+            font-size: 11px; font-weight: 800;
+            padding: 3px 9px;
+            border-radius: 5px;
+            letter-spacing: 0.3px;
+            white-space: nowrap;
+        }
+        .err-chip.td {
+            background: var(--red-dim);
+            color: var(--red);
+            border: 1px solid rgba(255, 85, 119, 0.45);
+        }
+        .err-chip.bd {
+            background: var(--amber-dim);
+            color: var(--amber);
+            border: 1px solid rgba(255, 184, 77, 0.45);
+        }
+        .err-chip.ok {
+            background: var(--green-dim);
+            color: var(--green);
+            border: 1px solid rgba(34, 230, 164, 0.3);
+            font-family: inherit;
+        }
+        .err-chip.zero {
+            background: var(--purple-dim);
+            color: var(--purple);
+            border: 1px solid rgba(180, 124, 255, 0.5);
+            font-family: inherit;
+            font-weight: 900;
+            letter-spacing: 0.6px;
+        }
+
+        .state {
+            grid-column: 1 / -1;
+            padding: 40px 20px;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            text-align: center;
+            color: var(--text-2);
+            min-height: 200px;
+        }
+        .state .ico { font-size: 44px; opacity: 0.35; margin-bottom: 12px; }
+        .state .ttl { font-size: 15px; font-weight: 700; color: var(--text-1); margin-bottom: 4px; }
+        .state .sub { font-size: 13px; color: var(--text-3); }
+
+        .loader-spin {
+            width: 44px; height: 44px;
+            border: 4px solid rgba(79, 140, 255, 0.15);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.9s linear infinite;
+            margin-bottom: 16px;
+        }
+
+        /* MODAL */
+        .modal-backdrop {
+            position: fixed; inset: 0;
+            background: var(--modal-backdrop);
+            backdrop-filter: blur(10px);
+            z-index: 1000;
+            display: none;
+            align-items: center; justify-content: center;
+            padding: 24px;
+            animation: fadeIn 0.22s ease;
+        }
+        .modal-backdrop.active { display: flex; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        .modal {
+            background: var(--bg-base);
+            border-radius: 20px;
+            width: 100%;
+            max-width: 800px;
+            max-height: 88vh;
+            display: flex; flex-direction: column;
+            overflow: hidden;
+            position: relative;
+            animation: modalSlide 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
+            box-shadow: 0 40px 100px rgba(0,0,0,0.75), 0 0 0 1px rgba(255,255,255,0.06) inset;
+        }
+        html[data-theme="dark"] .modal {
+            background: linear-gradient(180deg, #121826 0%, #0a0e18 100%);
+        }
+        html[data-theme="light"] .modal {
+            background: linear-gradient(180deg, #ffffff 0%, #f6f8fc 100%);
+            box-shadow: 0 40px 100px rgba(20, 40, 80, 0.28), 0 0 0 1px rgba(20, 40, 80, 0.06) inset;
+        }
+        @keyframes modalSlide {
+            from { opacity: 0; transform: translateY(30px) scale(0.94); }
+            to   { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        .modal::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 4px;
+            background: var(--accent);
+            box-shadow: 0 0 20px rgba(79, 140, 255, 0.6);
+        }
+        .modal.td::before   { background: linear-gradient(90deg, var(--red), #ff8a9e); box-shadow: 0 0 20px rgba(255,85,119,0.7); }
+        .modal.bd::before   { background: linear-gradient(90deg, var(--amber), #ffd27a); box-shadow: 0 0 20px rgba(255,184,77,0.7); }
+        .modal.zero::before { background: linear-gradient(90deg, var(--purple), #c4a6ff); box-shadow: 0 0 20px rgba(180,124,255,0.7); }
+        .modal.healthy::before { background: linear-gradient(90deg, var(--green), var(--cyan)); box-shadow: 0 0 20px rgba(34,230,164,0.6); }
+
+        .modal-head {
+            padding: 26px 28px 20px;
+            display: flex; align-items: flex-start; justify-content: space-between; gap: 18px;
+            flex-shrink: 0;
+            border-bottom: 1px solid var(--glass-border);
+        }
+        .modal-head-left {
+            display: flex; align-items: center; gap: 16px;
+            min-width: 0; flex: 1;
+        }
+        .modal-status-icon {
+            width: 56px; height: 56px;
+            border-radius: 16px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 26px;
+            flex-shrink: 0;
+        }
+        .modal-status-icon.td {
+            background: linear-gradient(135deg, rgba(255,85,119,0.22), rgba(255,85,119,0.08));
+            color: var(--red);
+            border: 1.5px solid rgba(255, 85, 119, 0.4);
+            box-shadow: 0 0 24px rgba(255, 85, 119, 0.25);
+        }
+        .modal-status-icon.bd {
+            background: linear-gradient(135deg, rgba(255,184,77,0.22), rgba(255,184,77,0.08));
+            color: var(--amber);
+            border: 1.5px solid rgba(255, 184, 77, 0.4);
+            box-shadow: 0 0 24px rgba(255, 184, 77, 0.25);
+        }
+        .modal-status-icon.zero {
+            background: linear-gradient(135deg, rgba(180,124,255,0.22), rgba(180,124,255,0.08));
+            color: var(--purple);
+            border: 1.5px solid rgba(180, 124, 255, 0.4);
+            box-shadow: 0 0 24px rgba(180, 124, 255, 0.3);
+        }
+        .modal-status-icon.healthy {
+            background: linear-gradient(135deg, rgba(34,230,164,0.22), rgba(34,230,164,0.08));
+            color: var(--green);
+            border: 1.5px solid rgba(34, 230, 164, 0.4);
+            box-shadow: 0 0 24px rgba(34, 230, 164, 0.25);
+        }
+
+        .modal-head-text { min-width: 0; flex: 1; }
+        .modal-tag {
+            display: inline-block;
+            font-size: 11px;
+            font-weight: 800;
+            padding: 3px 10px;
+            border-radius: 6px;
+            letter-spacing: 1.3px;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+        .modal-tag.td { background: var(--red-dim); color: var(--red); border: 1px solid rgba(255, 85, 119, 0.4); }
+        .modal-tag.bd { background: var(--amber-dim); color: var(--amber); border: 1px solid rgba(255, 184, 77, 0.4); }
+        .modal-tag.zero { background: var(--purple-dim); color: var(--purple); border: 1px solid rgba(180, 124, 255, 0.4); }
+        .modal-tag.healthy { background: var(--green-dim); color: var(--green); border: 1px solid rgba(34, 230, 164, 0.4); }
+
+        .modal-title {
+            font-size: 24px;
+            font-weight: 800;
+            color: var(--text-0);
+            font-family: 'JetBrains Mono', 'Consolas', monospace;
+            letter-spacing: 0.2px;
+            margin-bottom: 4px;
+        }
+        .modal-subtitle {
+            font-size: 14px;
+            color: var(--text-2);
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .modal-close {
+            width: 40px; height: 40px;
+            border-radius: 10px;
+            background: var(--glass-2);
+            border: 1px solid var(--glass-border);
+            color: var(--text-1);
+            font-size: 22px;
+            cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: 0.2s;
+            flex-shrink: 0;
+            line-height: 1;
+            font-family: inherit;
+            font-weight: 400;
+        }
+        .modal-close:hover {
+            background: var(--red-dim);
+            color: var(--red);
+            border-color: rgba(255,85,119,0.4);
+            transform: rotate(90deg) scale(1.05);
+        }
+
+        .modal-body {
+            padding: 24px 28px 28px;
+            overflow-y: auto;
+            flex: 1;
+        }
+        .modal-body::-webkit-scrollbar { width: 8px; }
+        .modal-body::-webkit-scrollbar-thumb {
+            background: var(--bg-scroll);
+            border-radius: 4px;
+        }
+
+        .health-banner {
+            padding: 16px 20px;
+            border-radius: 14px;
+            display: flex; align-items: center; gap: 16px;
+            margin-bottom: 24px;
+        }
+        .health-banner.healthy {
+            background: linear-gradient(135deg, rgba(34,230,164,0.15), rgba(34,230,164,0.05));
+            border: 1px solid rgba(34, 230, 164, 0.35);
+        }
+        .health-banner.td {
+            background: linear-gradient(135deg, rgba(255,85,119,0.15), rgba(255,85,119,0.05));
+            border: 1px solid rgba(255, 85, 119, 0.4);
+        }
+        .health-banner.bd {
+            background: linear-gradient(135deg, rgba(255,184,77,0.15), rgba(255,184,77,0.05));
+            border: 1px solid rgba(255, 184, 77, 0.4);
+        }
+        .health-banner.zero {
+            background: linear-gradient(135deg, rgba(180,124,255,0.15), rgba(180,124,255,0.05));
+            border: 1px solid rgba(180, 124, 255, 0.4);
+        }
+        .health-banner .hb-icon {
+            width: 44px; height: 44px;
+            border-radius: 11px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 24px;
+            flex-shrink: 0;
+        }
+        .health-banner.healthy .hb-icon { background: rgba(34,230,164,0.2); color: var(--green); }
+        .health-banner.td .hb-icon { background: rgba(255,85,119,0.2); color: var(--red); }
+        .health-banner.bd .hb-icon { background: rgba(255,184,77,0.2); color: var(--amber); }
+        .health-banner.zero .hb-icon { background: rgba(180,124,255,0.2); color: var(--purple); }
+
+        .health-banner .hb-text { flex: 1; min-width: 0; }
+        .health-banner .hb-title {
+            font-size: 16px;
+            font-weight: 800;
+            letter-spacing: -0.1px;
+            margin-bottom: 3px;
+        }
+        .health-banner.healthy .hb-title { color: var(--green); }
+        .health-banner.td .hb-title { color: var(--red); }
+        .health-banner.bd .hb-title { color: var(--amber); }
+        .health-banner.zero .hb-title { color: var(--purple); }
+        .health-banner .hb-sub {
+            font-size: 13.5px;
+            color: var(--text-2);
+            font-weight: 500;
+        }
+
+        .modal-section { margin-bottom: 24px; }
+        .modal-section:last-child { margin-bottom: 0; }
+        .modal-section-title {
+            font-size: 12px;
+            font-weight: 800;
+            letter-spacing: 1.4px;
+            text-transform: uppercase;
+            color: var(--text-3);
+            margin-bottom: 14px;
+            display: flex; align-items: center; gap: 9px;
+        }
+        .modal-section-title::before {
+            content: '';
+            width: 3px; height: 13px;
+            background: var(--accent);
+            border-radius: 2px;
+            box-shadow: 0 0 10px rgba(79,140,255,0.5);
+        }
+
+        .tiles-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+        }
+        .tile {
+            background: var(--glass-2);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 14px 16px;
+            display: flex; flex-direction: column; gap: 6px;
+            position: relative; overflow: hidden;
+        }
+        .tile::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 2px;
+            background: var(--accent);
+        }
+        .tile.green::before { background: var(--green); }
+        .tile.amber::before { background: var(--amber); }
+        .tile.red::before   { background: var(--red); }
+        .tile.purple::before{ background: var(--purple); }
+
+        .tile-label {
+            font-size: 11px;
+            color: var(--text-3);
+            font-weight: 800;
+            letter-spacing: 0.9px;
+            text-transform: uppercase;
+        }
+        .tile-value {
+            font-size: 26px;
+            font-weight: 800;
+            color: var(--text-0);
+            font-variant-numeric: tabular-nums;
+            line-height: 1;
+            letter-spacing: -0.5px;
+        }
+        .tile-value.green { color: var(--green); }
+        .tile-value.amber { color: var(--amber); }
+        .tile-value.red   { color: var(--red); }
+        .tile-value.purple{ color: var(--purple); }
+
+        .modal-progress {
+            height: 10px;
+            background: var(--glass-3);
+            border-radius: 5px;
+            overflow: hidden;
+            margin-top: 14px;
+        }
+        .modal-progress-inner {
+            height: 100%;
+            border-radius: 5px;
+            transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+            background: linear-gradient(90deg, var(--green), var(--cyan));
+            box-shadow: 0 0 14px rgba(34,230,164,0.6);
+        }
+        .modal-progress-inner.warn { background: linear-gradient(90deg, var(--amber), #ff8a4d); }
+        .modal-progress-inner.bad  { background: linear-gradient(90deg, var(--red), #ff3d5f); }
+        .modal-progress-inner.zero { background: linear-gradient(90deg, var(--purple), #c4a6ff); }
+
+        .err-list {
+            display: flex; flex-direction: column; gap: 10px;
+        }
+        .err-row {
+            display: grid;
+            grid-template-columns: 130px 1fr 90px;
+            gap: 14px;
+            align-items: center;
+            padding: 13px 16px;
+            background: var(--glass-2);
+            border: 1px solid var(--glass-border);
+            border-radius: 11px;
+            transition: 0.15s;
+        }
+        .err-row:hover {
+            background: var(--glass-3);
+            border-color: var(--glass-border-hi);
+            transform: translateX(2px);
+        }
+        .err-code {
+            font-family: 'JetBrains Mono', 'Consolas', monospace;
+            font-size: 13px;
+            font-weight: 800;
+            padding: 6px 10px;
+            border-radius: 7px;
+            text-align: center;
+            letter-spacing: 0.5px;
+        }
+        .err-code.td { background: var(--red-dim); color: var(--red); border: 1px solid rgba(255,85,119,0.4); }
+        .err-code.bd { background: var(--amber-dim); color: var(--amber); border: 1px solid rgba(255,184,77,0.4); }
+        .err-bar {
+            height: 26px;
+            background: var(--glass-3);
+            border-radius: 7px;
+            overflow: hidden;
+        }
+        .err-bar-fill {
+            height: 100%;
+            border-radius: 7px;
+            transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            padding-left: 10px;
+            font-size: 12px;
+            font-weight: 800;
+            color: #fff;
+            text-shadow: 0 1px 3px rgba(0,0,0,0.5);
+        }
+        .err-bar-fill.td { background: linear-gradient(90deg, var(--red), #ff3d5f); box-shadow: 0 0 14px rgba(255,85,119,0.6); }
+        .err-bar-fill.bd { background: linear-gradient(90deg, var(--amber), #ff8a4d); box-shadow: 0 0 14px rgba(255,184,77,0.6); }
+        .err-count {
+            text-align: right;
+            font-family: 'JetBrains Mono', 'Consolas', monospace;
+            font-size: 17px;
+            font-weight: 800;
+            color: var(--text-0);
+            font-variant-numeric: tabular-nums;
+        }
+        .err-count small {
+            display: block;
+            font-size: 11px;
+            color: var(--text-3);
+            font-weight: 700;
+            margin-top: 2px;
+        }
+
+        .err-empty {
+            padding: 32px 24px;
+            text-align: center;
+            background: linear-gradient(135deg, rgba(34,230,164,0.12), rgba(34,230,164,0.03));
+            border: 1px solid rgba(34, 230, 164, 0.35);
+            border-radius: 14px;
+            color: var(--green);
+            font-size: 15px;
+            font-weight: 700;
+        }
+        .err-empty.zero {
+            background: linear-gradient(135deg, rgba(180,124,255,0.12), rgba(180,124,255,0.03));
+            border: 1px solid rgba(180, 124, 255, 0.4);
+            color: var(--purple);
+        }
+        .err-empty .big-ic {
+            font-size: 44px;
+            display: block;
+            margin-bottom: 8px;
+            filter: drop-shadow(0 0 12px rgba(34,230,164,0.6));
+        }
+        .err-empty.zero .big-ic {
+            filter: drop-shadow(0 0 12px rgba(180,124,255,0.6));
+        }
+        .err-empty .sub {
+            color: var(--text-2);
+            font-size: 13px;
+            font-weight: 500;
+            margin-top: 6px;
+        }
+
+        .raw-table {
+            display: flex; flex-direction: column;
+            background: var(--glass-2);
+            border: 1px solid var(--glass-border);
+            border-radius: 11px;
+            overflow: hidden;
+        }
+        .raw-row {
+            display: grid;
+            grid-template-columns: 1fr 1.2fr;
+            gap: 16px;
+            align-items: center;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--glass-border);
+            transition: background 0.15s;
+        }
+        .raw-row:last-child { border-bottom: none; }
+        .raw-row:hover { background: var(--glass-3); }
+        .raw-row .key {
+            font-family: 'JetBrains Mono', 'Consolas', monospace;
+            font-size: 12.5px;
+            font-weight: 700;
+            color: var(--text-2);
+            letter-spacing: 0.3px;
+        }
+        .raw-row .val {
+            font-family: 'JetBrains Mono', 'Consolas', monospace;
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text-0);
+            text-align: right;
+            word-break: break-word;
+        }
+        .raw-row .val.red   { color: var(--red); }
+        .raw-row .val.amber { color: var(--amber); }
+        .raw-row .val.green { color: var(--green); }
+        .raw-row .val.purple{ color: var(--purple); }
+
+        .toast {
+            position: fixed;
+            bottom: 24px; right: 24px;
+            padding: 13px 22px;
+            background: var(--glass);
+            border: 1px solid var(--glass-border);
+            border-left: 4px solid var(--green);
+            border-radius: 10px;
+            color: var(--text-0);
+            font-size: 14px;
+            font-weight: 700;
+            backdrop-filter: blur(20px);
+            box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+            z-index: 9999;
+            animation: slideIn 0.25s ease;
+        }
+        .toast.err { border-left-color: var(--red); }
+        .toast.manual { border-left-color: var(--green); }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(30px); }
+            to   { opacity: 1; transform: translateX(0); }
+        }
+
+        /* RESPONSIVE */
+        @media (max-width: 1700px) {
+            .hdr-stat { padding: 6px 9px; font-size: 11.5px; }
+            .tc-input { width: 150px; }
+        }
+        @media (max-width: 1500px) {
+            .kpis { grid-template-columns: repeat(3, 1fr); }
+            .main-content { grid-template-rows: 200px 1fr; }
+            .panel-body { grid-template-columns: 1fr; }
+            .time-controls { padding: 4px 7px; gap: 5px; }
+            .tc-input { width: 130px; font-size: 10.5px; }
+            .logo { font-size: 16px; }
+            .logo-pill { display: none; }
+        }
+        @media (max-width: 1300px) {
+            .main-wrap { grid-template-columns: 240px 1fr; }
+            .panel-body { grid-template-columns: 1fr; }
+            .hdr-stat { display: none; }
+        }
+        @media (max-width: 1100px) {
+            .main-wrap { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+            .info-panel { max-height: 320px; }
+            .panels { grid-template-columns: 1fr; }
+            .main-content { grid-template-rows: auto 1fr; overflow-y: auto; }
+            .tiles-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+        @media (max-width: 700px) {
+            .kpis { grid-template-columns: repeat(2, 1fr); }
+            .main-wrap { padding: 8px; }
+            .header { padding: 0 10px; }
+            .panel-body { grid-template-columns: 1fr; }
+            .modal-backdrop { padding: 8px; }
+            .modal { max-height: 95vh; border-radius: 16px; }
+            .modal-head { padding: 20px 20px 16px; }
+            .modal-body { padding: 18px 20px 22px; }
+            .tiles-grid { grid-template-columns: 1fr 1fr; }
+            .err-row { grid-template-columns: 100px 1fr 70px; gap: 10px; padding: 10px; }
+            .modal-title { font-size: 20px; }
+            .time-controls { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="app">
+
+    <div class="header">
+        <div class="logo">
+            <div class="logo-mark">&#128200;</div>
+            IPO Monitor
+            <span class="logo-pill"><span class="pulse-dot"></span> LIVE</span>
+        </div>
+        <div class="hdr-spacer"></div>
+
+        <div class="hdr-stat">
+            <span class="dot p"></span> Zero <span class="num purple" id="hdrZero">0</span>
+        </div>
+        <div class="hdr-stat">
+            <span class="dot r"></span> TD <span class="num red" id="hdrCrit">0</span>
+        </div>
+        <div class="hdr-stat">
+            <span class="dot a"></span> BD <span class="num amber" id="hdrWarn">0</span>
+        </div>
+        <div class="hdr-stat">
+            <span class="dot g"></span> OK <span class="num green" id="hdrHealthy">0</span>
+        </div>
+
+        <!-- MANUAL TIME RANGE CONTROLS -->
+        <div class="time-controls" id="timeControls">
+            <div class="tc-group">
+                <label class="tc-label">From</label>
+                <input type="datetime-local" id="startTimeInput" class="tc-input" step="1">
+            </div>
+            <div class="tc-group">
+                <label class="tc-label">To</label>
+                <input type="datetime-local" id="endTimeInput" class="tc-input" step="1">
+            </div>
+            <button class="btn-manual" id="manualRunBtn" onclick="runManual()" title="Run with selected time range">
+                &#9654; Run
+            </button>
+            <button class="btn-reset" id="resetBtn" onclick="resetToAuto()" title="Back to auto 5-min rolling window">
+                &#8634; Auto
+            </button>
+        </div>
+
+        <div class="countdown-pill" id="countdownPill">
+            <span>&#9202;</span> Next <span class="cd-val" id="cdVal">--:--</span>
+        </div>
+
+        <div class="theme-toggle" onclick="toggleTheme()" title="Toggle theme (Ctrl+T)">
+            <span class="icon moon">&#9789;</span>
+            <span class="icon sun">&#9728;</span>
+            <div class="knob"></div>
+        </div>
+        <button class="btn-refresh" id="refreshBtn" onclick="refreshNow()" title="Refresh now (Ctrl+R)">&#8635;</button>
+    </div>
+
+    <div class="main-wrap">
+
+        <!-- INFO PANEL -->
+        <div class="info-panel">
+            <div class="info-status" id="infoStatus">
+                <span class="info-status-dot"></span>
+                <span id="infoStatusText">Initializing...</span>
+            </div>
+
+            <div class="info-top-row">
+                <div class="info-mini">
+                    <div class="info-mini-label">Last</div>
+                    <div class="info-mini-value small" id="infoLastRefresh">—</div>
+                </div>
+                <div class="info-mini">
+                    <div class="info-mini-label">Combos</div>
+                    <div class="info-mini-value" id="infoTotalCombos">—</div>
+                </div>
+                <div class="info-mini">
+                    <div class="info-mini-label">Run #</div>
+                    <div class="info-mini-value" id="infoRefreshCount">0</div>
+                </div>
+                <div class="info-mini">
+                    <div class="info-mini-label">Mode</div>
+                    <div class="info-mini-value small" id="infoMode">Auto · 5m</div>
+                </div>
+            </div>
+
+            <div class="info-section-title red">
+                TD <span class="count-pill" id="tdListCount">0</span>
+            </div>
+            <div class="short-list" id="tdList"></div>
+
+            <div class="info-section-title amber">
+                BD <span class="count-pill" id="bdListCount">0</span>
+            </div>
+            <div class="short-list" id="bdList"></div>
+
+            <div class="info-section-title purple">
+                Zero <span class="count-pill" id="zeroListCount">0</span>
+            </div>
+            <div class="short-list" id="zeroList"></div>
+        </div>
+
+        <!-- CONTENT -->
+        <div class="main-content">
+
+            <div class="kpis">
+                <div class="kpi green" id="kpiApiNHits">
+                    <div class="kpi-label">NSE/INB Hits</div>
+                    <div class="kpi-value" id="kpiApiNHitsVal">—</div>
+                    <div class="kpi-sub" id="kpiApiNHitsSub">Routing</div>
+                </div>
+                <div class="kpi green" id="kpiApiNTD">
+                    <div class="kpi-label">NSE/INB TD%</div>
+                    <div class="kpi-value" id="kpiApiNTDVal">—</div>
+                    <div class="kpi-sub" id="kpiApiNTDSub">Technical</div>
+                </div>
+                <div class="kpi green" id="kpiApiBHits">
+                    <div class="kpi-label">BSE Hits</div>
+                    <div class="kpi-value" id="kpiApiBHitsVal">—</div>
+                    <div class="kpi-sub" id="kpiApiBHitsSub">IPO_ORDER</div>
+                </div>
+                <div class="kpi green" id="kpiApiBTD">
+                    <div class="kpi-label">BSE TD%</div>
+                    <div class="kpi-value" id="kpiApiBTDVal">—</div>
+                    <div class="kpi-sub" id="kpiApiBTDSub">Technical</div>
+                </div>
+                <div class="kpi green" id="kpiBackendHits">
+                    <div class="kpi-label">Backend Hits</div>
+                    <div class="kpi-value" id="kpiBackendHitsVal">—</div>
+                    <div class="kpi-sub" id="kpiBackendHitsSub">Auth</div>
+                </div>
+                <div class="kpi green" id="kpiBackendTD">
+                    <div class="kpi-label">Backend TD%</div>
+                    <div class="kpi-value" id="kpiBackendTDVal">—</div>
+                    <div class="kpi-sub" id="kpiBackendTDSub">Technical</div>
+                </div>
+            </div>
+
+            <div class="panels">
+
+                <div class="panel">
+                    <div class="panel-head">
+                        <div class="ph-icon blue">&#128225;</div>
+                        <div class="ph-text">
+                            <div class="ph-title">API LOG · NSE/INB</div>
+                            <div class="ph-sub">Routing Services</div>
+                        </div>
+                        <div class="ph-badge" id="apiNBadge">—</div>
+                    </div>
+                    <div class="panel-body" id="apiNBody">
+                        <div class="state"><div class="loader-spin"></div><div class="ttl">Loading NSE/INB data...</div></div>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-head">
+                        <div class="ph-icon purple">&#128226;</div>
+                        <div class="ph-text">
+                            <div class="ph-title">API LOG · BSE</div>
+                            <div class="ph-sub">BSE IPO_ORDER</div>
+                        </div>
+                        <div class="ph-badge" id="apiBBadge">—</div>
+                    </div>
+                    <div class="panel-body" id="apiBBody">
+                        <div class="state"><div class="loader-spin"></div><div class="ttl">Loading BSE data...</div></div>
+                    </div>
+                </div>
+
+                <div class="panel">
+                    <div class="panel-head">
+                        <div class="ph-icon green">&#9881;</div>
+                        <div class="ph-text">
+                            <div class="ph-title">BACKEND LOG</div>
+                            <div class="ph-sub">IPO Auth</div>
+                        </div>
+                        <div class="ph-badge" id="backendBadge">—</div>
+                    </div>
+                    <div class="panel-body" id="backendBody">
+                        <div class="state"><div class="loader-spin"></div><div class="ttl">Loading backend data...</div></div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL -->
+<div class="modal-backdrop" id="modalBackdrop" onclick="closeModalFromBackdrop(event)">
+    <div class="modal" id="modalBox" onclick="event.stopPropagation()">
+        <div class="modal-head">
+            <div class="modal-head-left">
+                <div class="modal-status-icon" id="modalIcon">&#128225;</div>
+                <div class="modal-head-text">
+                    <span class="modal-tag" id="modalTag">—</span>
+                    <div class="modal-title" id="modalTitle">—</div>
+                    <div class="modal-subtitle" id="modalSubtitle">—</div>
+                </div>
+            </div>
+            <button class="modal-close" onclick="closeModal()" title="Close (Esc)">&#215;</button>
+        </div>
+        <div class="modal-body" id="modalBody"></div>
+    </div>
+</div>
+
+<script>
+/* ============================================================
+ * IPO MONITORING DASHBOARD — v14
+ * - Manual time range with auto-reset back to AUTO after 5 min
+ * - Clear all old data on every refresh
+ * - Console logs on Java side
+ * ============================================================ */
+
+var REFRESH_INTERVAL_SEC = 300;     // auto refresh every 5 min
+var MANUAL_RESET_AFTER_SEC = 300;   // manual view auto-resets after 5 min
+var secondsLeft = 0;
+var countdownTimer = null;
+var isRefreshing = false;
+var refreshCount = 0;
+var __panelRows = {};
+
+var lastRunMode = 'auto';
+var lastRunStart = null;
+var lastRunEnd = null;
+var autoPausedByManual = false;
+
+// Manual mode auto-reset tracking
+var manualTimeoutId = null;
+var manualSecondsLeft = 0;
+var manualCountdownTimer = null;
+
+(function initTheme() {
+    try {
+        var saved = localStorage.getItem('ipo_theme');
+        if (saved === 'light' || saved === 'dark') {
+            document.documentElement.setAttribute('data-theme', saved);
+        }
+    } catch(e) {}
+    try {
+        var now = new Date();
+        var past = new Date(now.getTime() - 15 * 60 * 1000);
+        document.getElementById('startTimeInput').value = toLocalInputValue(past);
+        document.getElementById('endTimeInput').value   = toLocalInputValue(now);
+    } catch(e) {}
+})();
+
+function toLocalInputValue(d) {
+    var pad = function(n){ return n < 10 ? '0'+n : ''+n; };
+    return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate())
+        + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+}
+
+function toSqlDateTime(v) {
+    if (!v) return '';
+    var s = v.replace('T', ' ');
+    if (s.length === 16) s += ':00';
+    return s;
+}
+
+function toggleTheme() {
+    var current = document.documentElement.getAttribute('data-theme') || 'dark';
+    var next = current === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    try { localStorage.setItem('ipo_theme', next); } catch(e) {}
+    toast('Switched to ' + next + ' mode');
+}
+
+/* ============================================================
+ * CLEAR ALL OLD DATA — called at the start of every fetch
+ * ============================================================ */
+function clearAllData() {
+    // Panels -> loader
+    showState('apiNBody', 'Loading NSE/INB data...');
+    showState('apiBBody', 'Loading BSE data...');
+    showState('backendBody', 'Loading backend data...');
+
+    // Panel badges
+    setText('apiNBadge', '—');
+    setText('apiBBadge', '—');
+    setText('backendBadge', '—');
+
+    // Clear panel rows cache (so no stale modal opens)
+    __panelRows = {};
+
+    // KPI values
+    ['kpiApiNHitsVal','kpiApiNTDVal','kpiApiBHitsVal','kpiApiBTDVal',
+     'kpiBackendHitsVal','kpiBackendTDVal'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) {
+            el.textContent = '—';
+            el.classList.remove('green','amber','red');
+            el.classList.add('green');
+        }
+    });
+
+    // KPI subs
+    ['kpiApiNHitsSub','kpiApiNTDSub','kpiApiBHitsSub','kpiApiBTDSub',
+     'kpiBackendHitsSub','kpiBackendTDSub'].forEach(function(id) {
+        setText(id, '—');
+    });
+
+    // KPI wrapper accent colors reset
+    ['kpiApiNHits','kpiApiNTD','kpiApiBHits','kpiApiBTD',
+     'kpiBackendHits','kpiBackendTD'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) {
+            el.classList.remove('green','amber','red');
+            el.classList.add('green');
+        }
+    });
+
+    // Header stats
+    setText('hdrHealthy', '0');
+    setText('hdrWarn', '0');
+    setText('hdrCrit', '0');
+    setText('hdrZero', '0');
+
+    // Info summary
+    setText('infoTotalCombos', '—');
+
+    // Short lists -> show loading placeholder
+    ['tdList','bdList','zeroList'].forEach(function(id) {
+        var el = document.getElementById(id);
+        if (el) el.innerHTML = '<div class="short-empty loading">Loading…</div>';
+    });
+    setText('tdListCount', '0');
+    setText('bdListCount', '0');
+    setText('zeroListCount', '0');
+}
+
+function setText(id, txt) {
+    var el = document.getElementById(id);
+    if (el) el.textContent = txt;
+}
+
+/* ============ COUNTDOWN ============ */
+function startCountdown() {
+    if (countdownTimer) clearInterval(countdownTimer);
+    if (autoPausedByManual) { renderCountdown(); return; }
+    secondsLeft = REFRESH_INTERVAL_SEC;
+    renderCountdown();
+    countdownTimer = setInterval(function() {
+        secondsLeft--;
+        if (secondsLeft <= 0) {
+            secondsLeft = REFRESH_INTERVAL_SEC;
+            refreshNow();
+        }
+        renderCountdown();
+    }, 1000);
+}
+
+function stopCountdown() {
+    if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+}
+
+function renderCountdown() {
+    var el = document.getElementById('cdVal');
+    var pill = document.getElementById('countdownPill');
+    if (!el) return;
+
+    if (autoPausedByManual) {
+        pill.classList.add('manual');
+        if (manualSecondsLeft > 0) {
+            var mm = Math.floor(manualSecondsLeft / 60);
+            var ss = manualSecondsLeft % 60;
+            el.textContent = 'Auto in ' + (mm < 10 ? '0' : '') + mm + ':' + (ss < 10 ? '0' : '') + ss;
+        } else {
+            el.textContent = 'PAUSED';
+        }
+        el.style.color = '';
+        return;
+    }
+
+    pill.classList.remove('manual');
+    if (isRefreshing) {
+        el.textContent = '...';
+        el.style.color = 'var(--amber)';
+        return;
+    }
+    el.style.color = '';
+    var m = Math.floor(secondsLeft / 60);
+    var s = secondsLeft % 60;
+    el.textContent = (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+}
+
+/* ============ INFO PANEL ============ */
+function setInfoStatus(text, isLoading) {
+    var statusEl = document.getElementById('infoStatus');
+    document.getElementById('infoStatusText').textContent = text;
+    statusEl.classList.toggle('loading', !!isLoading);
+    statusEl.classList.toggle('manual', !isLoading && lastRunMode === 'manual');
+}
+
+function setModeDisplay(mode) {
+    var el = document.getElementById('infoMode');
+    if (!el) return;
+    if (mode === 'manual') {
+        el.textContent = 'Manual';
+        el.classList.remove('small');
+    } else {
+        el.textContent = 'Auto · 5m';
+        el.classList.add('small');
     }
 }
+
+function renderShortList(containerId, countId, items, type) {
+    var container = document.getElementById(containerId);
+    var countEl = document.getElementById(countId);
+    countEl.textContent = items.length;
+    if (items.length === 0) {
+        container.innerHTML = '<div class="short-empty">&#10003; None</div>';
+        return;
+    }
+    var html = '';
+    items.slice(0, 20).forEach(function(it) {
+        var serviceName = it.api || '—';
+        var cls = type;
+        var valueText = '';
+        if (type === 'td') valueText = it.tdPct.toFixed(1) + '%';
+        else if (type === 'bd') valueText = it.bdPct.toFixed(1) + '%';
+        else valueText = '0';
+
+        html += '<div class="short-item ' + cls + '" title="' + escapeHtml(it.ip) + ' · ' + escapeHtml(serviceName) + '">';
+        html +=   '<div class="ip-line">' + escapeHtml(it.ip) + '</div>';
+        html +=   '<div class="api-line ' + cls + '" title="' + escapeHtml(serviceName) + '">' + escapeHtml(serviceName) + '</div>';
+        html +=   '<div class="value-line ' + cls + '">' + valueText + '</div>';
+        html += '</div>';
+    });
+    container.innerHTML = html;
+}
+
+function updateInfoPanel(allRows) {
+    var tdItems = [];
+    var bdItems = [];
+    var zeroItems = [];
+    for (var key in allRows) {
+        allRows[key].forEach(function(r) {
+            if (r.category === 'td-card') tdItems.push(r);
+            else if (r.category === 'bd-card') bdItems.push(r);
+            else if (r.category === 'zero-card') zeroItems.push(r);
+        });
+    }
+    tdItems.sort(function(a, b) { return b.tdPct - a.tdPct; });
+    bdItems.sort(function(a, b) { return b.bdPct - a.bdPct; });
+    zeroItems.sort(function(a, b) { return String(a.ip).localeCompare(String(b.ip)); });
+
+    renderShortList('tdList', 'tdListCount', tdItems, 'td');
+    renderShortList('bdList', 'bdListCount', bdItems, 'bd');
+    renderShortList('zeroList', 'zeroListCount', zeroItems, 'purple');
+
+    var now = new Date();
+    var hh = String(now.getHours()).padStart(2,'0');
+    var mm = String(now.getMinutes()).padStart(2,'0');
+    var ss = String(now.getSeconds()).padStart(2,'0');
+    setText('infoLastRefresh', hh + ':' + mm + ':' + ss);
+
+    refreshCount++;
+    setText('infoRefreshCount', refreshCount);
+}
+
+/* ============ AUTO REFRESH ============ */
+function refreshNow() {
+    if (isRefreshing) return;
+    if (autoPausedByManual) {
+        toast('Auto-refresh paused — Manual mode active', true);
+        return;
+    }
+    doFetch('auto', null, null);
+}
+
+/* ============ MANUAL RUN ============ */
+function runManual() {
+    if (isRefreshing) return;
+    var sv = document.getElementById('startTimeInput').value;
+    var ev = document.getElementById('endTimeInput').value;
+    if (!sv || !ev) {
+        toast('Please select both Start and End time', true);
+        return;
+    }
+    var s = toSqlDateTime(sv);
+    var e = toSqlDateTime(ev);
+    if (s >= e) {
+        toast('Start time must be before End time', true);
+        return;
+    }
+
+    // Clear any previous manual timeout / countdown
+    if (manualTimeoutId) { clearTimeout(manualTimeoutId); manualTimeoutId = null; }
+    if (manualCountdownTimer) { clearInterval(manualCountdownTimer); manualCountdownTimer = null; }
+
+    autoPausedByManual = true;
+    document.getElementById('timeControls').classList.add('manual-active');
+    stopCountdown();
+    renderCountdown();
+
+    // Start countdown display for manual auto-reset
+    manualSecondsLeft = MANUAL_RESET_AFTER_SEC;
+    manualCountdownTimer = setInterval(function() {
+        manualSecondsLeft--;
+        if (manualSecondsLeft <= 0) {
+            clearInterval(manualCountdownTimer);
+            manualCountdownTimer = null;
+        }
+        renderCountdown();
+    }, 1000);
+
+    // Do the fetch
+    doFetch('manual', s, e);
+
+    // Schedule auto-reset back to AUTO mode after 5 min
+    manualTimeoutId = setTimeout(function() {
+        console.log('[IPO] Manual view expired — switching back to AUTO');
+        toast('Manual view expired — back to Auto mode', false, false);
+        resetToAuto();
+    }, MANUAL_RESET_AFTER_SEC * 1000);
+}
+
+function resetToAuto() {
+    // Clear manual timers
+    if (manualTimeoutId) { clearTimeout(manualTimeoutId); manualTimeoutId = null; }
+    if (manualCountdownTimer) { clearInterval(manualCountdownTimer); manualCountdownTimer = null; }
+    manualSecondsLeft = 0;
+
+    autoPausedByManual = false;
+    lastRunMode = 'auto';
+    setModeDisplay('auto');
+    document.getElementById('timeControls').classList.remove('manual-active');
+
+    // Update info status
+    setInfoStatus('Switching back to Auto…', true);
+
+    // Fetch fresh auto data
+    refreshNow();
+}
+
+/* ============ CORE FETCH ============ */
+function doFetch(mode, startTime, endTime) {
+    isRefreshing = true;
+    setInfoStatus(mode === 'manual' ? 'Running manual query...' : 'Refreshing...', true);
+
+    // 🧹 CLEAR ALL OLD DATA before fetching
+    clearAllData();
+
+    var btn = document.getElementById('refreshBtn');
+    var runBtn = document.getElementById('manualRunBtn');
+    var resetBtn = document.getElementById('resetBtn');
+    btn.classList.add('spinning');
+    btn.disabled = true;
+    if (runBtn) runBtn.disabled = true;
+    if (resetBtn) resetBtn.disabled = true;
+
+    var url = 'ipo-monitor.jsp?ajax=fetch&mode=' + encodeURIComponent(mode) + '&_=' + Date.now();
+    if (mode === 'manual') {
+        url += '&startTime=' + encodeURIComponent(startTime);
+        url += '&endTime='   + encodeURIComponent(endTime);
+    }
+
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', url, true);
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState !== 4) return;
+        btn.classList.remove('spinning');
+        btn.disabled = false;
+        if (runBtn) runBtn.disabled = false;
+        if (resetBtn) resetBtn.disabled = false;
+        isRefreshing = false;
+
+        if (xhr.status !== 200) {
+            toast('HTTP ' + xhr.status + ' — refresh failed', true);
+            setInfoStatus('Error ' + xhr.status, false);
+            if (!autoPausedByManual) startCountdown();
+            renderCountdown();
+            return;
+        }
+
+        try {
+            var data = JSON.parse(xhr.responseText);
+            lastRunMode  = data.mode || mode;
+            lastRunStart = data.startTime || '';
+            lastRunEnd   = data.endTime   || '';
+            renderAll(data.results);
+            setModeDisplay(lastRunMode);
+
+            if (lastRunMode === 'manual') {
+                toast('Manual run complete · ' + lastRunStart + ' → ' + lastRunEnd, false, true);
+                setInfoStatus('Manual · ' + lastRunStart + ' → ' + lastRunEnd, false);
+            } else {
+                toast('Data refreshed (auto 5-min window)', false, false);
+                setInfoStatus('Live · Auto 5-min', false);
+            }
+        } catch(e) {
+            toast('Parse error', true);
+            setInfoStatus('Parse error', false);
+            console.error(e);
+        }
+
+        // Only restart auto countdown if we're NOT in manual mode
+        if (!autoPausedByManual && lastRunMode === 'auto') {
+            startCountdown();
+        }
+        renderCountdown();
+    };
+    xhr.send();
+}
+
+function showState(id, text) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.innerHTML = '<div class="state"><div class="loader-spin"></div><div class="ttl">' + escapeHtml(text) + '</div></div>';
+}
+
+/* ============ RENDER ALL ============ */
+function renderAll(results) {
+    var s1 = renderPanel(results.API_NSE_INB, 'apiNBody', 'apiNBadge');
+    var s2 = renderPanel(results.API_BSE, 'apiBBody', 'apiBBadge');
+    var s3 = renderPanel(results.BACKEND_LOG, 'backendBody', 'backendBadge');
+
+    updateKpis(results);
+
+    var totals = {
+        healthy: s1.healthy + s2.healthy + s3.healthy,
+        td: s1.td + s2.td + s3.td,
+        bd: s1.bd + s2.bd + s3.bd,
+        zero: s1.zero + s2.zero + s3.zero
+    };
+
+    setText('hdrHealthy', totals.healthy);
+    setText('hdrWarn', totals.bd);
+    setText('hdrCrit', totals.td);
+    setText('hdrZero', totals.zero);
+
+    var totalCombos = totals.healthy + totals.td + totals.bd + totals.zero;
+    setText('infoTotalCombos', totalCombos);
+
+    updateInfoPanel(__panelRows);
+}
+
+/* ============ PANEL RENDER ============ */
+function renderPanel(qr, bodyId, badgeId) {
+    var body = document.getElementById(bodyId);
+    var badge = document.getElementById(badgeId);
+    var stats = { healthy: 0, td: 0, bd: 0, zero: 0 };
+
+    if (!qr || !qr.success) {
+        body.innerHTML = '<div class="state"><div class="ico">&#9888;</div><div class="ttl">Could not load</div><div class="sub">' + escapeHtml((qr && qr.message) ? qr.message : 'Unknown error') + '</div></div>';
+        badge.textContent = 'ERROR';
+        return stats;
+    }
+
+    badge.textContent = qr.rows.length + ' combos';
+
+    if (!qr.rows || qr.rows.length === 0) {
+        body.innerHTML = '<div class="state"><div class="ico">&#128269;</div><div class="ttl">No data</div></div>';
+        return stats;
+    }
+
+    var cols = qr.columns;
+    var ipCol   = findCol(cols, ['SYS_IP', 'EXP_IP', 'IP']);
+    var apiCol  = findCol(cols, ['API_NAME']);
+    var hitsCol = findCol(cols, ['TOTAL_HITS', 'HITS']);
+    var succCol = findCol(cols, ['SUCCESS']);
+    var tdCol   = findCol(cols, ['TD']);
+    var tdpCol  = findCol(cols, ['TD_PERCENT']);
+    var bdCol   = findCol(cols, ['BD']);
+    var bdpCol  = findCol(cols, ['BD_PERCENT']);
+
+    var errCols = [];
+    cols.forEach(function(c) {
+        if (c === ipCol || c === apiCol || c === hitsCol || c === succCol ||
+            c === tdCol || c === tdpCol || c === bdCol || c === bdpCol) return;
+        errCols.push(c);
+    });
+
+    var rows = qr.rows.map(function(row) {
+        var ip    = row[ipCol] || '-';
+        var api   = row[apiCol] || '';
+        var hits  = parseInt(row[hitsCol] || 0);
+        var succ  = parseInt(row[succCol] || 0);
+        var td    = parseInt(row[tdCol] || 0);
+        var tdPct = parseFloat(row[tdpCol] || 0);
+        var bd    = parseInt(row[bdCol] || 0);
+        var bdPct = parseFloat(row[bdpCol] || 0);
+
+        var category;
+        if (hits === 0) category = 'zero-card';
+        else if (td > 0 || tdPct > 0) category = 'td-card';
+        else if (bd > 0 || bdPct > 0) category = 'bd-card';
+        else category = 'healthy-card';
+
+        var errChips = [];
+        errCols.forEach(function(c) {
+            var v = parseInt(row[c] || 0);
+            if (v > 0) {
+                var chipCls = category === 'bd-card' ? 'bd' : 'td';
+                errChips.push('<span class="err-chip ' + chipCls + '">' + escapeHtml(c) + ' · ' + v + '</span>');
+            }
+        });
+
+        return {
+            ip: ip, api: api, hits: hits, succ: succ,
+            td: td, tdPct: tdPct, bd: bd, bdPct: bdPct,
+            category: category, errChips: errChips,
+            allData: row
+        };
+    });
+
+    rows.sort(function(a, b) {
+        var priority = { 'zero-card': 0, 'td-card': 1, 'bd-card': 2, 'healthy-card': 3 };
+        var pa = priority[a.category], pb = priority[b.category];
+        if (pa !== pb) return pa - pb;
+        var apiCmp = String(a.api).localeCompare(String(b.api));
+        if (apiCmp !== 0) return apiCmp;
+        return String(a.ip).localeCompare(String(b.ip));
+    });
+
+    var panelKey = bodyId.replace('Body', '');
+    __panelRows[panelKey] = rows;
+
+    var html = '';
+    rows.forEach(function(r, idx) {
+        if (r.category === 'td-card') stats.td++;
+        else if (r.category === 'bd-card') stats.bd++;
+        else if (r.category === 'zero-card') stats.zero++;
+        else stats.healthy++;
+
+        var succPct = r.hits > 0 ? (r.succ * 100 / r.hits) : 0;
+        var succCls = r.hits === 0 ? 'purple' : succPct >= 99 ? 'green' : succPct >= 95 ? 'amber' : 'red';
+        var barCls  = r.hits === 0 ? 'zero' : succPct >= 99 ? '' : succPct >= 95 ? 'warn' : 'bad';
+        var barWidth = r.hits === 0 ? 100 : Math.min(100, Math.max(2, succPct));
+
+        var tdColorCls = r.tdPct > 0 ? 'red' : 'green';
+        var bdColorCls = r.bdPct > 0 ? 'amber' : 'green';
+
+        var badgeText = r.category === 'zero-card' ? 'ZERO' :
+                        r.category === 'td-card' ? 'TD' :
+                        r.category === 'bd-card' ? 'BD' : 'OK';
+
+        var apiDisplay = r.api || '—';
+
+        html += '<div class="ip-card ' + r.category + '" onclick="openIpModal(\'' + panelKey + '\',' + idx + ')">';
+        html +=   '<div class="ip-head">';
+        html +=     '<div class="ip-addr">' + escapeHtml(r.ip) + '</div>';
+        html +=     '<div class="ip-badge ' + r.category + '">' + badgeText + '</div>';
+        html +=   '</div>';
+        html += '<div class="ip-api" title="' + escapeHtml(r.api) + '">' + escapeHtml(apiDisplay) + '</div>';
+        html +=   '<div class="ip-metrics">';
+        html +=     '<div class="ip-metric"><div class="ip-metric-label">Hits</div><div class="ip-metric-value ' + (r.hits === 0 ? 'purple' : '') + '">' + r.hits + '</div></div>';
+        html +=     '<div class="ip-metric"><div class="ip-metric-label">Success</div><div class="ip-metric-value ' + succCls + '">' + r.succ + '</div></div>';
+        html +=     '<div class="ip-metric"><div class="ip-metric-label">TD%</div><div class="ip-metric-value ' + tdColorCls + '">' + r.tdPct.toFixed(2) + '%</div></div>';
+        html +=     '<div class="ip-metric"><div class="ip-metric-label">BD%</div><div class="ip-metric-value ' + bdColorCls + '">' + r.bdPct.toFixed(2) + '%</div></div>';
+        html +=   '</div>';
+        html +=   '<div class="succ-bar"><div class="succ-bar-inner ' + barCls + '" style="width:' + barWidth.toFixed(1) + '%"></div></div>';
+        html +=   '<div class="err-chips">';
+        if (r.hits === 0) {
+            html += '<span class="err-chip zero">&#9888; ZERO HITS</span>';
+        } else if (r.errChips.length > 0) {
+            html += r.errChips.join('');
+        } else {
+            html += '<span class="err-chip ok">&#10003; No errors</span>';
+        }
+        html +=   '</div>';
+        html += '</div>';
+    });
+
+    body.innerHTML = html;
+    return stats;
+}
+
+function findCol(cols, names) {
+    for (var i = 0; i < names.length; i++) {
+        var n = names[i].toUpperCase();
+        for (var j = 0; j < cols.length; j++) {
+            if (cols[j].toUpperCase() === n) return cols[j];
+        }
+    }
+    return null;
+}
+
+/* ============ MODAL ============ */
+function openIpModal(panelKey, idx) {
+    var rows = __panelRows[panelKey];
+    if (!rows || !rows[idx]) return;
+    var r = rows[idx];
+    var row = r.allData;
+
+    var panelInfo = {
+        'apiN':    { title: 'API LOG · NSE/INB', sub: 'Routing Services' },
+        'apiB':    { title: 'API LOG · BSE',     sub: 'BSE IPO_ORDER' },
+        'backend': { title: 'BACKEND LOG',       sub: 'IPO Auth' }
+    };
+    var pInfo = panelInfo[panelKey] || { title: 'IP Detail', sub: '' };
+
+    var catShort = r.category === 'zero-card' ? 'zero' :
+                   r.category === 'td-card' ? 'td' :
+                   r.category === 'bd-card' ? 'bd' : 'healthy';
+
+    var modalBox = document.getElementById('modalBox');
+    modalBox.className = 'modal ' + catShort;
+
+    var iconEl = document.getElementById('modalIcon');
+    iconEl.className = 'modal-status-icon ' + catShort;
+    iconEl.innerHTML = catShort === 'healthy' ? '&#10003;' : catShort === 'zero' ? '&#9940;' : '&#9888;';
+
+    var tagEl = document.getElementById('modalTag');
+    tagEl.className = 'modal-tag ' + catShort;
+    tagEl.textContent = catShort === 'td' ? 'TECHNICAL DECLINE' :
+                        catShort === 'bd' ? 'BUSINESS DECLINE' :
+                        catShort === 'zero' ? 'ZERO HITS' : 'HEALTHY';
+
+    document.getElementById('modalTitle').textContent = r.ip;
+    document.getElementById('modalSubtitle').textContent = pInfo.title + ' · ' + (r.api || 'Unknown API');
+
+    var succPct = r.hits > 0 ? (r.succ * 100 / r.hits) : 0;
+    var barCls = r.hits === 0 ? 'zero' : succPct >= 99 ? '' : succPct >= 95 ? 'warn' : 'bad';
+
+    var html = '';
+
+    var bannerTitle = catShort === 'td' ? 'Critical — Technical Decline Detected' :
+                      catShort === 'bd' ? 'Warning — Business Decline Detected' :
+                      catShort === 'zero' ? 'Zero Hits Detected' :
+                      'All Good — No Errors';
+    var bannerSub = catShort === 'td' ? 'This IP/Service is experiencing TD errors.' :
+                    catShort === 'bd' ? 'This IP/Service is experiencing BD errors.' :
+                    catShort === 'zero' ? 'No traffic received for this service on this server.' :
+                    'This IP/Service is operating normally.';
+
+    html += '<div class="health-banner ' + catShort + '">';
+    html +=   '<div class="hb-icon">' + (catShort === 'healthy' ? '&#9989;' : catShort === 'zero' ? '&#9940;' : '&#9888;') + '</div>';
+    html +=   '<div class="hb-text">';
+    html +=     '<div class="hb-title">' + bannerTitle + '</div>';
+    html +=     '<div class="hb-sub">' + bannerSub + '</div>';
+    html +=   '</div>';
+    html += '</div>';
+
+    html += '<div class="modal-section">';
+    html +=   '<div class="modal-section-title">Performance Metrics</div>';
+    html +=   '<div class="tiles-grid">';
+
+    var succCls2 = r.hits === 0 ? 'purple' : succPct >= 99 ? 'green' : succPct >= 95 ? 'amber' : 'red';
+    var tdCls = r.td > 0 ? 'red' : 'green';
+    var bdCls = r.bd > 0 ? 'amber' : 'green';
+    var tdPctCls = r.tdPct > 0 ? 'red' : 'green';
+    var bdPctCls = r.bdPct > 0 ? 'amber' : 'green';
+    var hitsCls = r.hits === 0 ? 'purple' : 'green';
+
+    html += '<div class="tile ' + hitsCls + '"><div class="tile-label">Total Hits</div><div class="tile-value ' + hitsCls + '">' + r.hits + '</div></div>';
+    html += '<div class="tile ' + succCls2 + '"><div class="tile-label">Success</div><div class="tile-value ' + succCls2 + '">' + r.succ + '</div></div>';
+    html += '<div class="tile ' + succCls2 + '"><div class="tile-label">Success %</div><div class="tile-value ' + succCls2 + '">' + succPct.toFixed(2) + '%</div></div>';
+    html += '<div class="tile ' + (r.td > 0 ? 'red' : 'green') + '"><div class="tile-label">TD Count</div><div class="tile-value ' + tdCls + '">' + r.td + '</div></div>';
+    html += '<div class="tile ' + (r.tdPct > 0 ? 'red' : 'green') + '"><div class="tile-label">TD %</div><div class="tile-value ' + tdPctCls + '">' + r.tdPct.toFixed(2) + '%</div></div>';
+    html += '<div class="tile ' + (r.bd > 0 ? 'amber' : 'green') + '"><div class="tile-label">BD Count</div><div class="tile-value ' + bdCls + '">' + r.bd + '</div></div>';
+    html += '<div class="tile ' + (r.bdPct > 0 ? 'amber' : 'green') + '"><div class="tile-label">BD %</div><div class="tile-value ' + bdPctCls + '">' + r.bdPct.toFixed(2) + '%</div></div>';
+    html += '<div class="tile ' + ((r.td + r.bd) > 0 ? 'red' : 'green') + '"><div class="tile-label">Errors</div><div class="tile-value ' + ((r.td + r.bd) > 0 ? 'red' : 'green') + '">' + (r.td + r.bd) + '</div></div>';
+
+    html +=   '</div>';
+    html +=   '<div class="modal-progress">';
+    html +=     '<div class="modal-progress-inner ' + barCls + '" style="width:' + (r.hits === 0 ? 100 : Math.min(100, Math.max(2, succPct))).toFixed(1) + '%"></div>';
+    html +=   '</div>';
+    html += '</div>';
+
+    html += '<div class="modal-section">';
+    html +=   '<div class="modal-section-title">Error Code Breakdown</div>';
+
+    var errList = [];
+    Object.keys(row).forEach(function(key) {
+        var upper = key.toUpperCase();
+        if (upper === 'API_NAME' || upper === 'SYS_IP' || upper === 'EXP_IP' ||
+            upper === 'IP' || upper === 'TOTAL_HITS' || upper === 'SUCCESS' ||
+            upper === 'TD' || upper === 'TD_PERCENT' || upper === 'BD' ||
+            upper === 'BD_PERCENT') return;
+        var val = parseInt(row[key] || 0);
+        if (val > 0) {
+            errList.push({ code: key, count: val, isBD: (catShort === 'bd') });
+        }
+    });
+    if (r.td > 0 && !errList.some(function(e){ return e.code.toUpperCase() === 'TD'; })) {
+        errList.push({ code: 'TD', count: r.td, isBD: false });
+    }
+    if (r.bd > 0 && !errList.some(function(e){ return e.code.toUpperCase() === 'BD'; })) {
+        errList.push({ code: 'BD', count: r.bd, isBD: true });
+    }
+    errList.sort(function(a, b) { return b.count - a.count; });
+
+    if (r.hits === 0 && errList.length === 0) {
+        html += '<div class="err-empty zero"><span class="big-ic">&#9940;</span>ZERO HITS — No traffic received<div class="sub">This service did not process any requests on this server</div></div>';
+    } else if (errList.length === 0) {
+        html += '<div class="err-empty"><span class="big-ic">&#10003;</span>No errors detected — 100% healthy</div>';
+    } else {
+        var maxCount = errList.reduce(function(m, e){ return Math.max(m, e.count); }, 1);
+        html += '<div class="err-list">';
+        errList.forEach(function(e) {
+            var pct = (e.count / maxCount) * 100;
+            var chipCls = e.isBD ? 'bd' : 'td';
+            var barCls2 = e.isBD ? 'bd' : 'td';
+            var pctOfTotal = r.hits > 0 ? ((e.count / r.hits) * 100).toFixed(2) : '0.00';
+            html += '<div class="err-row">';
+            html +=   '<div class="err-code ' + chipCls + '">' + escapeHtml(e.code) + '</div>';
+            html +=   '<div class="err-bar"><div class="err-bar-fill ' + barCls2 + '" style="width:' + Math.max(10, pct).toFixed(1) + '%">' + e.count + '</div></div>';
+            html +=   '<div class="err-count">' + e.count + '<small>' + pctOfTotal + '%</small></div>';
+            html += '</div>';
+        });
+        html += '</div>';
+    }
+    html += '</div>';
+
+    html += '<div class="modal-section">';
+    html +=   '<div class="modal-section-title">Raw Data</div>';
+    html +=   '<div class="raw-table">';
+    Object.keys(row).forEach(function(key) {
+        var v = row[key];
+        var display = (v === null || v === undefined || v === '') ? '—' : String(v);
+        var valCls = '';
+        var upper = key.toUpperCase();
+        var numVal = parseInt(v || 0);
+        if ((upper === 'TD' || upper.indexOf('SI') === 0) && numVal > 0) valCls = 'red';
+        else if ((upper === 'BD' || upper === 'BD_NEW') && numVal > 0) valCls = 'amber';
+        else if (upper === 'SUCCESS') valCls = 'green';
+        html += '<div class="raw-row"><div class="key">' + escapeHtml(key) + '</div><div class="val ' + valCls + '">' + escapeHtml(display) + '</div></div>';
+    });
+    html +=   '</div>';
+    html += '</div>';
+
+    document.getElementById('modalBody').innerHTML = html;
+    document.getElementById('modalBackdrop').classList.add('active');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeModal() {
+    document.getElementById('modalBackdrop').classList.remove('active');
+    document.body.style.overflow = '';
+}
+function closeModalFromBackdrop(e) {
+    if (e.target.id === 'modalBackdrop') closeModal();
+}
+
+/* ============ KPIS ============ */
+function updateKpis(results) {
+    var b = results.BACKEND_LOG, n = results.API_NSE_INB, x = results.API_BSE;
+    function agg(qr) {
+        var hits = 0, tdSum = 0, count = 0;
+        if (qr && qr.success && qr.rows) {
+            qr.rows.forEach(function(r) {
+                hits += parseInt(r.TOTAL_HITS || 0);
+                tdSum += parseFloat(r.TD_PERCENT || 0);
+                count++;
+            });
+        }
+        return { hits: hits, tdAvg: count > 0 ? (tdSum / count) : null, ips: count };
+    }
+    var bA = agg(b), nA = agg(n), xA = agg(x);
+    setKpi('kpiApiNHits', 'kpiApiNHitsVal', 'kpiApiNHitsSub', nA.hits, nA.ips + ' combos', null);
+    setKpi('kpiApiNTD',   'kpiApiNTDVal',   'kpiApiNTDSub',   null, null, nA.tdAvg);
+    setKpi('kpiApiBHits', 'kpiApiBHitsVal', 'kpiApiBHitsSub', xA.hits, xA.ips + ' combos', null);
+    setKpi('kpiApiBTD',   'kpiApiBTDVal',   'kpiApiBTDSub',   null, null, xA.tdAvg);
+    setKpi('kpiBackendHits', 'kpiBackendHitsVal', 'kpiBackendHitsSub', bA.hits, bA.ips + ' combos', null);
+    setKpi('kpiBackendTD',   'kpiBackendTDVal',   'kpiBackendTDSub',   null, null, bA.tdAvg);
+}
+
+function setKpi(wrapperId, valId, subId, hits, hitsSub, tdPct) {
+    var wrap = document.getElementById(wrapperId);
+    var val  = document.getElementById(valId);
+    var sub  = document.getElementById(subId);
+    if (!wrap || !val) return;
+    wrap.classList.remove('green', 'amber', 'red');
+    val.classList.remove('green', 'amber', 'red');
+    if (hits !== null && hits !== undefined) {
+        val.textContent = hits.toLocaleString();
+        val.classList.add('green');
+        wrap.classList.add('green');
+        if (sub && hitsSub) sub.textContent = hitsSub;
+    } else if (tdPct !== null && tdPct !== undefined && !isNaN(tdPct)) {
+        val.textContent = tdPct.toFixed(2) + '%';
+        if (tdPct > 0) {
+            val.classList.add('red'); wrap.classList.add('red');
+            sub.textContent = tdPct <= 5 ? 'Technical' : 'High decline';
+        } else {
+            val.classList.add('green'); wrap.classList.add('green');
+            sub.textContent = 'No decline';
+        }
+    } else {
+        val.textContent = '—';
+        wrap.classList.add('green'); val.classList.add('green');
+    }
+}
+
+/* ============ HELPERS ============ */
+function escapeHtml(s) {
+    if (s == null) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+            .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function toast(msg, isErr, isManual) {
+    var el = document.createElement('div');
+    el.className = 'toast' + (isErr ? ' err' : '') + (isManual ? ' manual' : '');
+    el.textContent = msg;
+    document.body.appendChild(el);
+    setTimeout(function() {
+        el.style.transition = 'opacity .3s, transform .3s';
+        el.style.opacity = '0';
+        el.style.transform = 'translateX(30px)';
+        setTimeout(function() { el.remove(); }, 320);
+    }, 2400);
+}
+
+/* ============ KEYBOARD ============ */
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeModal();
+    if (e.ctrlKey && (e.key === 'r' || e.key === 'R')) { e.preventDefault(); refreshNow(); }
+    if (e.ctrlKey && (e.key === 't' || e.key === 'T')) { e.preventDefault(); toggleTheme(); }
+});
+
+/* ============ INIT ============ */
+window.addEventListener('load', function() { refreshNow(); });
+</script>
+
+</body>
+</html>
