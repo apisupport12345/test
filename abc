@@ -47,15 +47,7 @@ gen6_best AS (
       ON g5.ip = g6.ip
      AND g5.type = g6.type
      AND g5.route_url = g6.route_url
-),
-gen6_fallback AS (
-    SELECT 
-        ip, 
-        type, 
-        route_url, 
-        gen6_lb_url,
-        ROW_NUMBER() OVER (PARTITION BY ip, type, route_url ORDER BY gen6_lb_url) AS rn
-    FROM gen6_base
+     AND g5.gen5_path_op = g6.gen6_path_op
 ),
 gen6_siapp3 AS (
     SELECT 
@@ -88,7 +80,7 @@ SELECT
     g5.ip, 
     g5.type, 
     g5.gen5_lb_url,
-    COALESCE(g6.gen6_lb_url, gf.gen6_lb_url) AS gen6_lb_url,
+    g6.gen6_lb_url,
     g5.route_url,
     SYSDATE
 FROM gen5_base g5
@@ -98,11 +90,6 @@ LEFT JOIN gen6_best g6
  AND g5.route_url = g6.route_url
  AND g5.gen5_lb_url = g6.gen5_lb_url
  AND g6.rn = 1
-LEFT JOIN gen6_fallback gf
-  ON g5.ip = gf.ip
- AND g5.type = gf.type
- AND g5.route_url = gf.route_url
- AND gf.rn = 1
 
 UNION ALL
 
@@ -121,6 +108,7 @@ LEFT JOIN gen6_siapp3 g6
  AND g5.route_url = g6.route_url
  AND g5.gen5_path_op = g6.gen6_path_op
  AND g6.rn = 1
+WHERE g5.rn = 1
 
 UNION ALL
 
