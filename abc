@@ -1,21 +1,13 @@
-SELECT 
-    '[' || REPLACE(REPLACE(REPLACE(
-        CASE 
-            WHEN INSTR(lb_url, '/gateway/') > 0 THEN SUBSTR(lb_url, INSTR(lb_url, '/gateway/') + 9)
-            WHEN INSTR(lb_url, '/getway/') > 0 THEN SUBSTR(lb_url, INSTR(lb_url, '/getway/') + 8)
-            ELSE NULL END, CHR(10), ''), CHR(13), ''), CHR(9), '') || ']' AS path_op_quoted,
-    LENGTH(lb_url) AS len
-FROM daily_dpg_url_data
-WHERE lb_url LIKE '%gen5/gateway/EKYC/AuthenticatEkycCertificate%'
-  AND UPPER(lb_url) NOT LIKE '%SIAPP3%'
-UNION ALL
-SELECT 
-    '[' || REPLACE(REPLACE(REPLACE(
-        CASE 
-            WHEN INSTR(lb_url, '/gateway/') > 0 THEN SUBSTR(lb_url, INSTR(lb_url, '/gateway/') + 9)
-            WHEN INSTR(lb_url, '/getway/') > 0 THEN SUBSTR(lb_url, INSTR(lb_url, '/getway/') + 8)
-            ELSE NULL END, CHR(10), ''), CHR(13), ''), CHR(9), '') || ']',
-    LENGTH(lb_url)
-FROM daily_dpg_url_data
-WHERE lb_url LIKE '%gen6/gateway/EKYC/AuthenticatEkycCertificate%'
-  AND UPPER(lb_url) NOT LIKE '%SIAPP3%';
+PATH_OP_QUOTED	LEN
+[EKYC/AuthenticatEkycCertificate]	44
+[EKYC/AuthenticatEkycCertificate]	44
+[EKYC/AuthenticatEkycCertificate]	44
+[EKYC/AuthenticatEkycCertificate]	44
+[EKYC/AuthenticatEkycCertificate]	44
+[EKYC/AuthenticatEkycCertificate]	44
+[EKYC/AuthenticatEkycCertificate]	44
+[EKYC/AuthenticatEkycCertificate]	44
+[EKYC/AuthenticatEkycCertificate]	44
+[EKYC/AuthenticatEkycCertificate]	44
+[EKYC/AuthenticatEkycCertificate]	44
+[EKYC/AuthenticatEkycCertificate]	44
