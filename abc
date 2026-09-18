@@ -1,23 +1,43 @@
-with gen5 as (select nvl(a.ip,b.ip) as ip, nvl(a.type,b.type) as type,nvl(a.route_url,b.route_url) as route_url,
-gen5_lb_url,gen6_lb_url
-from (SELECT ip,type,route_url,lb_url AS gen5_lb_url,ROW_NUMBER() OVER (PARTITION BY ip, type, route_url ORDER BY lb_url) rn
-FROM daily_dpg_url_data d
-WHERE (UPPER(lb_url) LIKE 'GEN5/GATEWAY%' or UPPER(lb_url) LIKE 'GEN5%GATEWAY%' or UPPER(lb_url) LIKE '%GEN5/GETWAY%')
-and UPPER(lb_url) not LIKE '%SIAPP3%') a full outer join
-(SELECT ip,type,route_url,lb_url AS gen6_lb_url,ROW_NUMBER() OVER (PARTITION BY ip, type, route_url ORDER BY lb_url) rn
-FROM daily_dpg_url_data d
-WHERE ( UPPER(lb_url) not LIKE '%GEN5%') and UPPER(lb_url) not LIKE '%SIAPP3%') b
-ON a.route_url = b.route_url and a.ip = b.ip and a.type = b.type),
-
-gen6 as (select nvl(a.ip,b.ip) as ip, nvl(a.type,b.type) as type,nvl(a.route_url,b.route_url) as route_url,
-gen5_lb_url,gen6_lb_url from
-(SELECT ip,type,route_url,lb_url AS gen5_lb_url,ROW_NUMBER() OVER (PARTITION BY ip, type, route_url ORDER BY lb_url) rn
-FROM daily_dpg_url_data d
-where UPPER(lb_url) LIKE '%SIAPP3%GEN5%') a full outer join
-(SELECT ip,type,route_url,lb_url AS gen6_lb_url,ROW_NUMBER() OVER (PARTITION BY ip, type, route_url ORDER BY lb_url) rn
-FROM daily_dpg_url_data d
-where UPPER(lb_url) LIKE '%SIAPP3%' and UPPER(lb_url) not LIKE '%GEN5/GATEWAY%' )b
-ON a.route_url = b.route_url and a.ip = b.ip and a.type = b.type)
-select ip,type,gen5_lb_url,gen6_lb_url,route_url,sysdate from gen5
+with gen5 as (
+    select nvl(a.ip,b.ip) as ip, nvl(a.type,b.type) as type, nvl(a.route_url,b.route_url) as route_url,
+           gen5_lb_url, gen6_lb_url
+    from (
+        SELECT ip, type, route_url, lb_url AS gen5_lb_url,
+               ROW_NUMBER() OVER (PARTITION BY ip, type, route_url ORDER BY lb_url) rn
+        FROM daily_dpg_url_data d
+        WHERE (UPPER(lb_url) LIKE 'GEN5/GATEWAY%' 
+            OR UPPER(lb_url) LIKE 'GEN5%GATEWAY%' 
+            OR UPPER(lb_url) LIKE '%GEN5/GETWAY%')
+          AND UPPER(lb_url) NOT LIKE '%SIAPP3%'
+    ) a 
+    full outer join (
+        SELECT ip, type, route_url, lb_url AS gen6_lb_url,
+               ROW_NUMBER() OVER (PARTITION BY ip, type, route_url ORDER BY lb_url) rn
+        FROM daily_dpg_url_data d
+        WHERE UPPER(lb_url) NOT LIKE '%GEN5%' 
+          AND UPPER(lb_url) NOT LIKE '%SIAPP3%'
+    ) b
+    ON a.route_url = b.route_url and a.ip = b.ip and a.type = b.type
+),
+gen6 as (
+    select nvl(a.ip,b.ip) as ip, nvl(a.type,b.type) as type, nvl(a.route_url,b.route_url) as route_url,
+           gen5_lb_url, gen6_lb_url
+    from (
+        SELECT ip, type, route_url, lb_url AS gen5_lb_url,
+               ROW_NUMBER() OVER (PARTITION BY ip, type, route_url ORDER BY lb_url) rn
+        FROM daily_dpg_url_data d
+        WHERE UPPER(lb_url) LIKE '%SIAPP3%'
+          AND UPPER(lb_url) LIKE '%GEN5%'
+    ) a 
+    full outer join (
+        SELECT ip, type, route_url, lb_url AS gen6_lb_url,
+               ROW_NUMBER() OVER (PARTITION BY ip, type, route_url ORDER BY lb_url) rn
+        FROM daily_dpg_url_data d
+        WHERE UPPER(lb_url) LIKE '%SIAPP3%' 
+          AND UPPER(lb_url) NOT LIKE '%GEN5/GATEWAY%'
+    ) b
+    ON a.route_url = b.route_url and a.ip = b.ip and a.type = b.type
+)
+select ip, type, gen5_lb_url, gen6_lb_url, route_url, sysdate from gen5
 union all
-select ip,type,gen5_lb_url,gen6_lb_url,route_url,sysdate from gen6;
+select ip, type, gen5_lb_url, gen6_lb_url, route_url, sysdate from gen6;
