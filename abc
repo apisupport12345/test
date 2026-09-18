@@ -1,43 +1,25 @@
-with gen5 as (
-    select nvl(a.ip,b.ip) as ip, nvl(a.type,b.type) as type, nvl(a.route_url,b.route_url) as route_url,
-           gen5_lb_url, gen6_lb_url
-    from (
-        SELECT ip, type, route_url, lb_url AS gen5_lb_url,
-               ROW_NUMBER() OVER (PARTITION BY ip, type, route_url ORDER BY lb_url) rn
-        FROM daily_dpg_url_data d
-        WHERE (UPPER(lb_url) LIKE 'GEN5/GATEWAY%' 
-            OR UPPER(lb_url) LIKE 'GEN5%GATEWAY%' 
-            OR UPPER(lb_url) LIKE '%GEN5/GETWAY%')
-          AND UPPER(lb_url) NOT LIKE '%SIAPP3%'
-    ) a 
-    full outer join (
-        SELECT ip, type, route_url, lb_url AS gen6_lb_url,
-               ROW_NUMBER() OVER (PARTITION BY ip, type, route_url ORDER BY lb_url) rn
-        FROM daily_dpg_url_data d
-        WHERE UPPER(lb_url) NOT LIKE '%GEN5%' 
-          AND UPPER(lb_url) NOT LIKE '%SIAPP3%'
-    ) b
-    ON a.route_url = b.route_url and a.ip = b.ip and a.type = b.type
-),
-gen6 as (
-    select nvl(a.ip,b.ip) as ip, nvl(a.type,b.type) as type, nvl(a.route_url,b.route_url) as route_url,
-           gen5_lb_url, gen6_lb_url
-    from (
-        SELECT ip, type, route_url, lb_url AS gen5_lb_url,
-               ROW_NUMBER() OVER (PARTITION BY ip, type, route_url ORDER BY lb_url) rn
-        FROM daily_dpg_url_data d
-        WHERE UPPER(lb_url) LIKE '%SIAPP3%'
-          AND UPPER(lb_url) LIKE '%GEN5%'
-    ) a 
-    full outer join (
-        SELECT ip, type, route_url, lb_url AS gen6_lb_url,
-               ROW_NUMBER() OVER (PARTITION BY ip, type, route_url ORDER BY lb_url) rn
-        FROM daily_dpg_url_data d
-        WHERE UPPER(lb_url) LIKE '%SIAPP3%' 
-          AND UPPER(lb_url) NOT LIKE '%GEN5/GATEWAY%'
-    ) b
-    ON a.route_url = b.route_url and a.ip = b.ip and a.type = b.type
-)
-select ip, type, gen5_lb_url, gen6_lb_url, route_url, sysdate from gen5
-union all
-select ip, type, gen5_lb_url, gen6_lb_url, route_url, sysdate from gen6;
+IP	TYPE	GEN5_LB_URL	GEN6_LB_URL	ROUTE_URL	SYSDATE
+115	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/GET_DETAILS	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	18-09-26
+115	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	18-09-26
+115	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	payments/SITransaction/GetDetails	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	18-09-26
+115	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	payments/SITransaction/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	18-09-26
+116	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/GET_DETAILS	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	18-09-26
+116	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	18-09-26
+116	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	payments/SITransaction/GetDetails	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	18-09-26
+116	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	payments/SITransaction/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	18-09-26
+120	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	18-09-26
+120	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/GET_DETAILS	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	18-09-26
+120	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	payments/SITransaction/GetDetails	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	18-09-26
+120	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	payments/SITransaction/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	18-09-26
+122	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/GET_DETAILS	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	18-09-26
+122	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	18-09-26
+122	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	payments/SITransaction/GetDetails	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	18-09-26
+122	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	payments/SITransaction/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	18-09-26
+123	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/GET_DETAILS	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	18-09-26
+123	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	18-09-26
+123	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	payments/SITransaction/GetDetails	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	18-09-26
+123	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	payments/SITransaction/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	18-09-26
+121	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	payments/SITransaction/GetDetails	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	18-09-26
+121	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	payments/SITransaction/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	18-09-26
+121	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/GET_DETAILS	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	18-09-26
+121	MZ	gen5/getway/payment/SITransaction/UpdateTransaction	misc/TransactionAPI/Api/UpdateTransaction	http://eispri.sbi.co.in:3023/dotNet/generic/router/misc	18-09-26
