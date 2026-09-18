@@ -1,2 +1,27 @@
-GEN5_NULL_IP	GEN6_NULL_IP	GEN5_IP	GEN6_IP
-0	0	42	54
+SELECT g5.ip, g5.type, g5.gen5_lb_url, g6.gen6_lb_url
+FROM (
+    SELECT ip, type, route_url, lb_url AS gen5_lb_url,
+           TRIM(CASE 
+               WHEN INSTR(lb_url, '/gateway/') > 0 THEN SUBSTR(lb_url, INSTR(lb_url, '/gateway/') + 9)
+               WHEN INSTR(lb_url, '/getway/') > 0 THEN SUBSTR(lb_url, INSTR(lb_url, '/getway/') + 8)
+               ELSE NULL END) AS gen5_path_op
+    FROM daily_dpg_url_data
+    WHERE UPPER(lb_url) LIKE '%GEN5%' AND UPPER(lb_url) LIKE '%GATEWAY%'
+      AND UPPER(lb_url) NOT LIKE '%SIAPP3%'
+) g5
+LEFT JOIN (
+    SELECT ip, type, route_url, lb_url AS gen6_lb_url,
+           TRIM(CASE 
+               WHEN INSTR(lb_url, '/gateway/') > 0 THEN SUBSTR(lb_url, INSTR(lb_url, '/gateway/') + 9)
+               WHEN INSTR(lb_url, '/getway/') > 0 THEN SUBSTR(lb_url, INSTR(lb_url, '/getway/') + 8)
+               ELSE NULL END) AS gen6_path_op
+    FROM daily_dpg_url_data
+    WHERE UPPER(lb_url) LIKE '%GEN6%' AND UPPER(lb_url) LIKE '%GATEWAY%'
+      AND UPPER(lb_url) NOT LIKE '%SIAPP3%'
+) g6
+  ON g5.ip = g6.ip
+ AND g5.type = g6.type
+ AND g5.route_url = g6.route_url
+ AND g5.gen5_path_op = g6.gen6_path_op
+WHERE g5.gen5_lb_url LIKE '%EKYC/AuthenticatEkycCertificate%'
+FETCH FIRST 10 ROWS ONLY;
