@@ -1,31 +1,492 @@
-{
-    "mode": "auto",
-    "startTime": "",
-    "endTime": "",
-    "results": {
-        "BACKEND_LOG": {
-            "name": "BACKEND_LOG",
-            "success": false,
-            "message": "Error: ORA-02149: Specified partition does not exist \n",
-            "executionTimeMs": 365,
-            "columns": [],
-            "rows": []
-        },
-        "API_NSE_INB": {
-            "name": "API_NSE_INB",
-            "success": false,
-            "message": "Error: ORA-02149: Specified partition does not exist \n",
-            "executionTimeMs": 355,
-            "columns": [],
-            "rows": []
-        },
-        "API_BSE": {
-            "name": "API_BSE",
-            "success": false,
-            "message": "Error: ORA-02149: Specified partition does not exist \n",
-            "executionTimeMs": 340,
-            "columns": [],
-            "rows": []
+package com.action;
+
+import java.sql.Connection;
+import java.sql.DatabaseMetaData;
+import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
+import java.sql.Statement;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Calendar;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+
+import com.jdbc.DBUtilityAuto;
+
+public class IPOMonitorService {
+
+    // Default rolling window (used when no custom range is supplied)
+    public static final int WINDOW_MINUTES = 5;
+
+    // Debug flag - set false in production to reduce log noise
+    public static final boolean DEBUG_SQL = true;
+    public static final boolean DEBUG_PARTITIONS = true;
+
+    public static class QueryResult {
+        public boolean success;
+        public String message;
+        public List<String> columns = new ArrayList<>();
+        public List<Map<String, Object>> rows = new ArrayList<>();
+        public long executionTimeMs;
+        public String queryName;
+    }
+
+    // ============================================================
+    // PARTITION NAME BUILDER
+    //   Sep 2026 -> SEP_26
+    //   Oct 2026 -> OCT_26
+    //   Jan 2027 -> JAN_27
+    //
+    // IMPORTANT: Locale.ENGLISH forced so server locale
+    // (Hindi/Chinese/Japanese) does not break month name.
+    // ============================================================
+    public static String getCurrentPartitionName() {
+        Calendar cal = Calendar.getInstance();
+        SimpleDateFormat sdf = new SimpleDateFormat("MMM", Locale.ENGLISH);
+        String month = sdf.format(cal.getTime()).toUpperCase(Locale.ENGLISH);
+        int year = cal.get(Calendar.YEAR);
+        int shortYear = year % 100;
+        String result = month + "_" + String.format(Locale.ENGLISH, "%02d", shortYear);
+
+        if (DEBUG_PARTITIONS) {
+            System.out.println("[IPO-PARTITION] Current calendar date = " + cal.getTime());
+            System.out.println("[IPO-PARTITION] Year = " + year + ", shortYear = " + shortYear);
+            System.out.println("[IPO-PARTITION] Locale = " + Locale.getDefault());
+            System.out.println("[IPO-PARTITION] Generated partition name = [" + result + "]");
         }
+        return result;
+    }
+
+    // ============================================================
+    // TIME FILTER BUILDER
+    // ============================================================
+    private static String buildTimeFilter(boolean useCustom, String startTime, String endTime) {
+        if (useCustom && startTime != null && !startTime.trim().isEmpty()
+                       && endTime   != null && !endTime.trim().isEmpty()) {
+            return " creation_date_time >= TO_DATE('" + sanitize(startTime)
+                 + "','YYYY-MM-DD HH24:MI:SS') "
+                 + " AND creation_date_time <= TO_DATE('" + sanitize(endTime)
+                 + "','YYYY-MM-DD HH24:MI:SS') ";
+        }
+        return " creation_date_time >= sysdate - interval '" + WINDOW_MINUTES + "' minute ";
+    }
+
+    private static String sanitize(String s) {
+        if (s == null) return "";
+        return s.replace("'", "").replace(";", "").replace("--", "");
+    }
+
+    // ============================================================
+    // LOGGING HELPERS
+    // ============================================================
+    private static void logSql(String name, String sql) {
+        if (!DEBUG_SQL) return;
+        System.out.println("============================================================");
+        System.out.println("[IPO-SQL] QUERY: " + name);
+        System.out.println("------------------------------------------------------------");
+        System.out.println(sql);
+        System.out.println("============================================================");
+    }
+
+    private static void logConnection(String name, Connection conn) {
+        if (!DEBUG_PARTITIONS) return;
+        try {
+            DatabaseMetaData md = conn.getMetaData();
+            System.out.println("[IPO-CONN][" + name + "] URL  = " + md.getURL());
+            System.out.println("[IPO-CONN][" + name + "] User = " + md.getUserName());
+            System.out.println("[IPO-CONN][" + name + "] DB   = "
+                    + md.getDatabaseProductName() + " "
+                    + md.getDatabaseProductVersion());
+        } catch (Exception e) {
+            System.out.println("[IPO-CONN][" + name + "] metadata fail: " + e.getMessage());
+        }
+    }
+
+    private static void logVisiblePartitions(String name, Connection conn) {
+        if (!DEBUG_PARTITIONS) return;
+        Statement st = null;
+        ResultSet rs = null;
+        try {
+            st = conn.createStatement();
+            rs = st.executeQuery(
+                "SELECT table_name, partition_name FROM all_tab_partitions " +
+                "WHERE table_owner='EISAPP' " +
+                "AND table_name IN ('BACKEND_LOG','API_LOG','API_LOG_BSE') " +
+                "ORDER BY table_name, partition_position DESC");
+            System.out.println("[IPO-PARTS][" + name + "] ---- visible partitions ----");
+            int cnt = 0;
+            while (rs.next() && cnt++ < 50) {
+                System.out.println("[IPO-PARTS][" + name + "] "
+                        + rs.getString(1) + " -> [" + rs.getString(2) + "]");
+            }
+            if (cnt == 0) {
+                System.out.println("[IPO-PARTS][" + name + "] (none found)");
+            }
+        } catch (Exception e) {
+            System.out.println("[IPO-PARTS][" + name + "] query fail: " + e.getMessage());
+        } finally {
+            if (rs != null) try { rs.close(); } catch (Exception x) {}
+            if (st != null) try { st.close(); } catch (Exception x) {}
+        }
+    }
+
+    // ============================================================
+    // QUERY 1 — BACKEND LOG  (12 IPs × 3 APIs = 36 combos)
+    // ============================================================
+    public static String getBackendQuery(boolean useCustom, String startTime, String endTime) {
+        String timeFilter = buildTimeFilter(useCustom, startTime, endTime);
+        String partition  = getCurrentPartitionName();
+        return ""
+            + "WITH IP_LIST AS ( "
+            + "  SELECT '10.188.24.167' IP FROM DUAL UNION ALL "
+            + "  SELECT '10.188.24.168' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.24.169' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.24.170' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.24.171' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.24.172' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.25.167' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.25.168' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.25.169' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.25.170' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.25.171' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.25.172' FROM DUAL "
+            + "), "
+            + "API_LIST AS ( "
+            + "  SELECT 'thirdPartyINBIpo_sys' API_NAME FROM DUAL UNION ALL "
+            + "  SELECT 'thirdPartyNSEAuth_sys' FROM DUAL UNION ALL "
+            + "  SELECT 'thirdPartyBSEAuth_sys' FROM DUAL "
+            + "), "
+            + "COMBOS AS ( "
+            + "  SELECT i.IP, a.API_NAME FROM IP_LIST i CROSS JOIN API_LIST a "
+            + "), "
+            + "AGG AS ( "
+            + "  SELECT TRIM(sys_ip) SYS_IP, TRIM(api_name) API_NAME, "
+            + "    COUNT(1) TOTAL_HITS, "
+            + "    SUM(CASE WHEN error_code is null or error_code = 'CK001' THEN 1 ELSE 0 END) SUCCESS, "
+            + "    SUM(CASE WHEN error_code ='SI001' then 1 else 0 end) SI001, "
+            + "    SUM(CASE WHEN error_code ='SI002' then 1 else 0 end) SI002, "
+            + "    SUM(CASE WHEN substr(error_code,3,3) ='002' AND error_code <>'SI002' then 1 else 0 end) DYNAMIC_002, "
+            + "    SUM(CASE WHEN error_code ='SI007' and error_code<> '70007' then 1 else 0 end) SI007, "
+            + "    SUM(CASE WHEN error_code ='SI051' then 1 else 0 end) SI051, "
+            + "    SUM(CASE WHEN error_code ='SI052' then 1 else 0 end) SI052, "
+            + "    SUM(CASE WHEN substr(error_code,3,3) ='052' AND error_code <>'SI052' then 1 else 0 end) DYNAMIC_052, "
+            + "    SUM(CASE WHEN substr(error_code,3,3) ='014' and error_code <> '00014' then 1 else 0 end) DYNAMIC_014, "
+            + "    SUM(CASE WHEN error_code ='SI569' then 1 else 0 end) SI569, "
+            + "    SUM(CASE WHEN error_code ='SI570' then 1 else 0 end) SI570, "
+            + "    SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') or error_code in('SI001','SI007','SI017','SI569','SI570','SI052','SI077','SI051','SI111')) and error_code<>'00014' THEN 1 ELSE 0 END) TD, "
+            + "    ROUND((SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI052','SI077','SI569','SI570')) and error_code <> '00014' THEN 1 ELSE 0 END)*100)/COUNT(1),2) TD_PERCENT, "
+            + "    SUM(CASE WHEN ((nvl( substr(error_code,3,3),'A') not in ('002','014') and error_code not in('SI001','SI007','SI017','SI569','SI570','SI052','SI077','SI051','SI111')) AND error_code <> 'CK001' OR error_code IN ('00014','70007')) THEN 1 ELSE 0 END) BD, "
+            + "    ROUND((SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','052','051','014') OR error_code IN ('00014','70007')) AND error_code <> 'CK001' and error_code IS NOT NULL THEN 1 ELSE 0 END)*100)/COUNT(1),2) BD_PERCENT "
+            + "  FROM eisapp.BACKEND_LOG PARTITION (" + partition + ") "
+            + "  WHERE api_name in ('thirdPartyINBIpo_sys','thirdPartyNSEAuth_sys','thirdPartyBSEAuth_sys') "
+            + "    AND " + timeFilter
+            + "  GROUP BY TRIM(sys_ip), TRIM(api_name) "
+            + ") "
+            + "SELECT "
+            + "  c.API_NAME API_NAME, c.IP SYS_IP, "
+            + "  NVL(a.TOTAL_HITS,0) TOTAL_HITS, NVL(a.SUCCESS,0) SUCCESS, "
+            + "  NVL(a.SI001,0) SI001, NVL(a.SI002,0) SI002, NVL(a.DYNAMIC_002,0) DYNAMIC_002, "
+            + "  NVL(a.SI007,0) SI007, NVL(a.SI051,0) SI051, NVL(a.SI052,0) SI052, "
+            + "  NVL(a.DYNAMIC_052,0) DYNAMIC_052, NVL(a.DYNAMIC_014,0) DYNAMIC_014, "
+            + "  NVL(a.SI569,0) SI569, NVL(a.SI570,0) SI570, "
+            + "  NVL(a.TD,0) TD, NVL(a.TD_PERCENT,0) TD_PERCENT, "
+            + "  NVL(a.BD,0) BD, NVL(a.BD_PERCENT,0) BD_PERCENT "
+            + "FROM COMBOS c LEFT JOIN AGG a ON c.IP = a.SYS_IP AND c.API_NAME = a.API_NAME "
+            + "ORDER BY c.API_NAME, c.IP";
+    }
+
+    // ============================================================
+    // QUERY 2 — API LOG NSE/INB  (8 IPs × 2 APIs = 16 combos)
+    // ============================================================
+    public static String getApiNseInbQuery(boolean useCustom, String startTime, String endTime) {
+        String timeFilter = buildTimeFilter(useCustom, startTime, endTime);
+        String partition  = getCurrentPartitionName();
+        return ""
+            + "WITH IP_LIST AS ( "
+            + "  SELECT '10.188.24.63' IP FROM DUAL UNION ALL "
+            + "  SELECT '10.188.24.64' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.24.65' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.24.66' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.25.63' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.25.64' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.25.65' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.25.66' FROM DUAL "
+            + "), "
+            + "API_LIST AS ( "
+            + "  SELECT 'thirdPartyGenericRouting_NSE_expDS' API_NAME FROM DUAL UNION ALL "
+            + "  SELECT 'thirdPartyGenericRouting_INB_expDS' FROM DUAL "
+            + "), "
+            + "COMBOS AS ( SELECT i.IP, a.API_NAME FROM IP_LIST i CROSS JOIN API_LIST a ), "
+            + "AGG AS ( "
+            + "  SELECT TRIM(exp_ip) EXP_IP, TRIM(api_name) API_NAME, "
+            + "    COUNT(1) TOTAL_HITS, "
+            + "    SUM(CASE WHEN RESPONSE_STATUS in ('0','SUCCESS') THEN 1 ELSE 0 END) SUCCESS, "
+            + "    SUM(CASE WHEN error_code ='SI001' then 1 else 0 end) SI001, "
+            + "    SUM(CASE WHEN substr(error_code,3,3) ='002'then 1 else 0 end) DYNAMIC_002, "
+            + "    SUM(CASE WHEN error_code ='SI007' and error_code<> '70007' then 1 else 0 end) SI007, "
+            + "    SUM(CASE WHEN error_code ='SI051' then 1 else 0 end) SI051, "
+            + "    SUM(CASE WHEN substr(error_code,3,3) ='014' and error_code <> '00014' then 1 else 0 end) DYNAMIC_014, "
+            + "    SUM(CASE WHEN error_code ='SI569' then 1 else 0 end) SI569, "
+            + "    SUM(CASE WHEN error_code ='SI570' then 1 else 0 end) SI570, "
+            + "    SUM(CASE WHEN error_code ='SI052' then 1 else 0 end) SI052, "
+            + "    SUM(CASE WHEN error_code ='SI005' then 1 else 0 end) SI005, "
+            + "    SUM(CASE WHEN error_code ='SI077' then 1 else 0 end) SI077, "
+            + "    SUM(CASE WHEN error_code ='SI003' then 1 else 0 end) SI003, "
+            + "    SUM(CASE WHEN error_code ='SI017' then 1 else 0 end) SI017, "
+            + "    SUM(CASE WHEN error_code ='SI015' then 1 else 0 end) SI015, "
+            + "    SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI569','SI570','SI052','SI005','SI077','SI003','SI017','SI015')) and error_code <> '00014' THEN 1 ELSE 0 END) TD, "
+            + "    ROUND((SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI569','SI570','SI052','SI005','SI077','SI003','SI017','SI015')) and error_code <> '00014' THEN 1 ELSE 0 END)*100)/COUNT(1),2) TD_PERCENT, "
+            + "    SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','051','014','015') OR error_code IN ('00014','70007')) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END) BD, "
+            + "    ROUND((SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','051','014','015') OR error_code IN ('00014','70007')) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END)*100)/COUNT(1),2) BD_PERCENT "
+            + "  FROM eisapp.api_log PARTITION (" + partition + ") "
+            + "  WHERE " + timeFilter
+            + "    AND api_name in ('thirdPartyGenericRouting_NSE_expDS','thirdPartyGenericRouting_INB_expDS') "
+            + "  GROUP BY TRIM(exp_ip), TRIM(api_name) "
+            + ") "
+            + "SELECT "
+            + "  c.API_NAME API_NAME, c.IP EXP_IP, "
+            + "  NVL(a.TOTAL_HITS,0) TOTAL_HITS, NVL(a.SUCCESS,0) SUCCESS, "
+            + "  NVL(a.SI001,0) SI001, NVL(a.DYNAMIC_002,0) DYNAMIC_002, "
+            + "  NVL(a.SI007,0) SI007, NVL(a.SI051,0) SI051, NVL(a.DYNAMIC_014,0) DYNAMIC_014, "
+            + "  NVL(a.SI569,0) SI569, NVL(a.SI570,0) SI570, NVL(a.SI052,0) SI052, "
+            + "  NVL(a.SI005,0) SI005, NVL(a.SI077,0) SI077, NVL(a.SI003,0) SI003, "
+            + "  NVL(a.SI017,0) SI017, NVL(a.SI015,0) SI015, "
+            + "  NVL(a.TD,0) TD, NVL(a.TD_PERCENT,0) TD_PERCENT, "
+            + "  NVL(a.BD,0) BD, NVL(a.BD_PERCENT,0) BD_PERCENT "
+            + "FROM COMBOS c LEFT JOIN AGG a ON c.IP = a.EXP_IP AND c.API_NAME = a.API_NAME "
+            + "ORDER BY c.API_NAME, c.IP";
+    }
+
+    // ============================================================
+    // QUERY 3 — API LOG BSE  (12 IPs × 1 API = 12 combos)
+    // ============================================================
+    public static String getApiBseQuery(boolean useCustom, String startTime, String endTime) {
+        String timeFilter = buildTimeFilter(useCustom, startTime, endTime);
+        String partition  = getCurrentPartitionName();
+        return ""
+            + "WITH IP_LIST AS ( "
+            + "  SELECT '10.188.24.61' IP FROM DUAL UNION ALL "
+            + "  SELECT '10.188.24.62' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.24.63' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.24.64' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.24.65' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.24.66' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.25.61' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.25.62' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.25.63' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.25.64' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.25.65' FROM DUAL UNION ALL "
+            + "  SELECT '10.188.25.66' FROM DUAL "
+            + "), "
+            + "API_LIST AS ( SELECT 'thirdPartyGenericRouting_expDS' API_NAME FROM DUAL ), "
+            + "COMBOS AS ( SELECT i.IP, a.API_NAME FROM IP_LIST i CROSS JOIN API_LIST a ), "
+            + "AGG AS ( "
+            + "  SELECT TRIM(exp_ip) EXP_IP, TRIM(api_name) API_NAME, "
+            + "    COUNT(1) TOTAL_HITS, "
+            + "    SUM(CASE WHEN RESPONSE_STATUS in ('0','SUCCESS') THEN 1 ELSE 0 END) SUCCESS, "
+            + "    SUM(CASE WHEN error_code ='SI001' then 1 else 0 end) SI001, "
+            + "    SUM(CASE WHEN substr(error_code,3,3) ='002'then 1 else 0 end) DYNAMIC_002, "
+            + "    SUM(CASE WHEN error_code ='SI007' and error_code<> '70007' then 1 else 0 end) SI007, "
+            + "    SUM(CASE WHEN error_code ='SI051' then 1 else 0 end) SI051, "
+            + "    SUM(CASE WHEN substr(error_code,3,3) ='014' and error_code <> '00014' then 1 else 0 end) DYNAMIC_014, "
+            + "    SUM(CASE WHEN error_code ='SI569' then 1 else 0 end) SI569, "
+            + "    SUM(CASE WHEN error_code ='SI570' then 1 else 0 end) SI570, "
+            + "    SUM(CASE WHEN error_code ='SI052' then 1 else 0 end) SI052, "
+            + "    SUM(CASE WHEN error_code ='SI005' then 1 else 0 end) SI005, "
+            + "    SUM(CASE WHEN error_code ='SI077' then 1 else 0 end) SI077, "
+            + "    SUM(CASE WHEN error_code ='SI003' then 1 else 0 end) SI003, "
+            + "    SUM(CASE WHEN error_code ='SI017' then 1 else 0 end) SI017, "
+            + "    SUM(CASE WHEN error_code ='SI015' then 1 else 0 end) SI015, "
+            + "    SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI569','SI570','SI052','SI005','SI077','SI003','SI017','SI015')) and error_code <> '00014' THEN 1 ELSE 0 END) TD, "
+            + "    ROUND((SUM(CASE WHEN (substr(error_code,3,3) in ('002','014') OR error_code in ('SI001','SI007','SI051','SI569','SI570','SI052','SI005','SI077','SI003','SI017','SI015')) and error_code <> '00014' THEN 1 ELSE 0 END)*100)/COUNT(1),2) TD_PERCENT, "
+            + "    SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','051','014','015') OR error_code IN ('00014','70007')) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END) BD, "
+            + "    ROUND((SUM(CASE WHEN (nvl( substr(error_code,3,3),'A') NOT in ('001','002','007','051','014','015') OR error_code IN ('00014','70007')) and RESPONSE_STATUS not in ('0','SUCCESS') THEN 1 ELSE 0 END)*100)/COUNT(1),2) BD_PERCENT "
+            + "  FROM eisapp.api_log PARTITION (" + partition + ") "
+            + "  WHERE " + timeFilter
+            + "    AND api_name = 'thirdPartyGenericRouting_expDS' "
+            + "    AND sup_url = 'BSE' "
+            + "    AND ORIGINAL_URN = 'IPO_ORDER' "
+            + "    AND transaction_urn = 'IPO_SERVICE' "
+            + "  GROUP BY TRIM(exp_ip), TRIM(api_name) "
+            + ") "
+            + "SELECT "
+            + "  c.API_NAME API_NAME, c.IP EXP_IP, "
+            + "  NVL(a.TOTAL_HITS,0) TOTAL_HITS, NVL(a.SUCCESS,0) SUCCESS, "
+            + "  NVL(a.SI001,0) SI001, NVL(a.DYNAMIC_002,0) DYNAMIC_002, "
+            + "  NVL(a.SI007,0) SI007, NVL(a.SI051,0) SI051, NVL(a.DYNAMIC_014,0) DYNAMIC_014, "
+            + "  NVL(a.SI569,0) SI569, NVL(a.SI570,0) SI570, NVL(a.SI052,0) SI052, "
+            + "  NVL(a.SI005,0) SI005, NVL(a.SI077,0) SI077, NVL(a.SI003,0) SI003, "
+            + "  NVL(a.SI017,0) SI017, NVL(a.SI015,0) SI015, "
+            + "  NVL(a.TD,0) TD, NVL(a.TD_PERCENT,0) TD_PERCENT, "
+            + "  NVL(a.BD,0) BD, NVL(a.BD_PERCENT,0) BD_PERCENT "
+            + "FROM COMBOS c LEFT JOIN AGG a ON c.IP = a.EXP_IP AND c.API_NAME = a.API_NAME "
+            + "ORDER BY c.API_NAME, c.IP";
+    }
+
+    // ============================================================
+    // RUN ALL 3 IN PARALLEL
+    // ============================================================
+    public static Map<String, QueryResult> runAll() {
+        return runAll(false, null, null);
+    }
+
+    public static Map<String, QueryResult> runAll(boolean useCustom, String startTime, String endTime) {
+        System.out.println("############################################################");
+        System.out.println("[IPO-RUN] START runAll() mode=" + (useCustom ? "MANUAL" : "AUTO")
+                + " start=" + startTime + " end=" + endTime);
+        System.out.println("[IPO-RUN] Current partition = [" + getCurrentPartitionName() + "]");
+        System.out.println("############################################################");
+
+        Map<String, QueryResult> results = new LinkedHashMap<>();
+        ExecutorService pool = Executors.newFixedThreadPool(3);
+        try {
+            Future<QueryResult> f1 = pool.submit(new QueryTask("BACKEND_LOG",
+                    getBackendQuery(useCustom, startTime, endTime)));
+            Future<QueryResult> f2 = pool.submit(new QueryTask("API_NSE_INB",
+                    getApiNseInbQuery(useCustom, startTime, endTime)));
+            Future<QueryResult> f3 = pool.submit(new QueryTask("API_BSE",
+                    getApiBseQuery(useCustom, startTime, endTime)));
+
+            results.put("BACKEND_LOG", safeGet(f1));
+            results.put("API_NSE_INB", safeGet(f2));
+            results.put("API_BSE", safeGet(f3));
+        } catch (Exception e) {
+            System.out.println("[IPO-RUN] Pool error: " + e);
+            e.printStackTrace();
+            QueryResult err = new QueryResult();
+            err.success = false;
+            err.message = "Pool error: " + e.getMessage();
+            results.put("ERROR", err);
+        } finally {
+            pool.shutdown();
+            try { pool.awaitTermination(3, TimeUnit.SECONDS); } catch (InterruptedException ignored) {}
+        }
+        System.out.println("[IPO-RUN] END runAll() - done");
+        return results;
+    }
+
+    private static QueryResult safeGet(Future<QueryResult> f) {
+        try { return f.get(30, TimeUnit.MINUTES); }
+        catch (Exception e) {
+            QueryResult r = new QueryResult();
+            r.success = false;
+            r.message = "Timeout/Error: " + e.getMessage();
+            return r;
+        }
+    }
+
+    private static class QueryTask implements Callable<QueryResult> {
+        private final String name;
+        private final String sql;
+        QueryTask(String name, String sql) { this.name = name; this.sql = sql; }
+
+        @Override
+        public QueryResult call() {
+            QueryResult r = new QueryResult();
+            r.queryName = name;
+            long t0 = System.currentTimeMillis();
+            Connection conn = null;
+            Statement stmt = null;
+            ResultSet rs = null;
+
+            // Print the SQL that will be executed
+            logSql(name, sql);
+
+            try {
+                conn = DBUtilityAuto.getIIBDBConnection();
+                if (conn == null) {
+                    r.success = false;
+                    r.message = "Could not obtain IIB connection.";
+                    System.out.println("[IPO-ERR][" + name + "] null connection");
+                    return r;
+                }
+
+                // Print connection details
+                logConnection(name, conn);
+
+                // Print visible partitions
+                logVisiblePartitions(name, conn);
+
+                stmt = conn.createStatement();
+                stmt.setFetchSize(500);
+                long q0 = System.currentTimeMillis();
+                rs = stmt.executeQuery(sql);
+                long q1 = System.currentTimeMillis();
+                System.out.println("[IPO-TIME][" + name + "] query execution took "
+                        + (q1 - q0) + " ms");
+
+                ResultSetMetaData md = rs.getMetaData();
+                int colCount = md.getColumnCount();
+                for (int i = 1; i <= colCount; i++) r.columns.add(md.getColumnLabel(i));
+
+                while (rs.next()) {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    for (int i = 1; i <= colCount; i++) {
+                        row.put(md.getColumnLabel(i), rs.getObject(i));
+                    }
+                    r.rows.add(row);
+                }
+                r.success = true;
+                r.message = r.rows.size() + " rows";
+                System.out.println("[IPO-OK][" + name + "] fetched " + r.rows.size() + " rows");
+            } catch (Exception e) {
+                r.success = false;
+                r.message = "Error: " + e.getMessage();
+                System.out.println("[IPO-ERR][" + name + "] " + e.getClass().getName()
+                        + ": " + e.getMessage());
+                e.printStackTrace();
+            } finally {
+                if (rs != null) try { rs.close(); } catch (Exception ignored) {}
+                if (stmt != null) try { stmt.close(); } catch (Exception ignored) {}
+                if (conn != null) try { conn.close(); } catch (Exception ignored) {}
+                r.executionTimeMs = System.currentTimeMillis() - t0;
+                System.out.println("[IPO-TIME][" + name + "] total = "
+                        + r.executionTimeMs + " ms, success=" + r.success);
+            }
+            return r;
+        }
+    }
+
+    public static String esc(String s) {
+        if (s == null) return "";
+        return s.replace("\\", "\\\\").replace("\"", "\\\"")
+                .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t");
+    }
+
+    public static String toJson(QueryResult qr) {
+        StringBuilder sb = new StringBuilder("{");
+        sb.append("\"name\":\"").append(esc(qr.queryName)).append("\",");
+        sb.append("\"success\":").append(qr.success).append(",");
+        sb.append("\"message\":\"").append(esc(qr.message)).append("\",");
+        sb.append("\"executionTimeMs\":").append(qr.executionTimeMs).append(",");
+        sb.append("\"columns\":[");
+        for (int i = 0; i < qr.columns.size(); i++) {
+            if (i > 0) sb.append(",");
+            sb.append("\"").append(esc(qr.columns.get(i))).append("\"");
+        }
+        sb.append("],\"rows\":[");
+        for (int r = 0; r < qr.rows.size(); r++) {
+            if (r > 0) sb.append(",");
+            sb.append("{");
+            Map<String, Object> row = qr.rows.get(r);
+            int c = 0;
+            for (String col : qr.columns) {
+                if (c++ > 0) sb.append(",");
+                Object v = row.get(col);
+                sb.append("\"").append(esc(col)).append("\":");
+                if (v == null) sb.append("null");
+                else sb.append("\"").append(esc(v.toString())).append("\"");
+            }
+            sb.append("}");
+        }
+        sb.append("]}");
+        return sb.toString();
     }
 }
