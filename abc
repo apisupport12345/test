@@ -6,9 +6,8 @@ WITH gen5_base AS (
         lb_url AS gen5_lb_url,
         REGEXP_SUBSTR(lb_url, '(gen5|gen6)/(gateway|getway)/(.*)$', 1, 1, 'i', 3) AS gen5_path_op
     FROM daily_dpg_url_data
-    WHERE (UPPER(lb_url) LIKE 'GEN5/GATEWAY%'
-        OR UPPER(lb_url) LIKE 'GEN5%GATEWAY%'
-        OR UPPER(lb_url) LIKE '%GEN5/GETWAY%')
+    WHERE UPPER(lb_url) LIKE '%GEN5%'
+      AND (UPPER(lb_url) LIKE '%GATEWAY%' OR UPPER(lb_url) LIKE '%GETWAY%')
       AND UPPER(lb_url) NOT LIKE '%SIAPP3%'
 ),
 gen6_base AS (
@@ -19,27 +18,9 @@ gen6_base AS (
         lb_url AS gen6_lb_url,
         REGEXP_SUBSTR(lb_url, '(gen5|gen6)/(gateway|getway)/(.*)$', 1, 1, 'i', 3) AS gen6_path_op
     FROM daily_dpg_url_data
-    WHERE UPPER(lb_url) NOT LIKE '%GEN5%'
+    WHERE UPPER(lb_url) LIKE '%GEN6%'
+      AND UPPER(lb_url) NOT LIKE '%GEN5%'
       AND UPPER(lb_url) NOT LIKE '%SIAPP3%'
-),
-gen5_with_gen6 AS (
-    SELECT 
-        g5.ip,
-        g5.type,
-        g5.route_url,
-        g5.gen5_lb_url,
-        g5.gen5_path_op,
-        g6.gen6_lb_url,
-        ROW_NUMBER() OVER (
-            PARTITION BY g5.ip, g5.type, g5.route_url, g5.gen5_lb_url
-            ORDER BY g6.gen6_lb_url
-        ) AS rn
-    FROM gen5_base g5
-    LEFT JOIN gen6_base g6
-      ON g5.ip = g6.ip
-     AND g5.type = g6.type
-     AND g5.route_url = g6.route_url
-     AND g5.gen5_path_op = g6.gen6_path_op
 ),
 gen5_siapp3 AS (
     SELECT 
@@ -65,6 +46,7 @@ gen6_siapp3 AS (
     WHERE UPPER(lb_url) LIKE '%SIAPP3%'
       AND UPPER(lb_url) LIKE '%GEN6%'
 )
+-- Gen5 non-siapp3 with best gen6 match
 SELECT 
     g5.ip, 
     g5.type, 
@@ -72,17 +54,16 @@ SELECT
     g6.gen6_lb_url,
     g5.route_url,
     SYSDATE
-FROM gen5_with_gen6 g5
+FROM gen5_base g5
 LEFT JOIN gen6_base g6
   ON g5.ip = g6.ip
  AND g5.type = g6.type
  AND g5.route_url = g6.route_url
  AND g5.gen5_path_op = g6.gen6_path_op
- AND g5.rn = 1
-WHERE g5.rn = 1
 
 UNION ALL
 
+-- Siapp3 wali gen5 with siapp3 gen6
 SELECT 
     g5.ip, 
     g5.type, 
@@ -101,6 +82,7 @@ WHERE g5.rn = 1
 
 UNION ALL
 
+-- Siapp3 wali gen6 rows jinka gen5 match nahi mila (leftover)
 SELECT 
     NULL AS ip,
     NULL AS type,
@@ -120,6 +102,7 @@ AND g6.rn = 1
 
 UNION ALL
 
+-- Non-siapp3 gen6 rows jinka koi gen5 match nahi mila
 SELECT 
     NULL AS ip,
     NULL AS type,
