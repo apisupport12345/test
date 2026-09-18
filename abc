@@ -1,8 +1,11 @@
-SELECT lb_url,
-       REGEXP_REPLACE(lb_url, '^.*/(gateway|getway)/', '', 1, 1, 'i') AS path_op
-FROM daily_dpg_url_data
-WHERE lb_url LIKE '%gen5/gateway/EKYC%'
-   OR lb_url LIKE '%gen6/gateway/EKYC%'
-   OR lb_url LIKE '%gen5/getway/payment%'
-   OR lb_url LIKE '%gen6/gateway/misc%'
-FETCH FIRST 10 ROWS ONLY;
+LB_URL	PATH_OP
+misc/gen5/getway/payment/SITransaction/GetDetails	payment/SITransaction/GetDetails
+misc/gen5/getway/payment/SITransaction/UpdateTransaction	payment/SITransaction/UpdateTransaction
+gen5/getway/payment/SITransaction/GetDetails	payment/SITransaction/GetDetails
+gen5/getway/payment/SITransaction/UpdateTransaction	payment/SITransaction/UpdateTransaction
+gen6/gateway/EKYC/eKYCCertificateDetails	EKYC/eKYCCertificateDetails
+gen5/gateway/EKYC/eKYCCertificateDetails	EKYC/eKYCCertificateDetails
+gen5/gateway/EKYC/AuthenticateAadhaar	EKYC/AuthenticateAadhaar
+gen6/gateway/EKYC/AuthenticateAadhaar	EKYC/AuthenticateAadhaar
+gen5/gateway/EKYC/generateOTP	EKYC/generateOTP
+gen6/gateway/EKYC/generateOTP	EKYC/generateOTP
