@@ -68,7 +68,8 @@
         String fromParam = request.getParameter("fromDateTime");
         String toParam = request.getParameter("toDateTime");
 
-        if (fromParam == null || toParam == null || fromParam.isEmpty() || toParam.isEmpty()) {
+        if (fromParam == null || toParam == null || fromParam.trim().isEmpty() || toParam.trim().isEmpty()) {
+            // Default: most recent hour from DB
             String latestSql = "SELECT MAX(RUN_START) AS MAX_START FROM EXP_BROKER_HOURLY_STATS";
             try (Statement stmt = reportConn.createStatement();
                  ResultSet rs = stmt.executeQuery(latestSql)) {
@@ -94,12 +95,57 @@
                 startTs = new Timestamp(cal.getTimeInMillis());
             }
         } else {
-            SimpleDateFormat isoFmt = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm");
-            java.util.Date startDate = isoFmt.parse(fromParam);
-            java.util.Date endDate = isoFmt.parse(toParam);
-            startTs = new Timestamp(startDate.getTime());
-            endTs = new Timestamp(endDate.getTime());
+            // ============================================================
+            // FIX: Robust parsing of datetime-local input
+            // datetime-local gives "yyyy-MM-dd'T'HH:mm" (no seconds)
+            // We parse it, then build Timestamp with seconds=0, ms=0
+            // ============================================================
+            try {
+                SimpleDateFormat isoFmt = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm");
+                isoFmt.setLenient(false);
+
+                // Parse start
+                java.util.Date startDate = isoFmt.parse(fromParam.trim());
+                Calendar calStart = Calendar.getInstance();
+                calStart.setTime(startDate);
+                calStart.set(Calendar.SECOND, 0);
+                calStart.set(Calendar.MILLISECOND, 0);
+                startTs = new Timestamp(calStart.getTimeInMillis());
+
+                // Parse end
+                java.util.Date endDate = isoFmt.parse(toParam.trim());
+                Calendar calEnd = Calendar.getInstance();
+                calEnd.setTime(endDate);
+                calEnd.set(Calendar.SECOND, 0);
+                calEnd.set(Calendar.MILLISECOND, 0);
+                endTs = new Timestamp(calEnd.getTimeInMillis());
+
+                // Safety: if end <= start, add 1 hour to end
+                if (endTs.before(startTs) || endTs.equals(startTs)) {
+                    Calendar calFix = Calendar.getInstance();
+                    calFix.setTime(endTs);
+                    calFix.add(Calendar.HOUR_OF_DAY, 1);
+                    endTs = new Timestamp(calFix.getTimeInMillis());
+                }
+            } catch (ParseException pe) {
+                System.out.println("Time filter parse error: " + pe.getMessage());
+                // Fallback to most recent hour
+                Calendar cal = Calendar.getInstance();
+                cal.set(Calendar.MINUTE, 0);
+                cal.set(Calendar.SECOND, 0);
+                cal.set(Calendar.MILLISECOND, 0);
+                endTs = new Timestamp(cal.getTimeInMillis());
+                cal.add(Calendar.HOUR_OF_DAY, -1);
+                startTs = new Timestamp(cal.getTimeInMillis());
+            }
         }
+
+        // Debug output (remove in production)
+        System.out.println("=== TIME FILTER DEBUG ===");
+        System.out.println("fromParam: " + fromParam);
+        System.out.println("toParam: " + toParam);
+        System.out.println("startTs: " + startTs);
+        System.out.println("endTs: " + endTs);
 
         SimpleDateFormat displayFmt = new SimpleDateFormat("dd-MM-yyyy HH:mm");
         runTimeDisplay = displayFmt.format(new Date(startTs.getTime())) + " to " + displayFmt.format(new Date(endTs.getTime()));
@@ -181,10 +227,15 @@
         // ============================================================
         // 4. Fetch broker stats from EXP_BROKER_HOURLY_STATS
         // ============================================================
+        // FIX: Use range query (>= start AND < end) instead of exact match
+        // because datetime-local gives minute precision (seconds=0)
+        // while DB RUN_START may have seconds/ms
+        // ============================================================
         brokerDataList.clear();
         String brokerStatsSQL = "SELECT BROKER, PORT, TOTAL_HITS, HEALTHY_SERVERS, WARNING_SERVERS, " +
                 "CRITICAL_SERVERS, ISOLATED_SERVERS, TOTAL_SERVERS, STATUS " +
-                "FROM EXP_BROKER_HOURLY_STATS WHERE RUN_START = ? AND RUN_END = ?";
+                "FROM EXP_BROKER_HOURLY_STATS WHERE RUN_START >= ? AND RUN_START < ? " +
+                "ORDER BY BROKER";
         try (PreparedStatement ps = reportConn.prepareStatement(brokerStatsSQL)) {
             ps.setTimestamp(1, startTs);
             ps.setTimestamp(2, endTs);
@@ -216,9 +267,12 @@
                 }
             }
         }
+        System.out.println("Broker rows fetched: " + brokerDataList.size());
 
         // ============================================================
         // 5. Fetch impacted servers from EXP_IMPACTED_SERVERS_HOURLY
+        // ============================================================
+        // FIX: Same range query fix here
         // ============================================================
         impactedServersList.clear();
         isolatedServersList.clear();
@@ -226,7 +280,7 @@
         Map<String, Map<String, String>> allServerStats = new HashMap<>();
 
         String impactedSQL = "SELECT BROKER, IP, HITS, STATUS FROM EXP_IMPACTED_SERVERS_HOURLY " +
-                "WHERE RUN_START = ? AND RUN_END = ? ORDER BY STATUS, BROKER";
+                "WHERE RUN_START >= ? AND RUN_START < ? ORDER BY STATUS, BROKER";
         try (PreparedStatement ps = reportConn.prepareStatement(impactedSQL)) {
             ps.setTimestamp(1, startTs);
             ps.setTimestamp(2, endTs);
@@ -261,6 +315,8 @@
                 }
             }
         }
+        System.out.println("Impacted servers fetched: " + impactedServersList.size());
+        System.out.println("Isolated servers fetched: " + isolatedServersList.size());
 
         // ============================================================
         // 6. Attach server details to each broker using allServerStats
@@ -310,7 +366,6 @@
         impactedServers = impactedServersList.size();
         isolatedServers = isolatedServersList.size();
 
-        // Unique server count: union of all IPs across all brokers
         Set<String> uniqueIPs = new HashSet<>();
         for (List<String> ips : brokerIPMapping.values()) {
             uniqueIPs.addAll(ips);
@@ -346,7 +401,6 @@
     <link rel="stylesheet" href="../css/expsys-all.min.css">
     <script src="../js/LdapAuth.js"></script>
     <style>
-        /* ===== SAME STYLES AS BEFORE â€“ KEPT UNCHANGED ===== */
         :root {
             --primary: #6366f1;
             --primary-dark: #4f46e5;
@@ -709,7 +763,7 @@
             <button class="control-btn success" onclick="showAllBrokers()" id="showAllBtn" style="display: none;"><i class="fas fa-globe"></i> Show All Servers</button>
         </div>
 
-        <!-- Impacted Servers (critical & warning) â€“ at the top -->
+        <!-- Impacted Servers (critical & warning) -->
         <div class="impacted-section">
             <div class="impacted-header">
                 <div class="impacted-title"><i class="fas fa-exclamation-triangle"></i> Impacted Servers (Zero Hits / Below Threshold) <span class="impacted-count"><%=impactedServers%></span></div>
@@ -763,6 +817,7 @@
                     <i class="fas fa-database" style="font-size: 3rem; color: var(--gray-300); margin-bottom: 1rem;"></i>
                     <h3 style="color: var(--gray-600); margin-bottom: 0.5rem;">No Brokers Found</h3>
                     <p style="color: var(--gray-500);">No data available for the selected time range.</p>
+                    <p style="color: var(--gray-400); font-size: 0.9rem; margin-top: 0.5rem;">Try adjusting the time filter or click "Reset" to use the most recent hour.</p>
                     <button class="control-btn primary" onclick="location.reload(true)" style="margin-top: 1rem;"><i class="fas fa-sync-alt"></i> Refresh Page</button>
                 </div>
             <%
@@ -829,7 +884,7 @@
 
 <script>
     // ============================================================
-    // VOICE ALERT SYSTEM â€“ unchanged
+    // VOICE ALERT SYSTEM
     // ============================================================
     let speechSynthesis = window.speechSynthesis;
     let isVoiceEnabled = true;
