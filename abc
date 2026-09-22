@@ -21,7 +21,6 @@
 <html lang="en">
 <head>
 <%
-    // Force complete cache prevention
     response.setHeader("Cache-Control", "no-cache, no-store, must-revalidate, private");
     response.setHeader("Pragma", "no-cache");
     response.setDateHeader("Expires", 0);
@@ -31,19 +30,27 @@
     request.setAttribute("pageLoadTime", System.currentTimeMillis());
 
     // ============================================================
-    // 1. Declare all variables at page level (outside try)
+    // 1. Page-level variables
     // ============================================================
     Timestamp startTs = null;
     Timestamp endTs = null;
     Timestamp snappedStartTs = null;
     Timestamp snappedEndTs = null;
+    Timestamp actualDataStartTs = null;   // earliest RUN_START found in range
+    Timestamp actualDataEndTs = null;     // latest RUN_START found in range
     String runTimeDisplay = "No data";
     String fromDateTime = "";
     String toDateTime = "";
     String flagStatus = "DR";
     boolean fallbackApplied = false;
+    boolean freshLoad = false;
     String requestedWindowDisplay = "";
     int slotsIncluded = 0;
+    int totalHitsAllBrokers = 0;
+    int totalCriticalServers = 0;
+    int totalWarningServers = 0;
+    int totalHealthyServers = 0;
+    int totalIsolatedServersAgg = 0;
 
     Map<String, String> brokerMapping = new HashMap<>();
     Map<String, String> portMapping = new HashMap<>();
@@ -63,23 +70,18 @@
     int impactedServers = 0;
     int isolatedServers = 0;
 
-    // Helper: snap a Timestamp down to the nearest 10-minute boundary
-    // e.g., 13:08:45 → 13:00:00, 13:23:00 → 13:20:00
-    // (Declared as a static-like helper using a small inner class to keep JSP clean)
-    // We'll inline this logic in the scriptlet.
-
     Connection reportConn = null;
     try {
         reportConn = DBUtilityAuto.getReportDBConnection();
 
         // ============================================================
-        // 2. Get time parameters from request
+        // 2. Parse time parameters
         // ============================================================
         String fromParam = request.getParameter("fromDateTime");
         String toParam = request.getParameter("toDateTime");
 
         if (fromParam == null || toParam == null || fromParam.trim().isEmpty() || toParam.trim().isEmpty()) {
-            // Default: latest available hour slot from DB
+            freshLoad = true;
             String latestSql = "SELECT MAX(RUN_START) AS MAX_START FROM EXP_BROKER_HOURLY_STATS";
             try (Statement stmt = reportConn.createStatement();
                  ResultSet rs = stmt.executeQuery(latestSql)) {
@@ -104,7 +106,6 @@
                 startTs = new Timestamp(cal.getTimeInMillis());
             }
         } else {
-            // Parse datetime-local input
             try {
                 SimpleDateFormat isoFmt = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm");
                 isoFmt.setLenient(false);
@@ -142,8 +143,7 @@
         }
 
         // ============================================================
-        // 2b. SNAP both timestamps to nearest 10-minute FLOOR boundary
-        //     e.g., 13:08 → 13:00, 13:23 → 13:20, 13:59 → 13:50
+        // 2b. Snap to 10-minute boundaries
         // ============================================================
         Calendar snapStart = Calendar.getInstance();
         snapStart.setTime(startTs);
@@ -161,7 +161,6 @@
         snapEnd.set(Calendar.MILLISECOND, 0);
         snappedEndTs = new Timestamp(snapEnd.getTimeInMillis());
 
-        // If snapped end == snapped start, add 10 min so at least 1 slot is included
         if (!snappedEndTs.after(snappedStartTs)) {
             Calendar c = Calendar.getInstance();
             c.setTime(snappedEndTs);
@@ -169,25 +168,20 @@
             snappedEndTs = new Timestamp(c.getTimeInMillis());
         }
 
-        // Save requested window display text
         SimpleDateFormat displayFmt = new SimpleDateFormat("dd-MM-yyyy HH:mm");
         String requestedStartDisplay = displayFmt.format(new Date(startTs.getTime()));
         String requestedEndDisplay = displayFmt.format(new Date(endTs.getTime()));
         requestedWindowDisplay = requestedStartDisplay + " to " + requestedEndDisplay;
-
         runTimeDisplay = displayFmt.format(new Date(snappedStartTs.getTime())) + " to " + displayFmt.format(new Date(snappedEndTs.getTime()));
 
-        // Debug output
         System.out.println("=== TIME FILTER DEBUG ===");
         System.out.println("fromParam: " + fromParam);
         System.out.println("toParam: " + toParam);
-        System.out.println("requested startTs: " + startTs);
-        System.out.println("requested endTs: " + endTs);
         System.out.println("snapped startTs: " + snappedStartTs);
         System.out.println("snapped endTs: " + snappedEndTs);
 
         // ============================================================
-        // 3. Fetch broker mapping and IP mapping
+        // 3. Fetch mappings
         // ============================================================
         String mappingQuery = "SELECT BROKER_NAME, EXP_PORT, MAPPED_PORT FROM EXP_BROKER_PORT_MAPPING";
         try (Statement stmt = reportConn.createStatement();
@@ -209,9 +203,7 @@
             while (rs.next()) {
                 String broker = rs.getString("BROKER_NAME");
                 int order = rs.getInt("ORDER_NUMBER");
-                if (broker != null) {
-                    brokerOrderMapping.put(broker.trim(), order);
-                }
+                if (broker != null) brokerOrderMapping.put(broker.trim(), order);
             }
         }
 
@@ -230,37 +222,28 @@
                 String broker = rs.getString("BROKER_NAME");
                 String ip = rs.getString("EXP_IP");
                 if (broker == null || ip == null) continue;
-                broker = broker.trim();
-                ip = ip.trim();
+                broker = broker.trim(); ip = ip.trim();
                 boolean include = false;
                 if ("PR".equals(flagStatus)) {
                     include = ip.startsWith("10.188.24.") || ip.startsWith("10.188.25.");
                 } else if ("DR".equals(flagStatus)) {
                     include = ip.startsWith("10.177.40.") || ip.startsWith("10.177.41.");
                 }
-                if (include) {
-                    brokerIPMapping.computeIfAbsent(broker, k -> new ArrayList<>()).add(ip);
-                }
+                if (include) brokerIPMapping.computeIfAbsent(broker, k -> new ArrayList<>()).add(ip);
             }
             for (List<String> ips : brokerIPMapping.values()) {
                 Collections.sort(ips, (ip1, ip2) -> {
                     try {
                         String[] p1 = ip1.split("\\.");
                         String[] p2 = ip2.split("\\.");
-                        int o1 = Integer.parseInt(p1[3]);
-                        int o2 = Integer.parseInt(p2[3]);
-                        return Integer.compare(o1, o2);
-                    } catch (Exception e) {
-                        return ip1.compareTo(ip2);
-                    }
+                        return Integer.compare(Integer.parseInt(p1[3]), Integer.parseInt(p2[3]));
+                    } catch (Exception e) { return ip1.compareTo(ip2); }
                 });
             }
         }
 
         // ============================================================
-        // 4. Fetch broker stats with SUM aggregation over the snapped range
-        //    Range is [snappedStartTs, snappedEndTs] INCLUSIVE of both ends
-        //    (since each RUN_START is a distinct 10-min slot)
+        // 4. Fetch broker stats with SUM aggregation
         // ============================================================
         brokerDataList.clear();
         String brokerStatsSQL =
@@ -271,7 +254,9 @@
             "       SUM(CRITICAL_SERVERS) AS CRITICAL_SERVERS, " +
             "       SUM(ISOLATED_SERVERS) AS ISOLATED_SERVERS, " +
             "       MAX(TOTAL_SERVERS) AS TOTAL_SERVERS, " +
-            "       COUNT(*) AS SLOT_COUNT " +
+            "       COUNT(*) AS SLOT_COUNT, " +
+            "       MIN(RUN_START) AS DATA_START, " +
+            "       MAX(RUN_START) AS DATA_END " +
             "FROM EXP_BROKER_HOURLY_STATS " +
             "WHERE RUN_START >= ? AND RUN_START <= ? " +
             "GROUP BY BROKER, PORT " +
@@ -292,20 +277,17 @@
                     int isolated = rs.getInt("ISOLATED_SERVERS");
                     int totalServersRow = rs.getInt("TOTAL_SERVERS");
                     int slotCount = rs.getInt("SLOT_COUNT");
+                    Timestamp dataStart = rs.getTimestamp("DATA_START");
+                    Timestamp dataEnd = rs.getTimestamp("DATA_END");
 
-                    // Determine broker status based on the aggregated counts
+                    if (actualDataStartTs == null || dataStart.before(actualDataStartTs)) actualDataStartTs = dataStart;
+                    if (actualDataEndTs == null || dataEnd.after(actualDataEndTs)) actualDataEndTs = dataEnd;
+
                     String status;
-                    if (critical > 0) {
-                        status = "critical";
-                    } else if (warning > 0) {
-                        status = "warning";
-                    } else if (isolated > 0 && isolated >= totalServersRow) {
-                        status = "isolated";
-                    } else if (isolated > 0) {
-                        status = "isolated";
-                    } else {
-                        status = "healthy";
-                    }
+                    if (critical > 0) status = "critical";
+                    else if (warning > 0) status = "warning";
+                    else if (isolated > 0) status = "isolated";
+                    else status = "healthy";
 
                     List<String> ipList = brokerIPMapping.getOrDefault(broker, new ArrayList<>());
                     brokerData.put("broker", broker);
@@ -320,41 +302,37 @@
                     brokerData.put("ipList", ipList);
                     brokerData.put("slotCount", slotCount);
                     brokerDataList.add(brokerData);
+
+                    totalHitsAllBrokers += totalHits;
+                    totalCriticalServers += critical;
+                    totalWarningServers += warning;
+                    totalHealthyServers += healthy;
+                    totalIsolatedServersAgg += isolated;
                 }
             }
         }
-        System.out.println("Broker rows fetched (snapped range, first try): " + brokerDataList.size());
+        System.out.println("Broker rows fetched (snapped range): " + brokerDataList.size());
 
         // ============================================================
-        // 4b. FALLBACK: If no data found, snap to the latest available slot
+        // 4b. FALLBACK
         // ============================================================
         if (brokerDataList.isEmpty()) {
-            System.out.println("No data for snapped window. Attempting fallback...");
-
-            String fallbackSql = "SELECT MAX(RUN_START) AS LATEST_START FROM EXP_BROKER_HOURLY_STATS " +
-                                 "WHERE RUN_START <= ?";
+            System.out.println("No data. Attempting fallback...");
+            String fallbackSql = "SELECT MAX(RUN_START) AS LATEST_START FROM EXP_BROKER_HOURLY_STATS WHERE RUN_START <= ?";
             Timestamp latestStart = null;
             try (PreparedStatement psFb = reportConn.prepareStatement(fallbackSql)) {
                 psFb.setTimestamp(1, snappedEndTs);
                 try (ResultSet rsFb = psFb.executeQuery()) {
-                    if (rsFb.next()) {
-                        latestStart = rsFb.getTimestamp("LATEST_START");
-                    }
+                    if (rsFb.next()) latestStart = rsFb.getTimestamp("LATEST_START");
                 }
             }
-
             if (latestStart != null) {
-                // Use latest single slot as the fallback window
                 Calendar calFb = Calendar.getInstance();
                 calFb.setTime(latestStart);
                 calFb.add(Calendar.MINUTE, 10);
-                Timestamp fallbackEnd = new Timestamp(calFb.getTimeInMillis());
-
                 snappedStartTs = latestStart;
-                snappedEndTs = fallbackEnd;
+                snappedEndTs = new Timestamp(calFb.getTimeInMillis());
                 fallbackApplied = true;
-
-                System.out.println("Fallback window: " + snappedStartTs + " to " + snappedEndTs);
 
                 try (PreparedStatement ps = reportConn.prepareStatement(brokerStatsSQL)) {
                     ps.setTimestamp(1, snappedStartTs);
@@ -371,6 +349,11 @@
                             int isolated = rs.getInt("ISOLATED_SERVERS");
                             int totalServersRow = rs.getInt("TOTAL_SERVERS");
                             int slotCount = rs.getInt("SLOT_COUNT");
+                            Timestamp dataStart = rs.getTimestamp("DATA_START");
+                            Timestamp dataEnd = rs.getTimestamp("DATA_END");
+
+                            if (actualDataStartTs == null || dataStart.before(actualDataStartTs)) actualDataStartTs = dataStart;
+                            if (actualDataEndTs == null || dataEnd.after(actualDataEndTs)) actualDataEndTs = dataEnd;
 
                             String status;
                             if (critical > 0) status = "critical";
@@ -391,25 +374,25 @@
                             brokerData.put("ipList", ipList);
                             brokerData.put("slotCount", slotCount);
                             brokerDataList.add(brokerData);
+
+                            totalHitsAllBrokers += totalHits;
+                            totalCriticalServers += critical;
+                            totalWarningServers += warning;
+                            totalHealthyServers += healthy;
+                            totalIsolatedServersAgg += isolated;
                         }
                     }
                 }
-                System.out.println("Broker rows fetched (fallback): " + brokerDataList.size());
-
                 runTimeDisplay = displayFmt.format(new Date(snappedStartTs.getTime())) + " to " + displayFmt.format(new Date(snappedEndTs.getTime()));
-            } else {
-                System.out.println("Fallback failed: no RUN_START found before " + snappedEndTs);
             }
         }
 
-        // Update inputs to reflect actual (snapped) window
         SimpleDateFormat inputFmt = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm");
         fromDateTime = inputFmt.format(new Date(snappedStartTs.getTime()));
         toDateTime = inputFmt.format(new Date(snappedEndTs.getTime()));
 
         // ============================================================
-        // 5. Fetch impacted servers with SUM(HITS) GROUP BY BROKER, IP
-        //    Uses the final snapped window (fallback if applied)
+        // 5. Impacted servers with SUM aggregation
         // ============================================================
         impactedServersList.clear();
         isolatedServersList.clear();
@@ -417,14 +400,10 @@
         Map<String, Map<String, String>> allServerStats = new HashMap<>();
 
         String impactedSQL =
-            "SELECT BROKER, IP, " +
-            "       SUM(HITS) AS HITS, " +
-            "       MAX(STATUS) AS STATUS, " +
-            "       COUNT(*) AS SLOT_COUNT " +
+            "SELECT BROKER, IP, SUM(HITS) AS HITS, MAX(STATUS) AS STATUS, COUNT(*) AS SLOT_COUNT " +
             "FROM EXP_IMPACTED_SERVERS_HOURLY " +
             "WHERE RUN_START >= ? AND RUN_START <= ? " +
-            "GROUP BY BROKER, IP " +
-            "ORDER BY BROKER, IP";
+            "GROUP BY BROKER, IP ORDER BY BROKER, IP";
 
         try (PreparedStatement ps = reportConn.prepareStatement(impactedSQL)) {
             ps.setTimestamp(1, snappedStartTs);
@@ -435,6 +414,7 @@
                     String ip = rs.getString("IP");
                     int hits = rs.getInt("HITS");
                     String status = rs.getString("STATUS");
+                    int slotCount = rs.getInt("SLOT_COUNT");
 
                     String key = broker + "|" + ip;
                     Map<String, String> stats = new HashMap<>();
@@ -448,6 +428,7 @@
                     server.put("displayIP", ip.split("\\.")[2] + "." + ip.split("\\.")[3]);
                     server.put("hits", String.valueOf(hits));
                     server.put("status", status);
+                    server.put("slotCount", String.valueOf(slotCount));
 
                     if ("isolated".equals(status)) {
                         isolatedServersList.add(server);
@@ -460,15 +441,10 @@
                 }
             }
         }
-        System.out.println("Impacted servers fetched: " + impactedServersList.size());
-        System.out.println("Isolated servers fetched: " + isolatedServersList.size());
 
         // ============================================================
-        // 6. Attach server details to each broker using allServerStats
-        //    Also compute per-server summed hits by scanning raw rows
+        // 6. Attach server details
         // ============================================================
-        // We need per-server hits summed across the snapped range.
-        // The allServerStats map already has the SUM(HITS) per broker+ip.
         for (Map<String, Object> brokerData : brokerDataList) {
             String broker = (String) brokerData.get("broker");
             List<String> ipList = (List<String>) brokerData.get("ipList");
@@ -493,31 +469,30 @@
         }
 
         // ============================================================
-        // 7. Sort broker cards: isolated, critical, warning, healthy
+        // 7. Sort brokers
         // ============================================================
         brokerDataList.sort((a, b) -> {
             String statusA = (String) a.get("brokerStatus");
             String statusB = (String) b.get("brokerStatus");
             int priorityA = statusA.equals("isolated") ? 0 : statusA.equals("critical") ? 1 : statusA.equals("warning") ? 2 : 3;
             int priorityB = statusB.equals("isolated") ? 0 : statusB.equals("critical") ? 1 : statusB.equals("warning") ? 2 : 3;
-            return Integer.compare(priorityA, priorityB);
+            if (priorityA != priorityB) return Integer.compare(priorityA, priorityB);
+            // Secondary sort by total hits descending
+            int hitsA = (Integer) a.get("totalHits");
+            int hitsB = (Integer) b.get("totalHits");
+            return Integer.compare(hitsB, hitsA);
         });
 
         // ============================================================
-        // 8. Compute counts for stats grid
+        // 8. Compute counts
         // ============================================================
         totalBrokers = brokerDataList.size();
-        criticalBrokers = 0;
-        warningBrokers = 0;
-        healthyBrokers = 0;
-        isolatedBrokersCount = 0;
+        criticalBrokers = 0; warningBrokers = 0; healthyBrokers = 0; isolatedBrokersCount = 0;
         impactedServers = impactedServersList.size();
         isolatedServers = isolatedServersList.size();
 
         Set<String> uniqueIPs = new HashSet<>();
-        for (List<String> ips : brokerIPMapping.values()) {
-            uniqueIPs.addAll(ips);
-        }
+        for (List<String> ips : brokerIPMapping.values()) uniqueIPs.addAll(ips);
         totalServers = uniqueIPs.size();
 
         for (Map<String, Object> bd : brokerDataList) {
@@ -528,10 +503,7 @@
             else if ("healthy".equals(status)) healthyBrokers++;
         }
 
-        // Count total slots included (for display)
-        if (!brokerDataList.isEmpty()) {
-            slotsIncluded = (Integer) brokerDataList.get(0).get("slotCount");
-        }
+        if (!brokerDataList.isEmpty()) slotsIncluded = (Integer) brokerDataList.get(0).get("slotCount");
 
     } catch (Exception e) {
         e.printStackTrace();
@@ -562,6 +534,7 @@
             --warning: #f59e0b;
             --danger: #ef4444;
             --isolated: #8b5cf6;
+            --info: #0ea5e9;
             --gray-50: #f8fafc;
             --gray-100: #f1f5f9;
             --gray-200: #e2e8f0;
@@ -577,34 +550,73 @@
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); color: var(--gray-800); line-height: 1.5; min-height: 100vh; font-size: 18px; }
+
+        /* ============ HEADER ============ */
         .dashboard-header { background: white; border-bottom: 1px solid var(--gray-200); padding: 1.5rem 2rem; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); position: sticky; top: 0; z-index: 100; }
-        .header-main { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+        .header-main { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem; }
         .dashboard-title h1 { font-size: 2rem; font-weight: 700; color: var(--gray-900); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.75rem; }
         .dashboard-title h1 i { color: var(--primary); font-size: 2rem; }
-        .dashboard-title p { color: var(--gray-600); font-size: 1.1rem; }
-        .header-info { display: flex; align-items: center; gap: 1.5rem; }
+        .dashboard-title p { color: var(--gray-600); font-size: 1.05rem; }
+        .header-info { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
         .refresh-timer { background: var(--primary); color: white; padding: 0.75rem 1.25rem; border-radius: 0.75rem; font-size: 1rem; font-weight: 600; display: flex; align-items: center; gap: 0.75rem; box-shadow: 0 2px 4px rgba(99, 102, 241, 0.3); }
-        .server-info { background: var(--gray-100); padding: 0.75rem 1.25rem; border-radius: 0.75rem; font-size: 1rem; color: var(--gray-700); border: 1px solid var(--gray-200); font-weight: 500; }
-        .run-time-info { background: var(--gray-800); color: white; padding: 0.75rem 1.25rem; border-radius: 0.75rem; font-size: 1rem; font-weight: 600; display: flex; align-items: center; gap: 0.75rem; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2); }
-        .fallback-banner { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; padding: 1rem 2rem; text-align: center; font-weight: 600; font-size: 1rem; display: flex; align-items: center; justify-content: center; gap: 0.75rem; box-shadow: 0 4px 6px -1px rgba(245, 158, 11, 0.3); }
-        .fallback-banner i { font-size: 1.25rem; }
-        .slot-info-banner { background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 0.75rem 2rem; text-align: center; font-weight: 600; font-size: 0.95rem; display: flex; align-items: center; justify-content: center; gap: 0.75rem; box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.3); }
-        .slot-info-banner i { font-size: 1.1rem; }
-        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1.25rem; }
-        .stat-card { background: white; padding: 1.25rem; border-radius: 0.75rem; box-shadow: var(--card-shadow); text-align: center; transition: all 0.3s ease; border-top: 5px solid var(--primary); position: relative; overflow: hidden; }
+        .refresh-timer.warning-state { background: var(--warning); box-shadow: 0 2px 4px rgba(245, 158, 11, 0.3); animation: pulseWarn 1s ease-in-out infinite; }
+        @keyframes pulseWarn { 0%,100% { transform: scale(1); } 50% { transform: scale(1.03); } }
+        .server-info { background: var(--gray-100); padding: 0.75rem 1.25rem; border-radius: 0.75rem; font-size: 0.95rem; color: var(--gray-700); border: 1px solid var(--gray-200); font-weight: 600; display: flex; align-items: center; gap: 0.5rem; }
+        .server-info.pr { background: rgba(16, 185, 129, 0.1); color: var(--success); border-color: rgba(16, 185, 129, 0.3); }
+        .server-info.dr { background: rgba(139, 92, 246, 0.1); color: var(--isolated); border-color: rgba(139, 92, 246, 0.3); }
+        .run-time-info { background: var(--gray-800); color: white; padding: 0.75rem 1.25rem; border-radius: 0.75rem; font-size: 0.95rem; font-weight: 600; display: flex; align-items: center; gap: 0.75rem; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2); }
+
+        /* ============ BANNERS ============ */
+        .banner { padding: 1rem 2rem; text-align: center; font-weight: 600; font-size: 1rem; display: flex; align-items: center; justify-content: center; gap: 0.75rem; }
+        .fallback-banner { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; box-shadow: 0 4px 6px -1px rgba(245, 158, 11, 0.3); }
+        .slot-info-banner { background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; box-shadow: 0 4px 6px -1px rgba(16, 185, 129, 0.3); }
+        .banner i { font-size: 1.25rem; }
+
+        /* ============ STATS GRID ============ */
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 1rem; }
+        .stat-card { background: white; padding: 1.25rem 1rem; border-radius: 0.75rem; box-shadow: var(--card-shadow); text-align: center; transition: all 0.3s ease; border-top: 5px solid var(--primary); position: relative; overflow: hidden; }
         .stat-card:hover { transform: translateY(-5px); box-shadow: var(--card-shadow-hover); }
         .stat-card.critical { border-top-color: var(--danger); }
         .stat-card.warning { border-top-color: var(--warning); }
         .stat-card.healthy { border-top-color: var(--success); }
         .stat-card.isolated { border-top-color: var(--isolated); }
+        .stat-card.info { border-top-color: var(--info); }
         .stat-value { font-size: 2.25rem; font-weight: 800; color: var(--gray-900); line-height: 1; margin-bottom: 0.5rem; }
-        .stat-label { font-size: 1rem; color: var(--gray-600); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
-        .color-legend-horizontal { background: white; border-radius: 0.75rem; box-shadow: var(--card-shadow); padding: 1.25rem 2rem; margin: 2rem 2rem 0; transition: all 0.3s ease; }
-        .color-legend-horizontal:hover { box-shadow: var(--card-shadow-hover); }
-        .legend-title-horizontal { font-size: 1.25rem; font-weight: 700; color: var(--gray-900); margin-bottom: 1.25rem; display: flex; align-items: center; gap: 0.75rem; justify-content: center; }
-        .legend-title-horizontal i { color: var(--primary); font-size: 1.25rem; }
-        .legend-items-horizontal { display: flex; gap: 2rem; justify-content: center; flex-wrap: wrap; }
-        .legend-item-horizontal { display: flex; align-items: center; gap: 1rem; padding: 1rem 1.25rem; border-radius: 0.75rem; background: var(--gray-50); transition: all 0.2s; min-width: 320px; flex: 1; }
+        .stat-label { font-size: 0.85rem; color: var(--gray-600); font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+        .stat-sub { font-size: 0.75rem; color: var(--gray-400); margin-top: 0.25rem; font-weight: 500; }
+        .stat-icon { position: absolute; top: 0.75rem; right: 0.75rem; font-size: 1rem; opacity: 0.15; color: var(--gray-900); }
+
+        /* ============ SUMMARY STRIP ============ */
+        .summary-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; margin: 1rem 2rem; background: white; border-radius: 0.75rem; box-shadow: var(--card-shadow); padding: 1.25rem; }
+        .summary-item { display: flex; align-items: center; gap: 1rem; padding: 0.75rem 1rem; border-radius: 0.5rem; background: var(--gray-50); }
+        .summary-icon { width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 1.1rem; flex-shrink: 0; }
+        .summary-icon.primary { background: var(--primary); }
+        .summary-icon.success { background: var(--success); }
+        .summary-icon.danger { background: var(--danger); }
+        .summary-icon.warning { background: var(--warning); }
+        .summary-text { display: flex; flex-direction: column; }
+        .summary-text-label { font-size: 0.8rem; color: var(--gray-500); font-weight: 600; text-transform: uppercase; }
+        .summary-text-value { font-size: 1.15rem; font-weight: 700; color: var(--gray-900); }
+
+        /* ============ AUDIO CONTROLS ============ */
+        .audio-controls { background: white; border-radius: 0.75rem; box-shadow: var(--card-shadow); padding: 1rem 2rem; margin: 1rem 2rem 0; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; animation: slideDown 0.5s ease-out; }
+        @keyframes slideDown { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+        .audio-status { display: flex; align-items: center; gap: 1rem; }
+        .audio-status i { font-size: 1.5rem; color: var(--primary); }
+        .audio-status span { font-weight: 600; }
+        #audioStatus { color: var(--success); transition: all 0.3s ease; }
+        .audio-controls-buttons { display: flex; gap: 1rem; flex-wrap: wrap; }
+        #testVoiceBtn { background: var(--primary); color: white; }
+        #testVoiceBtn:hover { background: var(--primary-dark) !important; transform: translateY(-2px); }
+        #muteVoiceBtn { background: var(--gray-600); color: white; }
+        #muteVoiceBtn:hover { background: var(--gray-700) !important; transform: translateY(-2px); }
+
+        /* ============ LEGEND ============ */
+        .color-legend-horizontal { background: white; border-radius: 0.75rem; box-shadow: var(--card-shadow); padding: 1.25rem 2rem; margin: 2rem 2rem 0; }
+        .legend-title-horizontal { font-size: 1.15rem; font-weight: 700; color: var(--gray-900); margin-bottom: 1.25rem; display: flex; align-items: center; gap: 0.75rem; justify-content: center; }
+        .legend-title-horizontal i { color: var(--primary); }
+        .legend-items-horizontal { display: flex; gap: 1.5rem; justify-content: center; flex-wrap: wrap; }
+        .legend-item-horizontal { display: flex; align-items: center; gap: 0.75rem; padding: 0.85rem 1rem; border-radius: 0.75rem; background: var(--gray-50); transition: all 0.2s; min-width: 300px; flex: 1; }
         .legend-item-horizontal:hover { background: var(--gray-100); transform: translateY(-2px); }
         .legend-color-horizontal { width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0; }
         .legend-color-horizontal.critical { background: var(--danger); }
@@ -612,183 +624,199 @@
         .legend-color-horizontal.healthy { background: var(--success); }
         .legend-color-horizontal.isolated { background: var(--isolated); }
         .legend-content-horizontal { flex: 1; }
-        .legend-header-horizontal { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; gap: 0.75rem; }
-        .legend-name-horizontal { font-weight: 600; color: var(--gray-900); font-size: 1.1rem; white-space: nowrap; }
-        .legend-badge-horizontal { padding: 0.25rem 0.75rem; border-radius: 0.5rem; font-size: 0.9rem; font-weight: 600; text-transform: uppercase; white-space: nowrap; }
+        .legend-header-horizontal { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem; gap: 0.75rem; }
+        .legend-name-horizontal { font-weight: 700; color: var(--gray-900); font-size: 1rem; }
+        .legend-badge-horizontal { padding: 0.2rem 0.65rem; border-radius: 0.5rem; font-size: 0.8rem; font-weight: 700; text-transform: uppercase; }
         .legend-badge-horizontal.critical { background: rgba(239, 68, 68, 0.1); color: var(--danger); }
-        .legend-description-horizontal { font-size: 0.95rem; color: var(--gray-700); line-height: 1.5; }
+        .legend-badge-horizontal.warning { background: rgba(245, 158, 11, 0.1); color: var(--warning); }
+        .legend-badge-horizontal.isolated { background: rgba(139, 92, 246, 0.1); color: var(--isolated); }
+        .legend-badge-horizontal.healthy { background: rgba(16, 185, 129, 0.1); color: var(--success); }
+        .legend-description-horizontal { font-size: 0.9rem; color: var(--gray-700); line-height: 1.4; }
         .legend-description-horizontal strong { color: var(--gray-900); }
-        .audio-controls { background: white; border-radius: 0.75rem; box-shadow: var(--card-shadow); padding: 1rem 2rem; margin: 1rem 2rem 0; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; animation: slideDown 0.5s ease-out; }
-        @keyframes slideDown { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
-        .audio-status { display: flex; align-items: center; gap: 1rem; }
-        .audio-status i { font-size: 1.5rem; color: var(--primary); }
-        .audio-status span { font-weight: 600; }
-        #audioStatus { color: var(--success); transition: all 0.3s ease; }
-        .audio-controls-buttons { display: flex; gap: 1rem; }
-        #testVoiceBtn { background: var(--primary); color: white; transition: all 0.2s ease; }
-        #testVoiceBtn:hover { background: var(--primary-dark) !important; transform: translateY(-2px); }
-        #muteVoiceBtn { background: var(--gray-600); color: white; transition: all 0.2s ease; }
-        #muteVoiceBtn:hover { background: var(--gray-700) !important; transform: translateY(-2px); }
+
+        /* ============ MAIN LAYOUT ============ */
         .main-content { display: flex; gap: 2rem; padding: 2rem; min-height: calc(100vh - 300px); }
-        .left-panel { flex: 0 0 420px; display: flex; flex-direction: column; gap: 2rem; }
-        .right-panel { flex: 1; display: flex; flex-direction: column; gap: 2rem; }
-        .impacted-section { background: white; border-radius: 0.75rem; box-shadow: var(--card-shadow); flex: 1; display: flex; flex-direction: column; min-height: 350px; border-left: 6px solid var(--danger); transition: all 0.3s ease; }
+        .left-panel { flex: 0 0 420px; display: flex; flex-direction: column; gap: 1.5rem; }
+        .right-panel { flex: 1; display: flex; flex-direction: column; gap: 1.5rem; }
+
+        /* ============ IMPACTED SECTIONS ============ */
+        .impacted-section { background: white; border-radius: 0.75rem; box-shadow: var(--card-shadow); flex: 1; display: flex; flex-direction: column; min-height: 300px; border-left: 6px solid var(--danger); transition: all 0.3s ease; }
         .impacted-section:hover { box-shadow: var(--card-shadow-hover); }
         .impacted-section.isolated { border-left-color: var(--isolated); }
-        .impacted-header { padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--gray-200); background: white; border-radius: 0.75rem 0.75rem 0 0; display: flex; justify-content: space-between; align-items: center; }
-        .impacted-title { font-size: 1.25rem; font-weight: 700; color: var(--danger); display: flex; align-items: center; gap: 0.75rem; }
-        .impacted-title i { font-size: 1.25rem; }
+        .impacted-header { padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--gray-200); display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; }
+        .impacted-title { font-size: 1.1rem; font-weight: 700; color: var(--danger); display: flex; align-items: center; gap: 0.6rem; }
         .impacted-title.isolated { color: var(--isolated); }
-        .impacted-count { background: var(--danger); color: white; padding: 0.25rem 1rem; border-radius: 2rem; font-size: 1rem; font-weight: 700; box-shadow: 0 2px 4px rgba(239, 68, 68, 0.3); }
+        .impacted-count { background: var(--danger); color: white; padding: 0.2rem 0.85rem; border-radius: 2rem; font-size: 0.9rem; font-weight: 700; box-shadow: 0 2px 4px rgba(239, 68, 68, 0.3); }
         .impacted-count.isolated { background: var(--isolated); }
-        .impacted-content { padding: 1.25rem 1.5rem; flex: 1; overflow-y: auto; }
-        .impacted-list { display: flex; flex-direction: column; gap: 1rem; }
-        .impacted-server-item { background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: 0.75rem; padding: 1rem 1.25rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; font-size: 1rem; transition: all 0.2s; position: relative; overflow: hidden; cursor: default; }
+        .impacted-content { padding: 1.25rem 1.5rem; flex: 1; overflow-y: auto; max-height: 380px; }
+        .impacted-list { display: flex; flex-direction: column; gap: 0.75rem; }
+        .impacted-server-item { background: var(--gray-50); border: 1px solid var(--gray-200); border-radius: 0.75rem; padding: 0.9rem 1.1rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; font-size: 0.95rem; transition: all 0.2s; position: relative; overflow: hidden; cursor: default; }
         .impacted-server-item::before { content: ''; position: absolute; left: 0; top: 0; height: 100%; width: 5px; background: var(--danger); }
         .impacted-server-item.warning::before { background: var(--warning); }
         .impacted-server-item.isolated::before { background: var(--isolated); }
-        .impacted-server-item:hover { background: var(--gray-100); }
-        .impacted-broker { font-weight: 600; color: var(--gray-900); flex: 1; font-size: 1rem; }
-        .impacted-ip { color: var(--gray-600); font-family: 'Courier New', monospace; flex: 1; font-size: 1rem; }
-        .impacted-hits { color: white; padding: 0.25rem 0.75rem; border-radius: 0.5rem; font-weight: 700; font-size: 0.95rem; min-width: 80px; text-align: center; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2); }
+        .impacted-server-item:hover { background: var(--gray-100); transform: translateX(3px); }
+        .impacted-broker { font-weight: 700; color: var(--gray-900); flex: 1; }
+        .impacted-ip { color: var(--gray-600); font-family: 'Courier New', monospace; flex: 1; font-weight: 600; }
+        .impacted-hits { color: white; padding: 0.25rem 0.75rem; border-radius: 0.5rem; font-weight: 700; font-size: 0.85rem; min-width: 70px; text-align: center; }
         .impacted-hits.critical { background: var(--danger); }
         .impacted-hits.warning { background: var(--warning); }
         .impacted-hits.isolated { background: var(--isolated); }
-        .impacted-hits.healthy { background: var(--success); }
-        .no-impacted { text-align: center; color: var(--gray-500); font-style: italic; padding: 2.5rem; font-size: 1.1rem; }
-        .no-impacted i { font-size: 2.5rem; }
-        .time-filter-section { background: white; border-radius: 0.75rem; box-shadow: var(--card-shadow); overflow: hidden; transition: all 0.3s ease; }
-        .time-filter-section:hover { box-shadow: var(--card-shadow-hover); }
-        .time-filter-header { padding: 1.25rem 1.5rem; background: var(--gray-50); display: flex; justify-content: space-between; align-items: center; cursor: pointer; transition: background-color 0.2s; }
+
+        /* ============ TIME FILTER ============ */
+        .time-filter-section { background: white; border-radius: 0.75rem; box-shadow: var(--card-shadow); overflow: hidden; }
+        .time-filter-header { padding: 1.1rem 1.5rem; background: var(--gray-50); display: flex; justify-content: space-between; align-items: center; cursor: pointer; transition: background-color 0.2s; }
         .time-filter-header:hover { background: var(--gray-100); }
-        .time-filter-title { font-size: 1.2rem; font-weight: 600; color: var(--gray-900); display: flex; align-items: center; gap: 0.75rem; }
-        .time-filter-title i { font-size: 1.2rem; }
-        .time-filter-toggle { color: var(--gray-500); transition: transform 0.3s ease; font-size: 1rem; }
+        .time-filter-title { font-size: 1.1rem; font-weight: 700; color: var(--gray-900); display: flex; align-items: center; gap: 0.75rem; }
+        .time-filter-toggle { color: var(--gray-500); transition: transform 0.3s ease; }
         .time-filter-toggle.expanded { transform: rotate(180deg); }
-        .time-filter-content { display: none; padding: 1.5rem; border-top: 1px solid var(--gray-200); background: white; }
+        .time-filter-content { display: none; padding: 1.5rem; border-top: 1px solid var(--gray-200); }
         .time-filter-content.expanded { display: block; }
-        .time-filter-form { display: flex; gap: 1.5rem; align-items: flex-end; flex-wrap: wrap; }
-        .time-filter-group { display: flex; flex-direction: column; gap: 0.75rem; min-width: 220px; flex: 1; }
-        .time-filter-label { font-size: 1rem; font-weight: 600; color: var(--gray-700); }
-        .time-filter-input { padding: 0.75rem 1rem; border: 1px solid var(--gray-300); border-radius: 0.75rem; font-size: 1rem; background: white; transition: all 0.2s; }
+        .time-filter-form { display: flex; gap: 1.25rem; align-items: flex-end; flex-wrap: wrap; }
+        .time-filter-group { display: flex; flex-direction: column; gap: 0.5rem; min-width: 200px; flex: 1; }
+        .time-filter-label { font-size: 0.9rem; font-weight: 700; color: var(--gray-700); }
+        .time-filter-input { padding: 0.65rem 0.9rem; border: 1px solid var(--gray-300); border-radius: 0.65rem; font-size: 0.95rem; background: white; transition: all 0.2s; font-family: inherit; }
         .time-filter-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1); }
-        .time-filter-actions { display: flex; gap: 0.75rem; margin-left: auto; }
-        .quick-filter-buttons { display: flex; gap: 0.75rem; margin-top: 1.25rem; flex-wrap: wrap; }
-        .quick-filter-btn { background: var(--gray-100); color: var(--gray-700); border: 1px solid var(--gray-300); padding: 0.75rem 1rem; border-radius: 0.75rem; font-weight: 500; cursor: pointer; transition: all 0.2s; font-size: 0.95rem; }
+        .time-filter-actions { display: flex; gap: 0.6rem; margin-left: auto; }
+        .quick-filter-buttons { display: flex; gap: 0.6rem; margin-top: 1rem; flex-wrap: wrap; }
+        .quick-filter-btn { background: var(--gray-100); color: var(--gray-700); border: 1px solid var(--gray-300); padding: 0.6rem 0.9rem; border-radius: 0.65rem; font-weight: 600; cursor: pointer; transition: all 0.2s; font-size: 0.85rem; font-family: inherit; }
         .quick-filter-btn:hover { background: var(--gray-200); border-color: var(--gray-400); }
         .quick-filter-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
-        .controls-container { display: flex; gap: 1rem; padding: 1.25rem; background: white; border-radius: 0.75rem; box-shadow: var(--card-shadow); flex-wrap: wrap; transition: all 0.3s ease; }
-        .controls-container:hover { box-shadow: var(--card-shadow-hover); }
-        .control-btn { background: white; color: var(--gray-700); border: 1px solid var(--gray-300); padding: 0.75rem 1.5rem; border-radius: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.2s; font-size: 1rem; display: flex; align-items: center; gap: 0.75rem; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05); }
+
+        /* ============ CONTROLS ============ */
+        .controls-container { display: flex; gap: 0.75rem; padding: 1.1rem; background: white; border-radius: 0.75rem; box-shadow: var(--card-shadow); flex-wrap: wrap; }
+        .control-btn { background: white; color: var(--gray-700); border: 1px solid var(--gray-300); padding: 0.65rem 1.1rem; border-radius: 0.65rem; font-weight: 600; cursor: pointer; transition: all 0.2s; font-size: 0.9rem; display: flex; align-items: center; gap: 0.6rem; font-family: inherit; }
         .control-btn:hover { background: var(--gray-50); border-color: var(--gray-400); transform: translateY(-2px); }
         .control-btn.primary { background: var(--primary); color: white; border-color: var(--primary); }
-        .control-btn.primary:hover { background: var(--primary-dark); transform: translateY(-2px); }
+        .control-btn.primary:hover { background: var(--primary-dark); }
         .control-btn.isolated { background: var(--isolated); color: white; border-color: var(--isolated); }
-        .control-btn.isolated:hover { background: #7c3aed; transform: translateY(-2px); }
         .control-btn.success { background: var(--success); color: white; border-color: var(--success); }
-        .control-btn.success:hover { background: #0d9488; transform: translateY(-2px); }
-        .broker-cards-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(450px, 1fr)); gap: 2rem; padding: 1.5rem; overflow-y: auto; flex: 1; background: transparent; }
-        .broker-card { background: white; border: 1px solid var(--gray-200); border-radius: 0.75rem; box-shadow: var(--card-shadow); transition: all 0.3s ease; display: flex; flex-direction: column; min-height: 380px; position: relative; overflow: hidden; }
+
+        /* ============ BROKER CARDS ============ */
+        .broker-cards-container { display: grid; grid-template-columns: repeat(auto-fill, minmax(460px, 1fr)); gap: 1.5rem; padding: 0.5rem; }
+        .broker-card { background: white; border: 1px solid var(--gray-200); border-radius: 0.75rem; box-shadow: var(--card-shadow); transition: all 0.3s ease; display: flex; flex-direction: column; position: relative; overflow: hidden; }
         .broker-card::before { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 5px; }
         .broker-card.critical::before { background: var(--danger); }
         .broker-card.warning::before { background: var(--warning); }
         .broker-card.healthy::before { background: var(--success); }
         .broker-card.isolated::before { background: var(--isolated); }
         .broker-card:hover { transform: translateY(-5px); box-shadow: var(--card-shadow-hover); }
-        .broker-header { padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--gray-200); display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
+
+        .broker-header { padding: 1.1rem 1.35rem; border-bottom: 1px solid var(--gray-200); display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
         .broker-info { flex: 1; min-width: 0; }
-        .broker-name { font-size: 1.3rem; font-weight: 700; color: var(--gray-900); margin-bottom: 0.5rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 0.75rem; }
-        .broker-port { color: var(--gray-600); font-size: 1rem; font-weight: 500; }
+        .broker-name { font-size: 1.2rem; font-weight: 800; color: var(--gray-900); margin-bottom: 0.35rem; display: flex; align-items: center; gap: 0.6rem; word-break: break-word; }
+        .broker-port { color: var(--gray-600); font-size: 0.9rem; font-weight: 600; }
+        .broker-port i { margin-right: 0.3rem; color: var(--gray-400); }
         .broker-status { display: flex; flex-direction: column; align-items: flex-end; gap: 0.5rem; flex-shrink: 0; }
-        .status-badge { padding: 0.5rem 1rem; border-radius: 2rem; font-size: 0.9rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2); }
+        .status-badge { padding: 0.4rem 0.9rem; border-radius: 2rem; font-size: 0.8rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap; }
         .status-badge.healthy { background: var(--success); color: white; }
         .status-badge.warning { background: var(--warning); color: white; }
         .status-badge.critical { background: var(--danger); color: white; }
         .status-badge.isolated { background: var(--isolated); color: white; }
-        .total-hits { color: var(--gray-600); font-size: 1rem; white-space: nowrap; font-weight: 600; }
-        .broker-body { padding: 1.25rem 1.5rem; flex: 1; display: flex; flex-direction: column; gap: 1.25rem; }
-        .server-stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1rem; padding-bottom: 1.25rem; border-bottom: 1px solid var(--gray-200); }
-        .server-stat { text-align: center; padding: 0.75rem; border-radius: 0.75rem; background: var(--gray-50); }
-        .server-stat-value { font-size: 1.5rem; font-weight: 800; color: var(--gray-900); line-height: 1; margin-bottom: 0.5rem; }
-        .server-stat-label { font-size: 0.9rem; color: var(--gray-600); font-weight: 600; }
-        .server-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; }
-        .server-item { display: flex; justify-content: space-between; align-items: center; padding: 1rem 1.25rem; background: var(--gray-50); border-radius: 0.75rem; transition: all 0.2s; font-size: 1rem; border-left: 4px solid var(--gray-300); min-height: 60px; position: relative; cursor: default; }
+        .total-hits { color: var(--gray-700); font-size: 1.05rem; font-weight: 800; white-space: nowrap; }
+        .total-hits-label { font-size: 0.75rem; color: var(--gray-500); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; text-align: right; }
+
+        .broker-body { padding: 1.1rem 1.35rem; flex: 1; display: flex; flex-direction: column; gap: 1.1rem; }
+        .server-stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.6rem; padding-bottom: 1.1rem; border-bottom: 1px solid var(--gray-200); }
+        .server-stat { text-align: center; padding: 0.6rem 0.4rem; border-radius: 0.6rem; background: var(--gray-50); transition: all 0.2s; }
+        .server-stat:hover { background: var(--gray-100); }
+        .server-stat-value { font-size: 1.35rem; font-weight: 800; color: var(--gray-900); line-height: 1; margin-bottom: 0.35rem; }
+        .server-stat-label { font-size: 0.75rem; color: var(--gray-600); font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; }
+
+        .server-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.6rem; }
+        .server-item { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 0.95rem; background: var(--gray-50); border-radius: 0.6rem; transition: all 0.2s; font-size: 0.9rem; border-left: 4px solid var(--gray-300); position: relative; cursor: default; }
         .server-item:hover { background: var(--gray-100); }
-        .server-item:hover::after { content: attr(data-full-ip); position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); background: var(--gray-800); color: white; padding: 0.5rem 1rem; border-radius: 0.5rem; font-size: 0.875rem; white-space: nowrap; z-index: 1000; margin-bottom: 0.5rem; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
-        .server-item:hover::before { content: ''; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); border-width: 0.5rem; border-style: solid; border-color: var(--gray-800) transparent transparent transparent; margin-bottom: -0.5rem; z-index: 1000; }
-        .server-ip { font-weight: 600; color: var(--gray-800); font-family: 'Courier New', monospace; display: flex; align-items: center; gap: 0.75rem; font-size: 1rem; }
-        .server-ip .status-indicator { width: 12px; height: 12px; }
-        .server-hits { font-weight: 700; padding: 0.5rem 0.75rem; border-radius: 0.5rem; background: white; border: 1px solid var(--gray-200); min-width: 4rem; text-align: center; font-size: 1rem; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05); }
+        .server-ip { font-weight: 700; color: var(--gray-800); font-family: 'Courier New', monospace; display: flex; align-items: center; gap: 0.6rem; font-size: 0.9rem; }
+        .server-hits { font-weight: 800; padding: 0.35rem 0.65rem; border-radius: 0.5rem; background: white; border: 1px solid var(--gray-200); min-width: 3.5rem; text-align: center; font-size: 0.85rem; }
         .server-hits.healthy { color: var(--success); border-color: var(--success); background: rgba(16, 185, 129, 0.1); }
         .server-hits.warning { color: var(--warning); border-color: var(--warning); background: rgba(245, 158, 11, 0.1); }
         .server-hits.critical, .server-hits.zero { color: var(--danger); border-color: var(--danger); background: rgba(239, 68, 68, 0.1); }
         .server-hits.isolated { color: var(--isolated); border-color: var(--isolated); background: rgba(139, 92, 246, 0.1); }
-        .broker-footer { padding: 1rem 1.5rem; background: var(--gray-50); border-top: 1px solid var(--gray-200); display: flex; justify-content: space-between; align-items: center; font-size: 0.95rem; color: var(--gray-600); }
-        .view-details { color: var(--primary); font-weight: 600; cursor: pointer; white-space: nowrap; display: flex; align-items: center; gap: 0.5rem; font-size: 1rem; }
-        .view-details:hover { color: var(--primary-dark); }
-        @keyframes softBlinkCritical { 0%, 90% { opacity: 1; box-shadow: none; } 92% { opacity: 0.85; box-shadow: 0 0 5px rgba(239, 68, 68, 0.3); } 94% { opacity: 1; box-shadow: none; } 96% { opacity: 0.85; box-shadow: 0 0 5px rgba(239, 68, 68, 0.3); } 98% { opacity: 1; box-shadow: none; } 100% { opacity: 1; box-shadow: none; } }
-        @keyframes softBlinkWarning { 0%, 92% { opacity: 1; box-shadow: none; } 94% { opacity: 0.9; box-shadow: 0 0 4px rgba(245, 158, 11, 0.25); } 96% { opacity: 1; box-shadow: none; } 98% { opacity: 0.9; box-shadow: 0 0 4px rgba(245, 158, 11, 0.25); } 100% { opacity: 1; box-shadow: none; } }
-        @keyframes softBlinkIsolated { 0%, 88% { opacity: 1; box-shadow: none; } 91% { opacity: 0.8; box-shadow: 0 0 6px rgba(139, 92, 246, 0.3); } 94% { opacity: 1; box-shadow: none; } 97% { opacity: 0.8; box-shadow: 0 0 6px rgba(139, 92, 246, 0.3); } 100% { opacity: 1; box-shadow: none; } }
-        .broker-card.critical { animation: softBlinkCritical 5s ease-in-out infinite; border-left: 4px solid var(--danger); }
-        .broker-card.warning { animation: softBlinkWarning 7s ease-in-out infinite; border-left: 4px solid var(--warning); }
-        .broker-card.isolated { animation: softBlinkIsolated 3s ease-in-out infinite; border-left: 4px solid var(--isolated); }
-        .server-hits.critical, .server-hits.zero { animation: softBlinkCritical 5s ease-in-out infinite; background: rgba(239, 68, 68, 0.1); border: 1px solid var(--danger); }
-        .server-hits.warning { animation: softBlinkWarning 7s ease-in-out infinite; background: rgba(245, 158, 11, 0.1); border: 1px solid var(--warning); }
-        .server-hits.isolated { animation: softBlinkIsolated 3s ease-in-out infinite; background: rgba(139, 92, 246, 0.1); border: 1px solid var(--isolated); }
-        .impacted-hits.critical { animation: softBlinkCritical 5s ease-in-out infinite; background: var(--danger); border: 1px solid rgba(255, 255, 255, 0.3); }
-        .impacted-hits.warning { animation: softBlinkWarning 7s ease-in-out infinite; background: var(--warning); border: 1px solid rgba(255, 255, 255, 0.3); }
-        .impacted-hits.isolated { animation: softBlinkIsolated 3s ease-in-out infinite; background: var(--isolated); border: 1px solid rgba(255, 255, 255, 0.3); }
-        .status-badge.critical { animation: softBlinkCritical 5s ease-in-out infinite; box-shadow: 0 0 5px rgba(239, 68, 68, 0.2); }
-        .status-badge.warning { animation: softBlinkWarning 7s ease-in-out infinite; box-shadow: 0 0 5px rgba(245, 158, 11, 0.2); }
-        .status-badge.isolated { animation: softBlinkIsolated 3s ease-in-out infinite; box-shadow: 0 0 5px rgba(139, 92, 246, 0.2); }
-        .impacted-count { animation: softBlinkCritical 5s ease-in-out infinite; box-shadow: 0 0 5px rgba(239, 68, 68, 0.2); }
-        .impacted-count.isolated { animation: softBlinkIsolated 3s ease-in-out infinite; box-shadow: 0 0 5px rgba(139, 92, 246, 0.2); }
-        .status-indicator.critical { animation: softBlinkCritical 5s ease-in-out infinite; box-shadow: 0 0 4px var(--danger); }
-        .status-indicator.warning { animation: softBlinkWarning 7s ease-in-out infinite; box-shadow: 0 0 4px var(--warning); }
-        .status-indicator.isolated { animation: softBlinkIsolated 3s ease-in-out infinite; box-shadow: 0 0 4px var(--isolated); }
-        .impacted-server-item.critical::before { animation: softBlinkCritical 5s ease-in-out infinite; width: 4px; }
-        .impacted-server-item.warning::before { animation: softBlinkWarning 7s ease-in-out infinite; width: 4px; }
-        .impacted-server-item.isolated::before { animation: softBlinkIsolated 3s ease-in-out infinite; width: 4px; }
-        .no-blink .broker-card.critical, .no-blink .broker-card.warning, .no-blink .broker-card.isolated,
-        .no-blink .server-hits.critical, .no-blink .server-hits.warning, .no-blink .server-hits.isolated, .no-blink .server-hits.zero,
-        .no-blink .impacted-hits.critical, .no-blink .impacted-hits.warning, .no-blink .impacted-hits.isolated,
-        .no-blink .status-badge.critical, .no-blink .status-badge.warning, .no-blink .status-badge.isolated,
-        .no-blink .impacted-count, .no-blink .impacted-count.isolated,
-        .no-blink .status-indicator.critical, .no-blink .status-indicator.warning, .no-blink .status-indicator.isolated,
-        .no-blink .impacted-server-item.critical::before, .no-blink .impacted-server-item.warning::before,
-        .no-blink .impacted-server-item.isolated::before { animation: none !important; opacity: 1 !important; box-shadow: none !important; }
-        .status-indicator { display: inline-block; width: 12px; height: 12px; border-radius: 50%; }
+
+        .broker-footer { padding: 0.75rem 1.35rem; background: var(--gray-50); border-top: 1px solid var(--gray-200); display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; color: var(--gray-600); font-weight: 500; }
+
+        /* ============ STATUS INDICATORS ============ */
+        .status-indicator { display: inline-block; width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
         .status-indicator.healthy { background: var(--success); }
         .status-indicator.warning { background: var(--warning); }
         .status-indicator.critical { background: var(--danger); }
         .status-indicator.isolated { background: var(--isolated); }
-        a.legend-link { text-decoration: none; color: inherit; display: inline-block; transition: all 0.2s ease; }
-        a.legend-link:hover { transform: translateY(-2px); text-decoration: underline; color: var(--primary); }
-        .legend-link i { margin-left: 0.5rem; font-size: 0.9rem; }
+
+        /* ============ TOOLTIP ============ */
         [data-full-ip] { position: relative; cursor: help; }
-        [data-full-ip]:hover::after { content: attr(data-full-ip); position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); padding: 0.5rem 1rem; background: var(--gray-800); color: white; border-radius: 0.5rem; font-size: 0.875rem; white-space: nowrap; z-index: 1000; pointer-events: none; margin-bottom: 0.5rem; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        [data-full-ip]:hover::after { content: attr(data-full-ip); position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); padding: 0.5rem 1rem; background: var(--gray-800); color: white; border-radius: 0.5rem; font-size: 0.85rem; white-space: nowrap; z-index: 1000; pointer-events: none; margin-bottom: 0.5rem; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
         [data-full-ip]:hover::before { content: ''; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); border-width: 0.5rem; border-style: solid; border-color: var(--gray-800) transparent transparent transparent; margin-bottom: -0.5rem; z-index: 1000; pointer-events: none; }
-        a.legend-link { text-decoration: none; color: var(--primary); font-weight: 600; margin-left: 0.25rem; }
-        a.legend-link:hover { text-decoration: underline; color: var(--primary-dark); }
-        a.legend-link i { font-size: 0.8rem; margin-left: 0.25rem; }
-        .quick-filter-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
-        .impacted-server-item, .server-item { cursor: default; }
-        @media (max-width: 1200px) { .main-content { flex-direction: column; height: auto; } .left-panel { flex: none; width: 100%; } .broker-cards-container { grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); } .legend-items-horizontal { gap: 1.5rem; } .legend-item-horizontal { min-width: 280px; } }
-        @media (max-width: 768px) { .header-main { flex-direction: column; align-items: flex-start; gap: 1.5rem; } .header-info { width: 100%; justify-content: space-between; } .broker-cards-container { grid-template-columns: 1fr; padding: 1rem; } .stats-grid { grid-template-columns: repeat(3, 1fr); } .time-filter-form { flex-direction: column; align-items: stretch; } .time-filter-actions { margin-left: 0; justify-content: flex-end; } .server-list { grid-template-columns: 1fr; } .controls-container { justify-content: center; } .color-legend-horizontal { margin: 2rem 1rem 0; } .legend-items-horizontal { flex-direction: column; gap: 1rem; } .legend-item-horizontal { min-width: 100%; } .audio-controls { flex-direction: column; align-items: flex-start; padding: 1rem; } .audio-controls-buttons { width: 100%; justify-content: space-between; } }
-        @media (max-width: 480px) { .dashboard-header { padding: 1.5rem; } .main-content { padding: 1.5rem; } .left-panel { flex: none; } .stats-grid { grid-template-columns: repeat(2, 1fr); } .controls-container { flex-direction: column; } .control-btn { justify-content: center; } .color-legend-horizontal { margin: 1.5rem 0.5rem 0; padding: 1.25rem; } .legend-header-horizontal { flex-direction: column; align-items: flex-start; gap: 0.75rem; } .audio-controls-buttons { flex-direction: column; gap: 0.5rem; } .control-btn { width: 100%; } }
-        @media print { .dashboard-header, .color-legend-horizontal, .controls-container, .time-filter-section, .impacted-section, .audio-controls, .fallback-banner, .slot-info-banner { display: none; } .broker-cards-container { display: block; } .broker-card { page-break-inside: avoid; margin-bottom: 20px; } }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        .fa-spinner { animation: spin 1s linear infinite; }
-        .broker-card, .server-item, .control-btn, .impacted-server-item { transition: all 0.3s ease-in-out; }
+
+        /* ============ NO DATA STATES ============ */
+        .no-impacted { text-align: center; color: var(--gray-500); padding: 2rem; font-size: 1rem; }
+        .no-impacted i { font-size: 2.5rem; margin-bottom: 0.75rem; display: block; }
+        .no-impacted p { margin-bottom: 0.35rem; font-weight: 600; }
+        .no-impacted small { color: var(--gray-400); font-size: 0.85rem; }
+
+        /* ============ ANIMATIONS ============ */
+        @keyframes softBlinkCritical { 0%, 90% { opacity: 1; } 92% { opacity: 0.85; } 94% { opacity: 1; } 96% { opacity: 0.85; } 98% { opacity: 1; } }
+        @keyframes softBlinkWarning { 0%, 92% { opacity: 1; } 94% { opacity: 0.9; } 96% { opacity: 1; } 98% { opacity: 0.9; } }
+        @keyframes softBlinkIsolated { 0%, 88% { opacity: 1; } 91% { opacity: 0.8; } 94% { opacity: 1; } 97% { opacity: 0.8; } }
+
+        .broker-card.critical { border-left: 4px solid var(--danger); animation: softBlinkCritical 5s ease-in-out infinite; }
+        .broker-card.warning { border-left: 4px solid var(--warning); animation: softBlinkWarning 7s ease-in-out infinite; }
+        .broker-card.isolated { border-left: 4px solid var(--isolated); animation: softBlinkIsolated 3s ease-in-out infinite; }
+        .status-badge.critical { animation: softBlinkCritical 5s ease-in-out infinite; }
+        .status-badge.warning { animation: softBlinkWarning 7s ease-in-out infinite; }
+        .status-badge.isolated { animation: softBlinkIsolated 3s ease-in-out infinite; }
+        .impacted-count { animation: softBlinkCritical 5s ease-in-out infinite; }
+        .impacted-count.isolated { animation: softBlinkIsolated 3s ease-in-out infinite; }
+
+        .no-blink .broker-card.critical, .no-blink .broker-card.warning, .no-blink .broker-card.isolated,
+        .no-blink .status-badge.critical, .no-blink .status-badge.warning, .no-blink .status-badge.isolated,
+        .no-blink .impacted-count, .no-blink .impacted-count.isolated,
+        .no-blink .status-indicator.critical, .no-blink .status-indicator.warning, .no-blink .status-indicator.isolated,
+        .no-blink .impacted-server-item.critical::before, .no-blink .impacted-server-item.warning::before,
+        .no-blink .impacted-server-item.isolated::before { animation: none !important; opacity: 1 !important; }
+
+        .status-indicator.critical { animation: softBlinkCritical 5s ease-in-out infinite; }
+        .status-indicator.warning { animation: softBlinkWarning 7s ease-in-out infinite; }
+        .status-indicator.isolated { animation: softBlinkIsolated 3s ease-in-out infinite; }
+
+        /* ============ FOCUS ============ */
         .control-btn:focus, .quick-filter-btn:focus, .time-filter-input:focus { outline: 3px solid rgba(99, 102, 241, 0.3); outline-offset: 2px; }
-        #chromeVoiceOverlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.95); z-index: 10000; display: flex; align-items: center; justify-content: center; font-family: 'Inter', sans-serif; cursor: pointer; }
-        .overlay-box { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 2rem; border-radius: 1rem; text-align: center; max-width: 450px; margin: 1rem; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); animation: fadeInUp 0.5s ease-out; }
-        @keyframes fadeInUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* ============ OVERLAY ============ */
+        #chromeVoiceOverlay { position: fixed; inset: 0; background: rgba(0,0,0,0.95); z-index: 10000; display: flex; align-items: center; justify-content: center; font-family: 'Inter', sans-serif; cursor: pointer; }
+        .overlay-box { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 2rem; border-radius: 1rem; text-align: center; max-width: 450px; margin: 1rem; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); }
         .overlay-box i { font-size: 4rem; color: white; margin-bottom: 1rem; }
         .overlay-box h3 { color: white; margin-bottom: 0.5rem; font-size: 1.5rem; }
         .overlay-box p { color: rgba(255,255,255,0.9); margin-bottom: 1rem; line-height: 1.5; }
         .overlay-box button { background: white; color: #667eea; border: none; padding: 0.75rem 2rem; border-radius: 0.75rem; font-size: 1rem; font-weight: 600; cursor: pointer; transition: all 0.3s; }
         .overlay-box button:hover { transform: scale(1.05); }
+
+        /* ============ RESPONSIVE ============ */
+        @media (max-width: 1200px) {
+            .main-content { flex-direction: column; height: auto; }
+            .left-panel { flex: none; width: 100%; }
+            .broker-cards-container { grid-template-columns: repeat(auto-fill, minmax(400px, 1fr)); }
+        }
+        @media (max-width: 768px) {
+            .header-main { flex-direction: column; align-items: flex-start; }
+            .header-info { width: 100%; justify-content: flex-start; }
+            .broker-cards-container { grid-template-columns: 1fr; }
+            .stats-grid { grid-template-columns: repeat(3, 1fr); }
+            .time-filter-form { flex-direction: column; align-items: stretch; }
+            .time-filter-actions { margin-left: 0; justify-content: flex-end; }
+            .server-list { grid-template-columns: 1fr; }
+            .main-content { padding: 1rem; }
+            .audio-controls { margin: 1rem; }
+            .summary-strip { margin: 1rem; }
+            .color-legend-horizontal { margin: 1rem; padding: 1rem; }
+        }
+        @media (max-width: 480px) {
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .server-stats { grid-template-columns: repeat(3, 1fr); }
+        }
+        @media print {
+            .dashboard-header, .color-legend-horizontal, .controls-container, .time-filter-section, .impacted-section, .audio-controls, .banner, .summary-strip { display: none; }
+            .broker-cards-container { display: block; }
+            .broker-card { page-break-inside: avoid; margin-bottom: 20px; }
+        }
     </style>
     <script type="text/javascript" src="https://unpkg.com/xlsx@0.15.1/dist/xlsx.full.min.js"></script>
 </head>
@@ -827,46 +855,79 @@
     <div class="header-main">
         <div class="dashboard-title">
             <h1><i class="fas fa-server"></i> EXP Server Broker Monitoring</h1>
-            <p>Aggregated hits across all 10-minute slots within the selected window</p>
+            <p>Aggregated hits across 10-minute cron slots within the selected window</p>
         </div>
         <div class="header-info">
-            <div class="refresh-timer"><i class="fas fa-sync-alt"></i> Auto Refresh: <span id="ten-countdown"></span></div>
-            <div class="run-time-info"><i class="fas fa-clock"></i> Data window: <%=runTimeDisplay%></div>
+            <div class="refresh-timer" id="refreshTimer"><i class="fas fa-sync-alt"></i> Auto Refresh: <span id="ten-countdown"></span></div>
+            <div class="run-time-info"><i class="fas fa-clock"></i> <%=runTimeDisplay%></div>
             <%
                 if (flagStatus != null && flagStatus.equals("PR")) {
             %>
-                <div class="server-info"><i class="fas fa-database"></i> Production - 10.188.24.x & 10.188.25.x</div>
+                <div class="server-info pr"><i class="fas fa-circle-check"></i> Production • 10.188.24.x / 25.x</div>
             <%
                 } else if (flagStatus != null && flagStatus.equals("DR")) {
             %>
-                <div class="server-info"><i class="fas fa-database"></i> DR Environment - 10.177.40.x & 10.177.41.x</div>
+                <div class="server-info dr"><i class="fas fa-shield-halved"></i> DR • 10.177.40.x / 41.x</div>
             <%
                 }
             %>
         </div>
     </div>
     <div class="stats-grid">
-        <div class="stat-card"><div class="stat-value"><%=totalBrokers%></div><div class="stat-label">Total Brokers</div></div>
-        <div class="stat-card"><div class="stat-value"><%=totalServers%></div><div class="stat-label">Unique Servers</div></div>
-        <div class="stat-card isolated"><div class="stat-value"><%=isolatedServers%></div><div class="stat-label">Isolated</div></div>
-        <div class="stat-card critical"><div class="stat-value"><%=criticalBrokers%></div><div class="stat-label">Critical</div></div>
-        <div class="stat-card warning"><div class="stat-value"><%=warningBrokers%></div><div class="stat-label">Warning</div></div>
-        <div class="stat-card healthy"><div class="stat-value"><%=healthyBrokers%></div><div class="stat-label">Healthy</div></div>
+        <div class="stat-card"><i class="fas fa-server stat-icon"></i><div class="stat-value"><%=totalBrokers%></div><div class="stat-label">Total Brokers</div></div>
+        <div class="stat-card info"><i class="fas fa-network-wired stat-icon"></i><div class="stat-value"><%=totalServers%></div><div class="stat-label">Unique Servers</div></div>
+        <div class="stat-card isolated"><i class="fas fa-shield-alt stat-icon"></i><div class="stat-value"><%=isolatedBrokersCount%></div><div class="stat-label">Isolated</div><div class="stat-sub"><%=isolatedServers%> servers</div></div>
+        <div class="stat-card critical"><i class="fas fa-exclamation-triangle stat-icon"></i><div class="stat-value"><%=criticalBrokers%></div><div class="stat-label">Critical</div><div class="stat-sub"><%=totalCriticalServers%> servers</div></div>
+        <div class="stat-card warning"><i class="fas fa-exclamation-circle stat-icon"></i><div class="stat-value"><%=warningBrokers%></div><div class="stat-label">Warning</div><div class="stat-sub"><%=totalWarningServers%> servers</div></div>
+        <div class="stat-card healthy"><i class="fas fa-check-circle stat-icon"></i><div class="stat-value"><%=healthyBrokers%></div><div class="stat-label">Healthy</div><div class="stat-sub"><%=totalHealthyServers%> servers</div></div>
     </div>
 </div>
 
 <% if (fallbackApplied) { %>
-<div class="fallback-banner">
+<div class="banner fallback-banner">
     <i class="fas fa-info-circle"></i>
-    <span>No data found for selected range (<%=requestedWindowDisplay%>). Showing latest available slot: <strong><%=runTimeDisplay%></strong></span>
+    <span>No data for selected range (<%=requestedWindowDisplay%>) — showing latest available slot: <strong><%=runTimeDisplay%></strong></span>
 </div>
 <% } else if (slotsIncluded > 1) { %>
-<div class="slot-info-banner">
+<div class="banner slot-info-banner">
     <i class="fas fa-layer-group"></i>
-    <span>Aggregated <strong><%=slotsIncluded%> slots</strong> (10-min each) → Total hits summed across: <strong><%=runTimeDisplay%></strong></span>
+    <span>Aggregated <strong><%=slotsIncluded%> slots</strong> (10-min each) — hits summed across <strong><%=runTimeDisplay%></strong></span>
 </div>
 <% } %>
 
+<!-- Summary Strip -->
+<div class="summary-strip">
+    <div class="summary-item">
+        <div class="summary-icon primary"><i class="fas fa-chart-line"></i></div>
+        <div class="summary-text">
+            <span class="summary-text-label">Total Hits (all brokers)</span>
+            <span class="summary-text-value"><%=String.format("%,d", totalHitsAllBrokers)%></span>
+        </div>
+    </div>
+    <div class="summary-item">
+        <div class="summary-icon success"><i class="fas fa-clock"></i></div>
+        <div class="summary-text">
+            <span class="summary-text-label">Slots Aggregated</span>
+            <span class="summary-text-value"><%=slotsIncluded%> × 10 min</span>
+        </div>
+    </div>
+    <div class="summary-item">
+        <div class="summary-icon danger"><i class="fas fa-fire"></i></div>
+        <div class="summary-text">
+            <span class="summary-text-label">Impacted Servers</span>
+            <span class="summary-text-value"><%=impactedServers%> critical / warning</span>
+        </div>
+    </div>
+    <div class="summary-item">
+        <div class="summary-icon warning"><i class="fas fa-shield-alt"></i></div>
+        <div class="summary-text">
+            <span class="summary-text-label">Isolated Servers</span>
+            <span class="summary-text-value"><%=isolatedServers%> isolated</span>
+        </div>
+    </div>
+</div>
+
+<!-- Voice Controls -->
 <div class="audio-controls">
     <div class="audio-status">
         <i class="fas fa-volume-up"></i>
@@ -874,18 +935,55 @@
         <span id="audioStatus">Active - Ready (3 alerts per reload)</span>
     </div>
     <div class="audio-controls-buttons">
-        <button class="control-btn" id="testVoiceBtn" onclick="testVoice()" style="display: inline-flex;"><i class="fas fa-play"></i> Test Voice</button>
-        <button class="control-btn" id="muteVoiceBtn" onclick="toggleMute()" style="display: inline-flex;"><i class="fas fa-volume-mute"></i> Mute</button>
+        <button class="control-btn" id="testVoiceBtn" onclick="testVoice()"><i class="fas fa-play"></i> Test Voice</button>
+        <button class="control-btn" id="muteVoiceBtn" onclick="toggleMute()"><i class="fas fa-volume-mute"></i> Mute</button>
     </div>
 </div>
 
+<!-- Legend -->
 <div class="color-legend-horizontal">
     <div class="legend-title-horizontal"><i class="fas fa-info-circle"></i> Status Color Guide</div>
     <div class="legend-items-horizontal">
-        <div class="legend-item-horizontal isolated"><div class="legend-color-horizontal isolated"></div><div class="legend-content-horizontal"><div class="legend-header-horizontal"><span class="legend-name-horizontal">Purple - Isolated</span><span class="legend-badge-horizontal isolated">Soft blink every 3s</span></div><div class="legend-description-horizontal"><strong>Server is isolated</strong> - Detected from URL data. Subtle blink every 3 seconds.<a href="https://10.191.171.12:5443/EIS/port_monitoring/real.json" target="_blank" class="legend-link">PORT_MONITORING <i class="fas fa-external-link-alt"></i></a></div></div></div>
-        <div class="legend-item-horizontal critical"><div class="legend-color-horizontal critical"></div><div class="legend-content-horizontal"><div class="legend-header-horizontal"><span class="legend-name-horizontal">Red - Critical Issue (Zero Hits)</span><span class="legend-badge-horizontal critical">3 alerts per reload</span></div><div class="legend-description-horizontal"><strong>Zero hits detected</strong> - Server is not responding. Voice alert will play 3 times max per page reload.</div></div></div>
-        <div class="legend-item-horizontal warning"><div class="legend-color-horizontal warning"></div><div class="legend-content-horizontal"><div class="legend-header-horizontal"><span class="legend-name-horizontal">Amber - Warning</span><span class="legend-badge-horizontal warning">Soft blink every 7s</span></div><div class="legend-description-horizontal"><strong>Below 90% of average traffic</strong> - Server is underperforming.</div></div></div>
-        <div class="legend-item-horizontal healthy"><div class="legend-color-horizontal healthy"></div><div class="legend-content-horizontal"><div class="legend-header-horizontal"><span class="legend-name-horizontal">Green - Healthy</span><span class="legend-badge-horizontal healthy">Stable</span></div><div class="legend-description-horizontal"><strong>Normal traffic levels</strong> - Server is operating within expected parameters.</div></div></div>
+        <div class="legend-item-horizontal">
+            <div class="legend-color-horizontal critical"></div>
+            <div class="legend-content-horizontal">
+                <div class="legend-header-horizontal">
+                    <span class="legend-name-horizontal">Critical</span>
+                    <span class="legend-badge-horizontal critical">Zero hits</span>
+                </div>
+                <div class="legend-description-horizontal"><strong>Server not responding</strong> — voice alert plays 3× per reload.</div>
+            </div>
+        </div>
+        <div class="legend-item-horizontal">
+            <div class="legend-color-horizontal warning"></div>
+            <div class="legend-content-horizontal">
+                <div class="legend-header-horizontal">
+                    <span class="legend-name-horizontal">Warning</span>
+                    <span class="legend-badge-horizontal warning">Below 90%</span>
+                </div>
+                <div class="legend-description-horizontal"><strong>Below 90% of avg traffic</strong> — underperforming.</div>
+            </div>
+        </div>
+        <div class="legend-item-horizontal">
+            <div class="legend-color-horizontal isolated"></div>
+            <div class="legend-content-horizontal">
+                <div class="legend-header-horizontal">
+                    <span class="legend-name-horizontal">Isolated</span>
+                    <span class="legend-badge-horizontal isolated">URL detected</span>
+                </div>
+                <div class="legend-description-horizontal"><strong>Server isolated</strong> — from PORT_MONITORING URL. <a href="https://10.191.171.12:5443/EIS/port_monitoring/real.json" target="_blank" style="color: var(--isolated); font-weight: 700;">View <i class="fas fa-external-link-alt"></i></a></div>
+            </div>
+        </div>
+        <div class="legend-item-horizontal">
+            <div class="legend-color-horizontal healthy"></div>
+            <div class="legend-content-horizontal">
+                <div class="legend-header-horizontal">
+                    <span class="legend-name-horizontal">Healthy</span>
+                    <span class="legend-badge-horizontal healthy">Stable</span>
+                </div>
+                <div class="legend-description-horizontal"><strong>Normal traffic levels</strong> — operating as expected.</div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -907,17 +1005,17 @@
                         <input type="datetime-local" id="toDateTime" name="toDateTime" class="time-filter-input" value="<%=toDateTime%>">
                     </div>
                     <div class="time-filter-actions">
-                        <button type="submit" class="control-btn primary"><i class="fas fa-search"></i> Apply Filter</button>
-                        <button type="button" class="control-btn" onclick="resetTimeFilter()"><i class="fas fa-refresh"></i> Reset</button>
+                        <button type="submit" class="control-btn primary"><i class="fas fa-search"></i> Apply</button>
+                        <button type="button" class="control-btn" onclick="resetTimeFilter()"><i class="fas fa-rotate-left"></i> Reset</button>
                     </div>
                 </form>
                 <div class="quick-filter-buttons">
-                    <button type="button" class="quick-filter-btn" onclick="setQuickFilter(10)">Last 10 Min</button>
-                    <button type="button" class="quick-filter-btn" onclick="setQuickFilter(20)">Last 20 Min</button>
-                    <button type="button" class="quick-filter-btn" onclick="setQuickFilter(30)">Last 30 Min</button>
-                    <button type="button" class="quick-filter-btn" onclick="setQuickFilter(60)">Last 60 Min</button>
-                    <button type="button" class="quick-filter-btn" onclick="setQuickFilter(120)">Last 2 Hours</button>
-                    <button type="button" class="quick-filter-btn" onclick="setQuickFilter(360)">Last 6 Hours</button>
+                    <button type="button" class="quick-filter-btn" onclick="setQuickFilter(10)">Last 10 min</button>
+                    <button type="button" class="quick-filter-btn" onclick="setQuickFilter(20)">Last 20 min</button>
+                    <button type="button" class="quick-filter-btn" onclick="setQuickFilter(30)">Last 30 min</button>
+                    <button type="button" class="quick-filter-btn" onclick="setQuickFilter(60)">Last 60 min</button>
+                    <button type="button" class="quick-filter-btn" onclick="setQuickFilter(120)">Last 2 hrs</button>
+                    <button type="button" class="quick-filter-btn" onclick="setQuickFilter(360)">Last 6 hrs</button>
                 </div>
             </div>
         </div>
@@ -925,13 +1023,13 @@
         <div class="controls-container">
             <button class="control-btn primary" onclick="openNewPage()"><i class="fas fa-exchange-alt"></i> Switch to SYS</button>
             <button class="control-btn" id="blinkingToggle" onclick="toggleBlinking()"><i class="fas fa-eye"></i> <span id="blinkingButtonText">Disable Blinking</span></button>
-            <button class="control-btn isolated" onclick="showIsolatedOnly()"><i class="fas fa-shield-alt"></i> Show Isolated Only</button>
-            <button class="control-btn success" onclick="showAllBrokers()" id="showAllBtn" style="display: none;"><i class="fas fa-globe"></i> Show All Servers</button>
+            <button class="control-btn isolated" onclick="showIsolatedOnly()"><i class="fas fa-shield-alt"></i> Isolated Only</button>
+            <button class="control-btn success" onclick="showAllBrokers()" id="showAllBtn" style="display: none;"><i class="fas fa-globe"></i> Show All</button>
         </div>
 
         <div class="impacted-section">
             <div class="impacted-header">
-                <div class="impacted-title"><i class="fas fa-exclamation-triangle"></i> Impacted Servers (Zero Hits / Below Threshold) <span class="impacted-count"><%=impactedServers%></span></div>
+                <div class="impacted-title"><i class="fas fa-exclamation-triangle"></i> Impacted Servers <span class="impacted-count"><%=impactedServers%></span></div>
             </div>
             <div class="impacted-content">
                 <% if (impactedServers > 0) { %>
@@ -940,19 +1038,23 @@
                     <div class="impacted-server-item <%=server.get("status")%>" data-full-ip="<%=server.get("ip")%>">
                         <span class="impacted-broker"><%=server.get("broker")%></span>
                         <span class="impacted-ip"><%=server.get("displayIP")%></span>
-                        <span class="impacted-hits <%=server.get("status")%>"><%=server.get("hits")%> hits</span>
+                        <span class="impacted-hits <%=server.get("status")%>"><%=String.format("%,d", Integer.parseInt(server.get("hits")))%></span>
                     </div>
                     <% } %>
                 </div>
                 <% } else { %>
-                <div class="no-impacted"><i class="fas fa-check-circle" style="font-size: 2.5rem; margin-bottom: 1rem; color: var(--success);"></i><p>No impacted servers detected.</p><p>All systems are operating normally.</p></div>
+                <div class="no-impacted">
+                    <i class="fas fa-check-circle" style="color: var(--success);"></i>
+                    <p>No impacted servers</p>
+                    <small>All systems operating normally</small>
+                </div>
                 <% } %>
             </div>
         </div>
 
         <div class="impacted-section isolated">
             <div class="impacted-header">
-                <div class="impacted-title isolated"><i class="fas fa-shield-alt"></i> Isolated Servers (URL Detected) <span class="impacted-count isolated"><%=isolatedServers%></span></div>
+                <div class="impacted-title isolated"><i class="fas fa-shield-alt"></i> Isolated Servers <span class="impacted-count isolated"><%=isolatedServers%></span></div>
             </div>
             <div class="impacted-content">
                 <% if (isolatedServers > 0) { %>
@@ -961,12 +1063,16 @@
                     <div class="impacted-server-item isolated" data-full-ip="<%=server.get("ip")%>">
                         <span class="impacted-broker"><%=server.get("broker")%></span>
                         <span class="impacted-ip"><%=server.get("displayIP")%></span>
-                        <span class="impacted-hits isolated">Isolated</span>
+                        <span class="impacted-hits isolated">ISO</span>
                     </div>
                     <% } %>
                 </div>
                 <% } else { %>
-                <div class="no-impacted"><i class="fas fa-check-circle" style="font-size: 2.5rem; margin-bottom: 1rem; color: var(--success);"></i><p>No isolated servers detected.</p><p>All brokers are running normally.</p></div>
+                <div class="no-impacted">
+                    <i class="fas fa-check-circle" style="color: var(--success);"></i>
+                    <p>No isolated servers</p>
+                    <small>All brokers running normally</small>
+                </div>
                 <% } %>
             </div>
         </div>
@@ -980,9 +1086,8 @@
                 <div style="grid-column: 1 / -1; text-align: center; padding: 3rem; background: white; border-radius: 0.75rem; box-shadow: var(--card-shadow);">
                     <i class="fas fa-database" style="font-size: 3rem; color: var(--gray-300); margin-bottom: 1rem;"></i>
                     <h3 style="color: var(--gray-600); margin-bottom: 0.5rem;">No Brokers Found</h3>
-                    <p style="color: var(--gray-500);">No data available for the selected time range.</p>
-                    <p style="color: var(--gray-400); font-size: 0.9rem; margin-top: 0.5rem;">Try adjusting the time filter or click "Reset" to use the most recent hour.</p>
-                    <button class="control-btn primary" onclick="location.reload(true)" style="margin-top: 1rem;"><i class="fas fa-sync-alt"></i> Refresh Page</button>
+                    <p style="color: var(--gray-500);">No data available for the selected range.</p>
+                    <button class="control-btn primary" onclick="goToCleanUrl()" style="margin-top: 1rem;"><i class="fas fa-rotate-right"></i> Load Latest</button>
                 </div>
             <%
                 } else {
@@ -1001,12 +1106,13 @@
                 <div class="broker-card <%= brokerStatus %>" data-status="<%= brokerStatus %>" data-broker="<%= broker %>">
                     <div class="broker-header">
                         <div class="broker-info">
-                            <div class="broker-name"><span class="status-indicator <%= brokerStatus %>"></span><%= broker != null ? broker : "Unknown Broker" %></div>
-                            <div class="broker-port">Port: <%= port != null ? port : "N/A" %></div>
+                            <div class="broker-name"><span class="status-indicator <%= brokerStatus %>"></span><%= broker != null ? broker : "Unknown" %></div>
+                            <div class="broker-port"><i class="fas fa-plug"></i>Port: <%= port != null ? port : "N/A" %></div>
                         </div>
                         <div class="broker-status">
                             <div class="status-badge <%= brokerStatus %>"><%= brokerStatus.equals("healthy") ? "Healthy" : brokerStatus.equals("warning") ? "Warning" : brokerStatus.equals("critical") ? "Critical" : "Isolated" %></div>
-                            <div class="total-hits"><%= String.format("%,d", totalHits) %> hits</div>
+                            <div class="total-hits"><%= String.format("%,d", totalHits) %></div>
+                            <div class="total-hits-label">total hits</div>
                         </div>
                     </div>
                     <div class="broker-body">
@@ -1028,7 +1134,7 @@
                                 <div class="server-item" data-full-ip="<%= ip %>">
                                     <span class="server-ip"><span class="status-indicator <%= status %>"></span><%= displayIP %></span>
                                     <span class="server-hits <%= status %>">
-                                        <% if (status.equals("isolated")) { %>Isolated<% } else if (hits.equals("-")) { %>-<% } else { %><%= String.format("%,d", Integer.parseInt(hits)) %><% } %>
+                                        <% if (status.equals("isolated")) { %>ISO<% } else { %><%= String.format("%,d", Integer.parseInt(hits)) %><% } %>
                                     </span>
                                 </div>
                             <%
@@ -1036,7 +1142,9 @@
                             %>
                         </div>
                     </div>
-                    <div class="broker-footer"><span><i class="far fa-clock"></i> Aggregated: <%=runTimeDisplay%></span></div>
+                    <div class="broker-footer">
+                        <span><i class="far fa-clock"></i> <%=runTimeDisplay%></span>
+                    </div>
                 </div>
             <%
                     }
@@ -1062,8 +1170,6 @@
 
     const criticalServersByBroker = { <%= jsBrokerMap.toString() %> };
     const hasUserInteracted = localStorage.getItem('voiceEnabled') === 'true' || localStorage.getItem('chromeVoiceEnabled') === 'true';
-
-    console.log('Critical servers by broker:', criticalServersByBroker);
 
     function cleanForPronunciation(text) {
         if (!text) return '';
@@ -1096,20 +1202,14 @@
 
     function getTotalCriticalCount() {
         let count = 0;
-        for (let broker in criticalServersByBroker) {
-            count += criticalServersByBroker[broker].length;
-        }
+        for (let broker in criticalServersByBroker) count += criticalServersByBroker[broker].length;
         return count;
     }
 
-    function loadVoices() {
-        try { voices = speechSynthesis.getVoices(); } catch(e) {}
-    }
+    function loadVoices() { try { voices = speechSynthesis.getVoices(); } catch(e) {} }
     if (speechSynthesis) {
         loadVoices();
-        if (speechSynthesis.onvoiceschanged !== undefined) {
-            speechSynthesis.onvoiceschanged = loadVoices;
-        }
+        if (speechSynthesis.onvoiceschanged !== undefined) speechSynthesis.onvoiceschanged = loadVoices;
     }
 
     function getBestVoice() {
@@ -1136,13 +1236,8 @@
                 muteBtn.innerHTML = '<i class="fas fa-volume-up"></i> Unmute';
                 muteBtn.style.background = 'var(--success)';
             } else {
-                if (criticalCount > 0) {
-                    audioStatus.innerHTML = 'Active - ' + criticalCount + ' critical server(s)';
-                    audioStatus.style.color = 'var(--danger)';
-                } else {
-                    audioStatus.innerHTML = 'Active - No critical servers';
-                    audioStatus.style.color = 'var(--success)';
-                }
+                audioStatus.innerHTML = criticalCount > 0 ? ('Active - ' + criticalCount + ' critical server(s)') : 'Active - No critical servers';
+                audioStatus.style.color = criticalCount > 0 ? 'var(--danger)' : 'var(--success)';
                 muteBtn.innerHTML = '<i class="fas fa-volume-mute"></i> Mute';
                 muteBtn.style.background = 'var(--gray-600)';
             }
@@ -1150,36 +1245,26 @@
     }
 
     function speakMessage(message, callback) {
-        if (!isVoiceEnabled || isMuted || !speechSynthesis || !message) {
-            if (callback) callback();
-            return false;
-        }
+        if (!isVoiceEnabled || isMuted || !speechSynthesis || !message) { if (callback) callback(); return false; }
         try { speechSynthesis.cancel(); } catch(e) {}
         try {
             const utterance = new SpeechSynthesisUtterance(message);
-            utterance.rate = 0.85;
-            utterance.pitch = 1.1;
-            utterance.volume = 1;
-            utterance.lang = 'en-US';
+            utterance.rate = 0.85; utterance.pitch = 1.1; utterance.volume = 1; utterance.lang = 'en-US';
             const bestVoice = getBestVoice();
             if (bestVoice) utterance.voice = bestVoice;
-            utterance.onstart = function() { console.log('Speech started'); };
             utterance.onerror = function() { if(callback) callback(); };
             utterance.onend = function() { if(callback) callback(); };
-            setTimeout(() => {
-                try { speechSynthesis.speak(utterance); } catch(e) { if(callback) callback(); }
-            }, 50);
+            setTimeout(() => { try { speechSynthesis.speak(utterance); } catch(e) { if(callback) callback(); } }, 50);
             return true;
         } catch(e) { if(callback) callback(); return false; }
     }
 
     function playVoiceAlert() {
-        if (voicePlayCount >= MAX_VOICE_PLAYS) { console.log('Max voice plays reached.'); return; }
+        if (voicePlayCount >= MAX_VOICE_PLAYS) return;
         const criticalCount = getTotalCriticalCount();
         if (criticalCount === 0) return;
         if (!isVoiceEnabled || isMuted) return;
         const message = buildSequentialMessage();
-        console.log('Playing voice alert (play #' + (voicePlayCount + 1) + '):', message);
         isPlaying = true;
         voicePlayCount++;
         speakMessage(message, function() { isPlaying = false; updateVoiceUI(); });
@@ -1225,7 +1310,6 @@
         userInteracted = true;
         localStorage.setItem('voiceEnabled', 'true');
         localStorage.setItem('chromeVoiceEnabled', 'true');
-        console.log('Voice system initialized');
         loadVoicePreferences();
         updateVoiceUI();
         try {
@@ -1234,18 +1318,25 @@
             speechSynthesis.speak(silent);
         } catch(e) {}
         setTimeout(function() {
-            if (getTotalCriticalCount() > 0 && !isMuted && voicePlayCount < MAX_VOICE_PLAYS) {
-                playVoiceAlert();
-            }
+            if (getTotalCriticalCount() > 0 && !isMuted && voicePlayCount < MAX_VOICE_PLAYS) playVoiceAlert();
         }, 1500);
     }
     function playRefreshVoiceAnnouncement() {
-        const criticalCount = getTotalCriticalCount();
-        if (criticalCount > 0 && isVoiceEnabled && !isMuted && userInteracted && voicePlayCount < MAX_VOICE_PLAYS) {
-            setTimeout(function() { playVoiceAlert(); }, 1500);
+        if (getTotalCriticalCount() > 0 && isVoiceEnabled && !isMuted && userInteracted && voicePlayCount < MAX_VOICE_PLAYS) {
+            setTimeout(playVoiceAlert, 1500);
         }
     }
 
+    // ============================================================
+    // NAVIGATION — strip URL params
+    // ============================================================
+    function getCleanUrl() { return window.location.pathname; }
+    function goToCleanUrl() { window.location.href = getCleanUrl(); }
+    function manualRefresh() { goToCleanUrl(); }
+
+    // ============================================================
+    // COUNTDOWN — auto refresh (drops params)
+    // ============================================================
     function countdown(elementName, minutes, seconds) {
         var element, endTime, time;
         function twoDigits(n) { return (n <= 9 ? "0" + n : n); }
@@ -1253,12 +1344,16 @@
             var msLeft = endTime - (+new Date);
             if (msLeft < 1000) {
                 element.innerHTML = "Refreshing...";
-                setTimeout(function() { location.reload(true); }, 1000);
+                document.getElementById('refreshTimer').classList.add('warning-state');
+                setTimeout(goToCleanUrl, 1000);
             } else {
                 time = new Date(msLeft);
                 var hours = time.getUTCHours();
                 var mins = time.getUTCMinutes();
                 element.innerHTML = (hours ? hours + ':' + twoDigits(mins) : mins) + ':' + twoDigits(time.getUTCSeconds());
+                // Warning state when < 60 seconds remaining
+                if (msLeft < 60000) document.getElementById('refreshTimer').classList.add('warning-state');
+                else document.getElementById('refreshTimer').classList.remove('warning-state');
                 setTimeout(updateTimer, time.getUTCMilliseconds() + 500);
             }
         }
@@ -1273,11 +1368,8 @@
         content.classList.toggle('expanded');
         toggle.classList.toggle('expanded');
     }
-    function resetTimeFilter() {
-        document.getElementById('fromDateTime').value = '';
-        document.getElementById('toDateTime').value = '';
-        document.getElementById('timeFilterForm').submit();
-    }
+    function resetTimeFilter() { goToCleanUrl(); }
+
     function setQuickFilter(minutes) {
         var now = new Date();
         var start = new Date(now.getTime() - minutes * 60000);
@@ -1313,7 +1405,7 @@
         var isolatedCount = 0;
         cards.forEach(function(card) {
             if (card.classList.contains('isolated')) { card.style.display = 'flex'; isolatedCount++; }
-            else { card.style.display = 'none'; }
+            else card.style.display = 'none';
         });
         document.getElementById('showAllBtn').style.display = 'inline-flex';
         var container = document.getElementById('brokerCardsContainer');
@@ -1321,15 +1413,10 @@
         if (isolatedCount === 0 && !existing) {
             var div = document.createElement('div');
             div.id = 'noIsolatedMessage';
-            div.style.gridColumn = '1 / -1';
-            div.style.textAlign = 'center';
-            div.style.padding = '3rem';
-            div.style.background = 'white';
-            div.style.borderRadius = '0.75rem';
-            div.style.boxShadow = 'var(--card-shadow)';
-            div.innerHTML = '<i class="fas fa-shield-alt" style="font-size: 3rem; color: var(--gray-300); margin-bottom: 1rem;"></i><h3 style="color: var(--gray-600); margin-bottom: 0.5rem;">No Isolated Brokers Found</h3><button class="control-btn primary" onclick="showAllBrokers()" style="margin-top: 1rem;"><i class="fas fa-globe"></i> Show All Servers</button>';
+            div.style.cssText = 'grid-column: 1 / -1; text-align: center; padding: 3rem; background: white; border-radius: 0.75rem; box-shadow: var(--card-shadow);';
+            div.innerHTML = '<i class="fas fa-shield-alt" style="font-size: 3rem; color: var(--gray-300); margin-bottom: 1rem;"></i><h3 style="color: var(--gray-600); margin-bottom: 0.5rem;">No Isolated Brokers</h3><button class="control-btn primary" onclick="showAllBrokers()" style="margin-top: 1rem;"><i class="fas fa-globe"></i> Show All</button>';
             container.appendChild(div);
-        } else if (existing && isolatedCount > 0) { existing.remove(); }
+        } else if (existing && isolatedCount > 0) existing.remove();
     }
     function showAllBrokers() {
         document.querySelectorAll('.broker-card').forEach(c => c.style.display = 'flex');
@@ -1338,63 +1425,62 @@
         if (msg) msg.remove();
     }
     function openNewPage() {
-        var a = '<%= request.getContextPath() + "/jsp/A_SYS_SERVERWISE_COUNT_LDAP.jsp" %>';
-        window.open(a, '_blank');
-    }
-    function initializeTooltips() {
-        document.querySelectorAll('.server-item').forEach(function(item) {
-            var full = item.getAttribute('data-full-ip');
-            if (full) item.setAttribute('title', 'IP Address: ' + full);
-        });
-    }
-    function manualRefresh() { location.reload(true); }
-    function handleResize() {
-        var width = window.innerWidth;
-        var container = document.getElementById('brokerCardsContainer');
-        if (width <= 768) container.style.gridTemplateColumns = '1fr';
-        else if (width <= 1200) container.style.gridTemplateColumns = 'repeat(auto-fill, minmax(400px, 1fr))';
-        else container.style.gridTemplateColumns = 'repeat(auto-fill, minmax(450px, 1fr))';
+        window.open('<%= request.getContextPath() + "/jsp/A_SYS_SERVERWISE_COUNT_LDAP.jsp" %>', '_blank');
     }
 
+    // ============================================================
+    // KEYBOARD SHORTCUTS + F5 INTERCEPT
+    // ============================================================
+    document.addEventListener('keydown', function(e) {
+        var isRefreshKey = (e.key === 'F5') ||
+                           (e.ctrlKey && (e.key === 'r' || e.key === 'R')) ||
+                           (e.metaKey && (e.key === 'r' || e.key === 'R'));
+        if (isRefreshKey) {
+            var hasFilter = window.location.search && window.location.search.length > 1;
+            if (hasFilter) {
+                e.preventDefault();
+                window.location.href = window.location.pathname;
+                return false;
+            }
+        }
+        if (e.ctrlKey && e.key === 'b') { e.preventDefault(); toggleBlinking(); }
+        if (e.ctrlKey && e.key === 'i') { e.preventDefault(); showIsolatedOnly(); }
+        if (e.ctrlKey && e.key === 'a') { e.preventDefault(); showAllBrokers(); }
+        if (e.ctrlKey && e.key === 'v') { e.preventDefault(); testVoice(); }
+        if (e.ctrlKey && e.key === 'm') { e.preventDefault(); toggleMute(); }
+    });
+
+    // ============================================================
+    // DOM READY
+    // ============================================================
     document.addEventListener('DOMContentLoaded', function() {
-        console.log('DOM loaded, initializing...');
         var overlay = document.getElementById('chromeVoiceOverlay');
         var enableBtn = document.getElementById('enableVoiceNowBtn');
-        if (overlay) {
-            overlay.addEventListener('click', function(e) {
-                if (e.target === overlay || e.target === enableBtn) {
-                    hideOverlayAndInitialize();
-                }
-            });
-        }
-        if (enableBtn) {
-            enableBtn.addEventListener('click', function() {
-                hideOverlayAndInitialize();
-            });
-        }
+        if (overlay) overlay.addEventListener('click', function(e) {
+            if (e.target === overlay || e.target === enableBtn) hideOverlayAndInitialize();
+        });
+        if (enableBtn) enableBtn.addEventListener('click', hideOverlayAndInitialize);
+
         var blinkingPref = localStorage.getItem('blinkingEnabled');
         if (blinkingPref === 'false') {
             document.body.classList.add('no-blink');
             document.getElementById('blinkingToggle').innerHTML = '<i class="fas fa-eye-slash"></i> <span id="blinkingButtonText">Enable Blinking</span>';
-        } else {
-            document.body.classList.remove('no-blink');
-            document.getElementById('blinkingToggle').innerHTML = '<i class="fas fa-eye"></i> <span id="blinkingButtonText">Disable Blinking</span>';
         }
+
         countdown('ten-countdown', 10, 0);
+
         var urlParams = new URLSearchParams(window.location.search);
         var fromDateTime = urlParams.get('fromDateTime');
         var toDateTime = urlParams.get('toDateTime');
         if (fromDateTime && toDateTime) {
-            var fromDate = new Date(fromDateTime);
-            var toDate = new Date(toDateTime);
-            var diffMinutes = Math.round((toDate - fromDate) / (1000 * 60));
+            var diffMinutes = Math.round((new Date(toDateTime) - new Date(fromDateTime)) / (1000 * 60));
             document.querySelectorAll('.quick-filter-btn').forEach(function(btn) {
                 btn.classList.remove('active');
                 var minutes = parseInt(btn.getAttribute('onclick')?.match(/\d+/) || '60');
                 if (Math.abs(diffMinutes - minutes) < 5) btn.classList.add('active');
             });
         }
-        initializeTooltips();
+
         if (hasUserInteracted) {
             userInteracted = true;
             voiceInitialized = true;
@@ -1404,17 +1490,6 @@
         } else {
             setTimeout(function() { if (!userInteracted) showOverlayAndInitialize(); }, 500);
         }
-        window.addEventListener('resize', handleResize);
-        handleResize();
-    });
-
-    document.addEventListener('keydown', function(e) {
-        if (e.ctrlKey && e.key === 'r') { e.preventDefault(); manualRefresh(); }
-        if (e.ctrlKey && e.key === 'b') { e.preventDefault(); toggleBlinking(); }
-        if (e.ctrlKey && e.key === 'i') { e.preventDefault(); showIsolatedOnly(); }
-        if (e.ctrlKey && e.key === 'a') { e.preventDefault(); showAllBrokers(); }
-        if (e.ctrlKey && e.key === 'v') { e.preventDefault(); testVoice(); }
-        if (e.ctrlKey && e.key === 'm') { e.preventDefault(); toggleMute(); }
     });
 
     window.addEventListener('beforeunload', function() {
