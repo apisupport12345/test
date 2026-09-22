@@ -1,140 +1,1961 @@
-import java.io.*;
-import java.nio.file.*;
-import java.util.*;
-import java.util.jar.*;
-import java.util.zip.*;
+<!DOCTYPE html>
+<%@page import="org.apache.poi.util.SystemOutLogger"%>
+<%@page import="org.json.JSONObject"%>
+<%@page import="org.json.JSONArray"%>
+<%@page import="java.net.HttpURLConnection"%>
+<%@page import="java.net.URL"%>
+<%@page import="java.io.BufferedReader"%>
+<%@page import="java.io.InputStreamReader"%>
+<%@page import="java.io.StringWriter"%>
+<%@page import="java.io.PrintWriter"%>
+<%@page import="javax.net.ssl.*"%>
+<%@page import="java.security.cert.X509Certificate"%>
+<%@page import="java.util.regex.Pattern"%>
+<%@page import="java.util.regex.Matcher"%>
+<%@ page import="java.sql.*,java.time.LocalTime,java.time.LocalDate,java.util.Date"%>
+<%@ page import="javax.sql.*"%>
+<%@ page import="javax.naming.*"%>
+<%@ page import="java.util.*,java.util.stream.Collectors,java.time.LocalDate, java.time.format.DateTimeFormatter"%>
+<%@ page import="java.text.*"%>
+<%@page import="com.jdbc.DBUtilityAuto"%>
+<html lang="en">
+<head>
+<%
+    response.setHeader("Cache-Control", "no-cache, no-store, must-revalidate, private");
+    response.setHeader("Pragma", "no-cache");
+    response.setDateHeader("Expires", 0);
+    response.setHeader("Surrogate-Control", "no-store");
+    response.setHeader("Cache-Control", "max-age=0, no-cache, no-store, must-revalidate");
+    response.addHeader("Cache-Control", "post-check=0, pre-check=0");
+    request.setAttribute("pageLoadTime", System.currentTimeMillis());
 
-public class DependencyChecker {
+    Timestamp startTs = null;
+    Timestamp endTs = null;
+    Timestamp snappedStartTs = null;
+    Timestamp snappedEndTs = null;
+    String runTimeDisplay = "No data";
+    String fromDateTime = "";
+    String toDateTime = "";
+    String flagStatus = "DR";
+    boolean fallbackApplied = false;
+    boolean freshLoad = false;
+    String requestedWindowDisplay = "";
+    int slotsIncluded = 0;
+    int totalHitsAllBrokers = 0;
+    int totalCriticalServers = 0;
+    int totalWarningServers = 0;
+    int totalHealthyServers = 0;
+    int totalIsolatedServersAgg = 0;
 
-    // Yeh packages scan honge
-    private static final String JAVAX_SERVLET = "javax/servlet/";
-    private static final String JAKARTA_SERVLET = "jakarta/servlet/";
-    private static final String JAVAX_PERSISTENCE = "javax/persistence/";
-    private static final String JAKARTA_PERSISTENCE = "jakarta/persistence/";
-    private static final String JAVAX_WS = "javax/ws/";
-    private static final String JAKARTA_WS = "jakarta/ws/";
+    Map<String, String> brokerMapping = new HashMap<>();
+    Map<String, String> portMapping = new HashMap<>();
+    Map<String, Integer> brokerOrderMapping = new HashMap<>();
+    Map<String, List<String>> brokerIPMapping = new HashMap<>();
+    List<Map<String, Object>> brokerDataList = new ArrayList<>();
+    List<Map<String, String>> impactedServersList = new ArrayList<>();
+    List<Map<String, String>> isolatedServersList = new ArrayList<>();
+    Map<String, List<String>> criticalServersByBroker = new LinkedHashMap<>();
 
-    public static void main(String[] args) throws Exception {
-        if (args.length == 0) {
-            System.out.println("Usage: java DependencyChecker <project-folder>");
-            System.out.println("Example: java DependencyChecker /path/to/your/project");
-            return;
-        }
+    int totalBrokers = 0;
+    int criticalBrokers = 0;
+    int warningBrokers = 0;
+    int healthyBrokers = 0;
+    int isolatedBrokersCount = 0;
+    int totalServers = 0;
+    int impactedServers = 0;
+    int isolatedServers = 0;
 
-        Path projectRoot = Paths.get(args[0]);
+    Connection reportConn = null;
+    try {
+        reportConn = DBUtilityAuto.getReportDBConnection();
 
-        if (!Files.exists(projectRoot)) {
-            System.out.println("❌ Path nahi mila: " + projectRoot);
-            return;
-        }
+        String fromParam = request.getParameter("fromDateTime");
+        String toParam = request.getParameter("toDateTime");
 
-        System.out.println("=================================================");
-        System.out.println("🔍 Dependency Checker - Project: " + projectRoot);
-        System.out.println("=================================================\n");
+        if (fromParam == null || toParam == null || fromParam.trim().isEmpty() || toParam.trim().isEmpty()) {
+            freshLoad = true;
+            String latestSql = "SELECT MAX(RUN_START) AS MAX_START FROM EXP_BROKER_HOURLY_STATS";
+            try (Statement stmt = reportConn.createStatement();
+                 ResultSet rs = stmt.executeQuery(latestSql)) {
+                if (rs.next()) {
+                    Timestamp maxStart = rs.getTimestamp("MAX_START");
+                    if (maxStart != null) {
+                        Calendar cal = Calendar.getInstance();
+                        cal.setTime(maxStart);
+                        cal.add(Calendar.HOUR_OF_DAY, 1);
+                        startTs = maxStart;
+                        endTs = new Timestamp(cal.getTimeInMillis());
+                    }
+                }
+            }
+            if (startTs == null) {
+                Calendar cal = Calendar.getInstance();
+                cal.set(Calendar.MINUTE, 0);
+                cal.set(Calendar.SECOND, 0);
+                cal.set(Calendar.MILLISECOND, 0);
+                endTs = new Timestamp(cal.getTimeInMillis());
+                cal.add(Calendar.HOUR_OF_DAY, -1);
+                startTs = new Timestamp(cal.getTimeInMillis());
+            }
+        } else {
+            try {
+                SimpleDateFormat isoFmt = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm");
+                isoFmt.setLenient(false);
+                java.util.Date startDate = isoFmt.parse(fromParam.trim());
+                Calendar calStart = Calendar.getInstance();
+                calStart.setTime(startDate);
+                calStart.set(Calendar.SECOND, 0);
+                calStart.set(Calendar.MILLISECOND, 0);
+                startTs = new Timestamp(calStart.getTimeInMillis());
 
-        // 1. Saari JAR files dhoondo
-        List<Path> jars = new ArrayList<>();
-        Files.walk(projectRoot)
-                .filter(p -> p.toString().endsWith(".jar"))
-                .forEach(jars::add);
+                java.util.Date endDate = isoFmt.parse(toParam.trim());
+                Calendar calEnd = Calendar.getInstance();
+                calEnd.setTime(endDate);
+                calEnd.set(Calendar.SECOND, 0);
+                calEnd.set(Calendar.MILLISECOND, 0);
+                endTs = new Timestamp(calEnd.getTimeInMillis());
 
-        System.out.println("📦 Total JAR files mili: " + jars.size() + "\n");
-
-        // 2. Har JAR ko scan karo
-        List<String> javaxJars = new ArrayList<>();
-        List<String> jakartaJars = new ArrayList<>();
-        List<String> mixedJars = new ArrayList<>();
-
-        for (Path jar : jars) {
-            JarScanResult result = scanJar(jar);
-            if (result.hasJavax && result.hasJakarta) {
-                mixedJars.add(jar + "  [javax: " + result.javaxClasses + ", jakarta: " + result.jakartaClasses + "]");
-            } else if (result.hasJavax) {
-                javaxJars.add(jar + "  [javax classes: " + result.javaxClasses + "]");
-            } else if (result.hasJakarta) {
-                jakartaJars.add(jar + "  [jakarta classes: " + result.jakartaClasses + "]");
+                if (endTs.before(startTs) || endTs.equals(startTs)) {
+                    Calendar calFix = Calendar.getInstance();
+                    calFix.setTime(endTs);
+                    calFix.add(Calendar.HOUR_OF_DAY, 1);
+                    endTs = new Timestamp(calFix.getTimeInMillis());
+                }
+            } catch (ParseException pe) {
+                Calendar cal = Calendar.getInstance();
+                cal.set(Calendar.MINUTE, 0);
+                cal.set(Calendar.SECOND, 0);
+                cal.set(Calendar.MILLISECOND, 0);
+                endTs = new Timestamp(cal.getTimeInMillis());
+                cal.add(Calendar.HOUR_OF_DAY, -1);
+                startTs = new Timestamp(cal.getTimeInMillis());
             }
         }
 
-        // 3. Report print karo
-        System.out.println("=================================================");
-        System.out.println("⚠️  PURANI javax.* DEPENDENCIES (Yeh problem hain!)");
-        System.out.println("=================================================");
-        if (javaxJars.isEmpty()) {
-            System.out.println("✅ Koi purani javax dependency nahi mili. Badhiya!");
-        } else {
-            javaxJars.forEach(j -> System.out.println("  ❌ " + j));
+        Calendar snapStart = Calendar.getInstance();
+        snapStart.setTime(startTs);
+        int minS = snapStart.get(Calendar.MINUTE);
+        snapStart.set(Calendar.MINUTE, (minS / 10) * 10);
+        snapStart.set(Calendar.SECOND, 0);
+        snapStart.set(Calendar.MILLISECOND, 0);
+        snappedStartTs = new Timestamp(snapStart.getTimeInMillis());
+
+        Calendar snapEnd = Calendar.getInstance();
+        snapEnd.setTime(endTs);
+        int minE = snapEnd.get(Calendar.MINUTE);
+        snapEnd.set(Calendar.MINUTE, (minE / 10) * 10);
+        snapEnd.set(Calendar.SECOND, 0);
+        snapEnd.set(Calendar.MILLISECOND, 0);
+        snappedEndTs = new Timestamp(snapEnd.getTimeInMillis());
+
+        if (!snappedEndTs.after(snappedStartTs)) {
+            Calendar c = Calendar.getInstance();
+            c.setTime(snappedEndTs);
+            c.add(Calendar.MINUTE, 10);
+            snappedEndTs = new Timestamp(c.getTimeInMillis());
         }
 
-        System.out.println("\n=================================================");
-        System.out.println("✅ NAYI jakarta.* DEPENDENCIES (Yeh sahi hain)");
-        System.out.println("=================================================");
-        if (jakartaJars.isEmpty()) {
-            System.out.println("⚠️  Koi jakarta dependency nahi mili. Migration adhura hai!");
-        } else {
-            jakartaJars.forEach(j -> System.out.println("  ✅ " + j));
-        }
+        SimpleDateFormat displayFmt = new SimpleDateFormat("dd-MM-yyyy HH:mm");
+        requestedWindowDisplay = displayFmt.format(new Date(startTs.getTime())) + " to " + displayFmt.format(new Date(endTs.getTime()));
+        runTimeDisplay = displayFmt.format(new Date(snappedStartTs.getTime())) + " to " + displayFmt.format(new Date(snappedEndTs.getTime()));
 
-        System.out.println("\n=================================================");
-        System.out.println("🔀 MIXED JARS (Dono javax aur jakarta - yeh sabse khatarnak!)");
-        System.out.println("=================================================");
-        if (mixedJars.isEmpty()) {
-            System.out.println("✅ Koi mixed JAR nahi mili.");
-        } else {
-            mixedJars.forEach(j -> System.out.println("  ⚠️  " + j));
-        }
-
-        // 4. Summary
-        System.out.println("\n=================================================");
-        System.out.println("📊 SUMMARY");
-        System.out.println("=================================================");
-        System.out.println("  Purani javax JARs   : " + javaxJars.size());
-        System.out.println("  Nayi jakarta JARs   : " + jakartaJars.size());
-        System.out.println("  Mixed JARs          : " + mixedJars.size());
-        System.out.println("  Total JARs scanned  : " + jars.size());
-
-        if (!javaxJars.isEmpty() || !mixedJars.isEmpty()) {
-            System.out.println("\n🚨 ACTION REQUIRED: Upar wali javax/mixed JARs ko update karo!");
-            System.out.println("   Inhe jakarta-compatible version se replace karo.");
-        } else {
-            System.out.println("\n🎉 Sab clean hai! Production pe deploy kar sakte ho.");
-        }
-    }
-
-    // Ek JAR ke andar classes scan karta hai
-    private static JarScanResult scanJar(Path jarPath) {
-        JarScanResult result = new JarScanResult();
-        try (JarFile jarFile = new JarFile(jarPath.toFile())) {
-            Enumeration<JarEntry> entries = jarFile.entries();
-            while (entries.hasMoreElements()) {
-                JarEntry entry = entries.nextElement();
-                String name = entry.getName();
-                if (!name.endsWith(".class")) continue;
-
-                if (name.startsWith(JAVAX_SERVLET) ||
-                    name.startsWith(JAVAX_PERSISTENCE) ||
-                    name.startsWith(JAVAX_WS)) {
-                    result.hasJavax = true;
-                    result.javaxClasses++;
-                }
-
-                if (name.startsWith(JAKARTA_SERVLET) ||
-                    name.startsWith(JAKARTA_PERSISTENCE) ||
-                    name.startsWith(JAKARTA_WS)) {
-                    result.hasJakarta = true;
-                    result.jakartaClasses++;
+        try (Statement stmt = reportConn.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT BROKER_NAME, EXP_PORT, MAPPED_PORT FROM EXP_BROKER_PORT_MAPPING")) {
+            while (rs.next()) {
+                String broker = rs.getString("BROKER_NAME");
+                String expPort = rs.getString("EXP_PORT");
+                String mappedPort = rs.getString("MAPPED_PORT");
+                if (broker != null && expPort != null && mappedPort != null) {
+                    brokerMapping.put(broker.trim(), expPort.trim());
+                    portMapping.put(broker.trim(), mappedPort.trim());
                 }
             }
-        } catch (Exception e) {
-            System.out.println("⚠️  JAR read nahi ho payi: " + jarPath + " -> " + e.getMessage());
         }
-        return result;
+
+        try (Statement stmt = reportConn.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT BROKER_NAME, ORDER_NUMBER FROM EXP_BROKER_PORT_MAPPING")) {
+            while (rs.next()) {
+                String broker = rs.getString("BROKER_NAME");
+                int order = rs.getInt("ORDER_NUMBER");
+                if (broker != null) brokerOrderMapping.put(broker.trim(), order);
+            }
+        }
+
+        try (Statement stmt = reportConn.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT FLAG FROM connection_master")) {
+            if (rs.next()) {
+                flagStatus = rs.getString("FLAG");
+                if (flagStatus == null) flagStatus = "DR";
+            }
+        }
+
+        try (Statement stmt = reportConn.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT DISTINCT a.EXP_IP, a.BROKER_NAME FROM EXP_IP_BROKER_DETAILS a ORDER BY a.BROKER_NAME, a.EXP_IP")) {
+            while (rs.next()) {
+                String broker = rs.getString("BROKER_NAME");
+                String ip = rs.getString("EXP_IP");
+                if (broker == null || ip == null) continue;
+                broker = broker.trim(); ip = ip.trim();
+                boolean include = false;
+                if ("PR".equals(flagStatus)) {
+                    include = ip.startsWith("10.188.24.") || ip.startsWith("10.188.25.");
+                } else if ("DR".equals(flagStatus)) {
+                    include = ip.startsWith("10.177.40.") || ip.startsWith("10.177.41.");
+                }
+                if (include) brokerIPMapping.computeIfAbsent(broker, k -> new ArrayList<>()).add(ip);
+            }
+            for (List<String> ips : brokerIPMapping.values()) {
+                Collections.sort(ips, (ip1, ip2) -> {
+                    try {
+                        return Integer.compare(Integer.parseInt(ip1.split("\\.")[3]), Integer.parseInt(ip2.split("\\.")[3]));
+                    } catch (Exception e) { return ip1.compareTo(ip2); }
+                });
+            }
+        }
+
+        brokerDataList.clear();
+        String brokerStatsSQL =
+            "SELECT BROKER, PORT, " +
+            "       SUM(TOTAL_HITS) AS TOTAL_HITS, " +
+            "       SUM(HEALTHY_SERVERS) AS HEALTHY_SERVERS, " +
+            "       SUM(WARNING_SERVERS) AS WARNING_SERVERS, " +
+            "       SUM(CRITICAL_SERVERS) AS CRITICAL_SERVERS, " +
+            "       SUM(ISOLATED_SERVERS) AS ISOLATED_SERVERS, " +
+            "       MAX(TOTAL_SERVERS) AS TOTAL_SERVERS, " +
+            "       COUNT(*) AS SLOT_COUNT " +
+            "FROM EXP_BROKER_HOURLY_STATS " +
+            "WHERE RUN_START >= ? AND RUN_START <= ? " +
+            "GROUP BY BROKER, PORT ORDER BY BROKER";
+
+        try (PreparedStatement ps = reportConn.prepareStatement(brokerStatsSQL)) {
+            ps.setTimestamp(1, snappedStartTs);
+            ps.setTimestamp(2, snappedEndTs);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    Map<String, Object> brokerData = new HashMap<>();
+                    String broker = rs.getString("BROKER");
+                    String port = rs.getString("PORT");
+                    int totalHits = rs.getInt("TOTAL_HITS");
+                    int healthy = rs.getInt("HEALTHY_SERVERS");
+                    int warning = rs.getInt("WARNING_SERVERS");
+                    int critical = rs.getInt("CRITICAL_SERVERS");
+                    int isolated = rs.getInt("ISOLATED_SERVERS");
+                    int totalServersRow = rs.getInt("TOTAL_SERVERS");
+                    int slotCount = rs.getInt("SLOT_COUNT");
+
+                    String status;
+                    if (critical > 0) status = "critical";
+                    else if (warning > 0) status = "warning";
+                    else if (isolated > 0) status = "isolated";
+                    else status = "healthy";
+
+                    List<String> ipList = brokerIPMapping.getOrDefault(broker, new ArrayList<>());
+                    brokerData.put("broker", broker);
+                    brokerData.put("port", port);
+                    brokerData.put("totalHits", totalHits);
+                    brokerData.put("brokerStatus", status);
+                    brokerData.put("healthyCount", healthy);
+                    brokerData.put("warningCount", warning);
+                    brokerData.put("criticalCount", critical);
+                    brokerData.put("isolatedCount", isolated);
+                    brokerData.put("serverCount", totalServersRow);
+                    brokerData.put("ipList", ipList);
+                    brokerData.put("slotCount", slotCount);
+                    brokerDataList.add(brokerData);
+
+                    totalHitsAllBrokers += totalHits;
+                    totalCriticalServers += critical;
+                    totalWarningServers += warning;
+                    totalHealthyServers += healthy;
+                    totalIsolatedServersAgg += isolated;
+                }
+            }
+        }
+
+        if (brokerDataList.isEmpty()) {
+            String fallbackSql = "SELECT MAX(RUN_START) AS LATEST_START FROM EXP_BROKER_HOURLY_STATS WHERE RUN_START <= ?";
+            Timestamp latestStart = null;
+            try (PreparedStatement psFb = reportConn.prepareStatement(fallbackSql)) {
+                psFb.setTimestamp(1, snappedEndTs);
+                try (ResultSet rsFb = psFb.executeQuery()) {
+                    if (rsFb.next()) latestStart = rsFb.getTimestamp("LATEST_START");
+                }
+            }
+            if (latestStart != null) {
+                Calendar calFb = Calendar.getInstance();
+                calFb.setTime(latestStart);
+                calFb.add(Calendar.MINUTE, 10);
+                snappedStartTs = latestStart;
+                snappedEndTs = new Timestamp(calFb.getTimeInMillis());
+                fallbackApplied = true;
+
+                try (PreparedStatement ps = reportConn.prepareStatement(brokerStatsSQL)) {
+                    ps.setTimestamp(1, snappedStartTs);
+                    ps.setTimestamp(2, snappedEndTs);
+                    try (ResultSet rs = ps.executeQuery()) {
+                        while (rs.next()) {
+                            Map<String, Object> brokerData = new HashMap<>();
+                            String broker = rs.getString("BROKER");
+                            String port = rs.getString("PORT");
+                            int totalHits = rs.getInt("TOTAL_HITS");
+                            int healthy = rs.getInt("HEALTHY_SERVERS");
+                            int warning = rs.getInt("WARNING_SERVERS");
+                            int critical = rs.getInt("CRITICAL_SERVERS");
+                            int isolated = rs.getInt("ISOLATED_SERVERS");
+                            int totalServersRow = rs.getInt("TOTAL_SERVERS");
+                            int slotCount = rs.getInt("SLOT_COUNT");
+
+                            String status;
+                            if (critical > 0) status = "critical";
+                            else if (warning > 0) status = "warning";
+                            else if (isolated > 0) status = "isolated";
+                            else status = "healthy";
+
+                            List<String> ipList = brokerIPMapping.getOrDefault(broker, new ArrayList<>());
+                            brokerData.put("broker", broker);
+                            brokerData.put("port", port);
+                            brokerData.put("totalHits", totalHits);
+                            brokerData.put("brokerStatus", status);
+                            brokerData.put("healthyCount", healthy);
+                            brokerData.put("warningCount", warning);
+                            brokerData.put("criticalCount", critical);
+                            brokerData.put("isolatedCount", isolated);
+                            brokerData.put("serverCount", totalServersRow);
+                            brokerData.put("ipList", ipList);
+                            brokerData.put("slotCount", slotCount);
+                            brokerDataList.add(brokerData);
+
+                            totalHitsAllBrokers += totalHits;
+                            totalCriticalServers += critical;
+                            totalWarningServers += warning;
+                            totalHealthyServers += healthy;
+                            totalIsolatedServersAgg += isolated;
+                        }
+                    }
+                }
+                runTimeDisplay = displayFmt.format(new Date(snappedStartTs.getTime())) + " to " + displayFmt.format(new Date(snappedEndTs.getTime()));
+            }
+        }
+
+        SimpleDateFormat inputFmt = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm");
+        fromDateTime = inputFmt.format(new Date(snappedStartTs.getTime()));
+        toDateTime = inputFmt.format(new Date(snappedEndTs.getTime()));
+
+        impactedServersList.clear();
+        isolatedServersList.clear();
+        criticalServersByBroker.clear();
+        Map<String, Map<String, String>> allServerStats = new HashMap<>();
+
+        String impactedSQL =
+            "SELECT BROKER, IP, SUM(HITS) AS HITS, MAX(STATUS) AS STATUS " +
+            "FROM EXP_IMPACTED_SERVERS_HOURLY " +
+            "WHERE RUN_START >= ? AND RUN_START <= ? " +
+            "GROUP BY BROKER, IP ORDER BY BROKER, IP";
+
+        try (PreparedStatement ps = reportConn.prepareStatement(impactedSQL)) {
+            ps.setTimestamp(1, snappedStartTs);
+            ps.setTimestamp(2, snappedEndTs);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    String broker = rs.getString("BROKER");
+                    String ip = rs.getString("IP");
+                    int hits = rs.getInt("HITS");
+                    String status = rs.getString("STATUS");
+
+                    String key = broker + "|" + ip;
+                    Map<String, String> stats = new HashMap<>();
+                    stats.put("hits", String.valueOf(hits));
+                    stats.put("status", status);
+                    allServerStats.put(key, stats);
+
+                    Map<String, String> server = new HashMap<>();
+                    server.put("broker", broker);
+                    server.put("ip", ip);
+                    server.put("displayIP", ip.split("\\.")[2] + "." + ip.split("\\.")[3]);
+                    server.put("hits", String.valueOf(hits));
+                    server.put("status", status);
+
+                    if ("isolated".equals(status)) {
+                        isolatedServersList.add(server);
+                    } else if ("critical".equals(status) || "warning".equals(status)) {
+                        impactedServersList.add(server);
+                        if ("critical".equals(status)) {
+                            criticalServersByBroker.computeIfAbsent(broker, k -> new ArrayList<>()).add(server.get("displayIP"));
+                        }
+                    }
+                }
+            }
+        }
+
+        for (Map<String, Object> brokerData : brokerDataList) {
+            String broker = (String) brokerData.get("broker");
+            List<String> ipList = (List<String>) brokerData.get("ipList");
+            List<Map<String, String>> serverList = new ArrayList<>();
+            for (String ip : ipList) {
+                String key = broker + "|" + ip;
+                Map<String, String> stats = allServerStats.get(key);
+                String status = "healthy";
+                String hits = "0";
+                if (stats != null) {
+                    status = stats.get("status");
+                    hits = stats.get("hits");
+                }
+                Map<String, String> serverInfo = new HashMap<>();
+                serverInfo.put("ip", ip);
+                serverInfo.put("displayIP", ip.split("\\.")[2] + "." + ip.split("\\.")[3]);
+                serverInfo.put("status", status);
+                serverInfo.put("hits", hits);
+                serverList.add(serverInfo);
+            }
+            brokerData.put("serverList", serverList);
+        }
+
+        brokerDataList.sort((a, b) -> {
+            String statusA = (String) a.get("brokerStatus");
+            String statusB = (String) b.get("brokerStatus");
+            int priorityA = statusA.equals("isolated") ? 0 : statusA.equals("critical") ? 1 : statusA.equals("warning") ? 2 : 3;
+            int priorityB = statusB.equals("isolated") ? 0 : statusB.equals("critical") ? 1 : statusB.equals("warning") ? 2 : 3;
+            if (priorityA != priorityB) return Integer.compare(priorityA, priorityB);
+            int hitsA = (Integer) a.get("totalHits");
+            int hitsB = (Integer) b.get("totalHits");
+            return Integer.compare(hitsB, hitsA);
+        });
+
+        totalBrokers = brokerDataList.size();
+        criticalBrokers = 0; warningBrokers = 0; healthyBrokers = 0; isolatedBrokersCount = 0;
+        impactedServers = impactedServersList.size();
+        isolatedServers = isolatedServersList.size();
+
+        Set<String> uniqueIPs = new HashSet<>();
+        for (List<String> ips : brokerIPMapping.values()) uniqueIPs.addAll(ips);
+        totalServers = uniqueIPs.size();
+
+        for (Map<String, Object> bd : brokerDataList) {
+            String status = (String) bd.get("brokerStatus");
+            if ("critical".equals(status)) criticalBrokers++;
+            else if ("warning".equals(status)) warningBrokers++;
+            else if ("isolated".equals(status)) isolatedBrokersCount++;
+            else if ("healthy".equals(status)) healthyBrokers++;
+        }
+
+        if (!brokerDataList.isEmpty()) slotsIncluded = (Integer) brokerDataList.get(0).get("slotCount");
+
+    } catch (Exception e) {
+        e.printStackTrace();
+    } finally {
+        if (reportConn != null) try { reportConn.close(); } catch (SQLException e) {}
+    }
+%>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>EXP Server Broker Monitoring</title>
+    <meta http-equiv="refresh" content="600">
+    <link rel='stylesheet' href='../css/font-awesome-sysexp.css'>
+    <link rel='stylesheet' href='../css/bootstrap-expsys.css'>
+    <link rel='stylesheet' href='../css/dataTables.bootstrap4.min-expsys.css'>
+    <link rel='stylesheet' href='../css/buttons.bootstrap4.min-expsys.css'>
+    <link rel="stylesheet" href="../css/expsys-css2.css">
+    <link rel="stylesheet" href="../css/expsys-all.min.css">
+    <script src="../js/LdapAuth.js"></script>
+    <style>
+        /* ============================================================
+           THEME VARIABLES
+           ============================================================ */
+        :root, [data-theme="light"] {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --primary-light: #818cf8;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --isolated: #8b5cf6;
+            --info: #0ea5e9;
+
+            --bg-body: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%);
+            --bg-card: #ffffff;
+            --bg-elevated: #f8fafc;
+            --bg-hover: #f1f5f9;
+            --bg-header: #ffffff;
+            --bg-footer: #f8fafc;
+
+            --text-primary: #0f172a;
+            --text-secondary: #334155;
+            --text-muted: #64748b;
+            --text-faint: #94a3b8;
+
+            --border: #e2e8f0;
+            --border-strong: #cbd5e1;
+
+            --shadow-sm: 0 1px 3px 0 rgba(15, 23, 42, 0.08), 0 1px 2px -1px rgba(15, 23, 42, 0.04);
+            --shadow-md: 0 4px 12px -2px rgba(15, 23, 42, 0.12), 0 2px 6px -2px rgba(15, 23, 42, 0.06);
+            --shadow-lg: 0 12px 28px -6px rgba(15, 23, 42, 0.16), 0 4px 12px -4px rgba(15, 23, 42, 0.08);
+
+            --scrollbar-track: #f1f5f9;
+            --scrollbar-thumb: #cbd5e1;
+        }
+
+        [data-theme="dark"] {
+            --primary: #818cf8;
+            --primary-dark: #6366f1;
+            --primary-light: #a5b4fc;
+            --success: #34d399;
+            --warning: #fbbf24;
+            --danger: #f87171;
+            --isolated: #a78bfa;
+            --info: #38bdf8;
+
+            --bg-body: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            --bg-card: #1e293b;
+            --bg-elevated: #293548;
+            --bg-hover: #334155;
+            --bg-header: #1a2332;
+            --bg-footer: #172032;
+
+            --text-primary: #f1f5f9;
+            --text-secondary: #cbd5e1;
+            --text-muted: #94a3b8;
+            --text-faint: #64748b;
+
+            --border: #334155;
+            --border-strong: #475569;
+
+            --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.4), 0 1px 2px -1px rgba(0, 0, 0, 0.3);
+            --shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.5), 0 2px 6px -2px rgba(0, 0, 0, 0.3);
+            --shadow-lg: 0 12px 28px -6px rgba(0, 0, 0, 0.6), 0 4px 12px -4px rgba(0, 0, 0, 0.4);
+
+            --scrollbar-track: #1e293b;
+            --scrollbar-thumb: #475569;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-body);
+            background-attachment: fixed;
+            color: var(--text-primary);
+            line-height: 1.4;
+            min-height: 100vh;
+            font-size: 17px;
+            overflow-x: hidden;
+            width: 100%;
+            transition: background 0.3s ease, color 0.3s ease;
+        }
+
+        /* ============================================================
+           TOPBAR
+           ============================================================ */
+        .topbar {
+            background: var(--bg-header);
+            border-bottom: 1px solid var(--border);
+            padding: 0.7rem 1.25rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            flex-wrap: wrap;
+            box-shadow: var(--shadow-sm);
+            position: relative;
+            transition: background 0.3s ease, border-color 0.3s ease;
+        }
+        .topbar::after {
+            content: '';
+            position: absolute;
+            bottom: -1px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, var(--primary) 0%, var(--isolated) 50%, var(--info) 100%);
+            opacity: 0.6;
+        }
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 0.7rem;
+            flex-shrink: 0;
+        }
+        .brand-logo {
+            width: 38px;
+            height: 38px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem;
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.35);
+        }
+        .brand-title {
+            font-size: 1.15rem;
+            font-weight: 800;
+            color: var(--text-primary);
+            letter-spacing: -0.02em;
+            line-height: 1.1;
+        }
+        .brand-sub {
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            font-weight: 500;
+            margin-top: 2px;
+        }
+
+        .topbar-center {
+            display: flex;
+            align-items: center;
+            gap: 0.55rem;
+            flex: 1;
+            justify-content: center;
+            min-width: 0;
+            flex-wrap: wrap;
+        }
+
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            padding: 0.45rem 0.9rem;
+            border-radius: 999px;
+            font-size: 0.85rem;
+            font-weight: 700;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            white-space: nowrap;
+            transition: all 0.2s ease;
+        }
+        .pill i { font-size: 0.82rem; }
+        .pill.timer { background: rgba(99, 102, 241, 0.12); color: var(--primary); border-color: rgba(99, 102, 241, 0.35); }
+        .pill.timer.warning-state { background: rgba(245, 158, 11, 0.15); color: var(--warning); border-color: rgba(245, 158, 11, 0.5); animation: pulseWarn 1s ease-in-out infinite; }
+        @keyframes pulseWarn { 0%,100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+        .pill.window { background: var(--bg-elevated); color: var(--text-primary); }
+        .pill.pr { background: rgba(16, 185, 129, 0.14); color: var(--success); border-color: rgba(16, 185, 129, 0.4); }
+        .pill.dr { background: rgba(139, 92, 246, 0.14); color: var(--isolated); border-color: rgba(139, 92, 246, 0.4); }
+
+        .topbar-actions {
+            display: flex;
+            align-items: center;
+            gap: 0.45rem;
+            flex-shrink: 0;
+        }
+        .icon-btn {
+            width: 38px;
+            height: 38px;
+            border-radius: 10px;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 0.9rem;
+        }
+        .icon-btn:hover {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.35);
+        }
+
+        /* ============================================================
+           STATS BAR
+           ============================================================ */
+        .stats-bar {
+            background: var(--bg-card);
+            border-bottom: 1px solid var(--border);
+            padding: 0.7rem 1.25rem;
+            display: grid;
+            grid-template-columns: repeat(6, minmax(0, 1fr));
+            gap: 0.6rem;
+            transition: background 0.3s ease, border-color 0.3s ease;
+        }
+        .stat-mini {
+            display: flex;
+            align-items: center;
+            gap: 0.7rem;
+            padding: 0.55rem 0.8rem;
+            border-radius: 0.7rem;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-left: 4px solid var(--primary);
+            min-width: 0;
+            transition: all 0.2s ease;
+        }
+        .stat-mini:hover { background: var(--bg-hover); transform: translateY(-2px); box-shadow: var(--shadow-md); }
+        .stat-mini.critical { border-left-color: var(--danger); }
+        .stat-mini.warning { border-left-color: var(--warning); }
+        .stat-mini.healthy { border-left-color: var(--success); }
+        .stat-mini.isolated { border-left-color: var(--isolated); }
+        .stat-mini.info { border-left-color: var(--info); }
+        .stat-mini-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 9px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.9rem;
+            color: white;
+            flex-shrink: 0;
+            background: var(--primary);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+        .stat-mini.info .stat-mini-icon { background: var(--info); }
+        .stat-mini.critical .stat-mini-icon { background: var(--danger); }
+        .stat-mini.warning .stat-mini-icon { background: var(--warning); }
+        .stat-mini.healthy .stat-mini-icon { background: var(--success); }
+        .stat-mini.isolated .stat-mini-icon { background: var(--isolated); }
+        .stat-mini-text { display: flex; flex-direction: column; min-width: 0; }
+        .stat-mini-value {
+            font-size: 1.3rem;
+            font-weight: 800;
+            color: var(--text-primary);
+            line-height: 1;
+        }
+        .stat-mini-label {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-top: 2px;
+        }
+
+        /* ============================================================
+           BANNERS
+           ============================================================ */
+        .banner {
+            padding: 0.6rem 1.25rem;
+            text-align: center;
+            font-weight: 700;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.55rem;
+            flex-wrap: wrap;
+        }
+        .fallback-banner { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; }
+        .slot-info-banner { background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; }
+
+        /* ============================================================
+           MAIN LAYOUT
+           ============================================================ */
+        .main-content {
+            display: grid;
+            grid-template-columns: 400px minmax(0, 1fr);
+            gap: 1rem;
+            padding: 1rem 1.25rem;
+            align-items: stretch;
+            width: 100%;
+            min-height: calc(100vh - 128px);
+        }
+        .left-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 0.85rem;
+            min-width: 0;
+            height: 100%;
+            max-height: calc(100vh - 145px);
+        }
+        .right-panel {
+            min-width: 0;
+            height: 100%;
+            max-height: calc(100vh - 145px);
+            overflow-y: auto;
+            padding-right: 0.25rem;
+        }
+
+        /* ============================================================
+           CARD
+           ============================================================ */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 0.85rem;
+            box-shadow: var(--shadow-sm);
+            overflow: hidden;
+            transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        /* ============================================================
+           TIME FILTER
+           ============================================================ */
+        .time-filter-header {
+            padding: 0.8rem 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            background: var(--bg-elevated);
+            transition: background 0.2s ease;
+        }
+        .time-filter-header:hover { background: var(--bg-hover); }
+        .time-filter-title {
+            font-size: 0.95rem;
+            font-weight: 800;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .time-filter-title i { color: var(--primary); }
+        .time-filter-toggle { color: var(--text-muted); transition: transform 0.3s ease; font-size: 0.85rem; }
+        .time-filter-toggle.expanded { transform: rotate(180deg); }
+        .time-filter-content { display: none; padding: 1rem; border-top: 1px solid var(--border); }
+        .time-filter-content.expanded { display: block; }
+        .time-filter-form { display: flex; flex-direction: column; gap: 0.7rem; }
+        .time-filter-group { display: flex; flex-direction: column; gap: 0.35rem; }
+        .time-filter-label { font-size: 0.82rem; font-weight: 700; color: var(--text-secondary); }
+        .time-filter-input {
+            padding: 0.55rem 0.7rem;
+            border: 1px solid var(--border-strong);
+            border-radius: 0.5rem;
+            font-size: 0.9rem;
+            background: var(--bg-card);
+            color: var(--text-primary);
+            font-family: inherit;
+            width: 100%;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .time-filter-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+        }
+        .time-filter-actions { display: flex; gap: 0.45rem; }
+        .time-filter-actions .btn { flex: 1; justify-content: center; }
+        .quick-filter-buttons { display: flex; gap: 0.35rem; margin-top: 0.7rem; flex-wrap: wrap; }
+        .quick-filter-btn {
+            background: var(--bg-elevated);
+            color: var(--text-secondary);
+            border: 1px solid var(--border-strong);
+            padding: 0.45rem 0.7rem;
+            border-radius: 0.5rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 0.8rem;
+            font-family: inherit;
+            flex: 1;
+            min-width: 0;
+        }
+        .quick-filter-btn:hover { background: var(--bg-hover); border-color: var(--primary); color: var(--primary); }
+        .quick-filter-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
+
+        /* ============================================================
+           BUTTONS
+           ============================================================ */
+        .btn {
+            background: var(--bg-elevated);
+            color: var(--text-secondary);
+            border: 1px solid var(--border-strong);
+            padding: 0.55rem 1rem;
+            border-radius: 0.5rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 0.87rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            font-family: inherit;
+            white-space: nowrap;
+        }
+        .btn:hover { background: var(--bg-hover); border-color: var(--primary); color: var(--primary); transform: translateY(-1px); }
+        .btn.primary { background: var(--primary); color: white; border-color: var(--primary); }
+        .btn.primary:hover { background: var(--primary-dark); color: white; }
+        .btn.isolated { background: var(--isolated); color: white; border-color: var(--isolated); }
+        .btn.isolated:hover { color: white; opacity: 0.9; }
+        .btn.success { background: var(--success); color: white; border-color: var(--success); }
+        .btn.success:hover { color: white; opacity: 0.9; }
+
+        .controls-row {
+            display: flex;
+            gap: 0.45rem;
+            flex-wrap: wrap;
+            padding: 0.7rem;
+        }
+        .controls-row .btn { flex: 1; justify-content: center; }
+
+        /* ============================================================
+           IMPACTED / ISOLATED
+           ============================================================ */
+        .left-panel > .card { flex-shrink: 0; }
+        .left-panel > .impacted-section {
+            flex: 1 1 0;
+            min-height: 140px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .impacted-section { border-left: 5px solid var(--danger); }
+        .impacted-section.isolated { border-left-color: var(--isolated); }
+        .impacted-header {
+            padding: 0.7rem 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 0.5rem;
+            border-bottom: 1px solid var(--border);
+            background: var(--bg-elevated);
+            flex-shrink: 0;
+        }
+        .impacted-title {
+            font-size: 0.95rem;
+            font-weight: 800;
+            color: var(--danger);
+            display: flex;
+            align-items: center;
+            gap: 0.45rem;
+        }
+        .impacted-title.isolated { color: var(--isolated); }
+        .impacted-count {
+            background: var(--danger);
+            color: white;
+            padding: 0.15rem 0.7rem;
+            border-radius: 999px;
+            font-size: 0.78rem;
+            font-weight: 800;
+            box-shadow: 0 2px 6px rgba(239, 68, 68, 0.3);
+        }
+        .impacted-count.isolated { background: var(--isolated); box-shadow: 0 2px 6px rgba(139, 92, 246, 0.3); }
+        .impacted-content {
+            padding: 0.65rem 0.85rem 0.85rem;
+            flex: 1;
+            overflow-y: auto;
+            min-height: 0;
+        }
+        .impacted-list { display: flex; flex-direction: column; gap: 0.45rem; }
+        .impacted-server-item {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 0.55rem;
+            padding: 0.6rem 0.85rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.55rem;
+            font-size: 0.88rem;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.2s ease;
+        }
+        .impacted-server-item::before { content: ''; position: absolute; left: 0; top: 0; height: 100%; width: 4px; background: var(--danger); }
+        .impacted-server-item.warning::before { background: var(--warning); }
+        .impacted-server-item.isolated::before { background: var(--isolated); }
+        .impacted-server-item:hover { background: var(--bg-hover); transform: translateX(3px); }
+        .impacted-broker { font-weight: 800; color: var(--text-primary); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .impacted-ip { color: var(--text-muted); font-family: 'Courier New', monospace; flex-shrink: 0; font-weight: 700; font-size: 0.85rem; }
+        .impacted-hits {
+            color: white;
+            padding: 0.2rem 0.6rem;
+            border-radius: 0.4rem;
+            font-weight: 800;
+            font-size: 0.78rem;
+            min-width: 55px;
+            text-align: center;
+        }
+        .impacted-hits.critical { background: var(--danger); }
+        .impacted-hits.warning { background: var(--warning); }
+        .impacted-hits.isolated { background: var(--isolated); }
+
+        /* ============================================================
+           BROKER CARDS — OUTER SIZE UNCHANGED, INNER FONTS BIGGER
+           ============================================================ */
+        .broker-cards-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+            gap: 0.9rem;
+            width: 100%;
+        }
+        .broker-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 0.85rem;
+            box-shadow: var(--shadow-sm);
+            transition: all 0.25s ease;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            overflow: hidden;
+            min-width: 0;
+        }
+        .broker-card::before { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 4px; }
+        .broker-card.critical::before { background: var(--danger); }
+        .broker-card.warning::before { background: var(--warning); }
+        .broker-card.healthy::before { background: var(--success); }
+        .broker-card.isolated::before { background: var(--isolated); }
+        .broker-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-lg); }
+
+        /* Outer padding SAME as before (0.9rem 1.1rem) */
+        .broker-header {
+            padding: 0.9rem 1.1rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 0.7rem;
+        }
+        .broker-info { flex: 1; min-width: 0; }
+        /* INNER FONT: 1.15rem → 1.35rem */
+        .broker-name {
+            font-size: 1.35rem;
+            font-weight: 800;
+            color: var(--text-primary);
+            margin-bottom: 0.35rem;
+            display: flex;
+            align-items: center;
+            gap: 0.55rem;
+            word-break: break-word;
+            line-height: 1.2;
+        }
+        /* INNER FONT: 0.85rem → 1rem */
+        .broker-port { color: var(--text-muted); font-size: 1rem; font-weight: 700; }
+        .broker-port i { margin-right: 0.3rem; color: var(--text-faint); }
+        .broker-status { display: flex; flex-direction: column; align-items: flex-end; gap: 0.35rem; flex-shrink: 0; }
+        /* INNER FONT: 0.72rem → 0.88rem */
+        .status-badge {
+            padding: 0.35rem 0.9rem;
+            border-radius: 999px;
+            font-size: 0.88rem;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            white-space: nowrap;
+            color: white;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+        }
+        .status-badge.healthy { background: var(--success); }
+        .status-badge.warning { background: var(--warning); }
+        .status-badge.critical { background: var(--danger); }
+        .status-badge.isolated { background: var(--isolated); }
+        /* INNER FONT: 1.2rem → 1.5rem */
+        .total-hits { color: var(--text-primary); font-size: 1.5rem; font-weight: 800; white-space: nowrap; line-height: 1; }
+        /* INNER FONT: 0.68rem → 0.8rem */
+        .total-hits-label { font-size: 0.8rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
+
+        /* Outer padding SAME (0.9rem 1.1rem) */
+        .broker-body { padding: 0.9rem 1.1rem; flex: 1; display: flex; flex-direction: column; gap: 0.9rem; }
+        .server-stats {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 0.4rem;
+            padding-bottom: 0.85rem;
+            border-bottom: 1px solid var(--border);
+        }
+        .server-stat {
+            text-align: center;
+            padding: 0.5rem 0.25rem;
+            border-radius: 0.5rem;
+            background: var(--bg-elevated);
+            min-width: 0;
+            transition: background 0.2s ease;
+        }
+        .server-stat:hover { background: var(--bg-hover); }
+        /* INNER FONT: 1.15rem → 1.4rem */
+        .server-stat-value { font-size: 1.4rem; font-weight: 800; color: var(--text-primary); line-height: 1; margin-bottom: 0.3rem; }
+        /* INNER FONT: 0.68rem → 0.82rem */
+        .server-stat-label { font-size: 0.82rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; }
+
+        .server-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 0.45rem;
+        }
+        /* INNER FONT: 0.85rem → 1rem */
+        .server-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.6rem 0.75rem;
+            background: var(--bg-elevated);
+            border-radius: 0.5rem;
+            transition: all 0.2s;
+            font-size: 1rem;
+            border-left: 3px solid var(--border-strong);
+            position: relative;
+            min-width: 0;
+        }
+        .server-item:hover { background: var(--bg-hover); transform: translateX(2px); }
+        /* INNER FONT: 0.85rem → 1rem */
+        .server-ip {
+            font-weight: 800;
+            color: var(--text-secondary);
+            font-family: 'Courier New', monospace;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 1rem;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        /* INNER FONT: 0.8rem → 0.95rem */
+        .server-hits {
+            font-weight: 800;
+            padding: 0.3rem 0.6rem;
+            border-radius: 0.4rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            min-width: 3.4rem;
+            text-align: center;
+            font-size: 0.95rem;
+            flex-shrink: 0;
+            color: var(--text-secondary);
+        }
+        .server-hits.healthy { color: var(--success); border-color: var(--success); background: rgba(16, 185, 129, 0.12); }
+        .server-hits.warning { color: var(--warning); border-color: var(--warning); background: rgba(245, 158, 11, 0.12); }
+        .server-hits.critical, .server-hits.zero { color: var(--danger); border-color: var(--danger); background: rgba(239, 68, 68, 0.12); }
+        .server-hits.isolated { color: var(--isolated); border-color: var(--isolated); background: rgba(139, 92, 246, 0.12); }
+
+        /* Outer padding SAME (0.55rem 1.1rem) */
+        .broker-footer {
+            padding: 0.55rem 1.1rem;
+            background: var(--bg-footer);
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            /* INNER FONT: 0.78rem → 0.92rem */
+            font-size: 0.92rem;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+
+        /* ============================================================
+           STATUS INDICATORS
+           ============================================================ */
+        .status-indicator { display: inline-block; width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0; box-shadow: 0 0 0 3px rgba(0,0,0,0.05); }
+        .status-indicator.healthy { background: var(--success); box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2); }
+        .status-indicator.warning { background: var(--warning); box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.2); }
+        .status-indicator.critical { background: var(--danger); box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2); }
+        .status-indicator.isolated { background: var(--isolated); box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.2); }
+
+        /* ============================================================
+           TOOLTIP
+           ============================================================ */
+        [data-full-ip] { position: relative; cursor: help; }
+        [data-full-ip]:hover::after {
+            content: attr(data-full-ip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 0.4rem 0.8rem;
+            background: var(--text-primary);
+            color: var(--bg-card);
+            border-radius: 0.4rem;
+            font-size: 0.82rem;
+            white-space: nowrap;
+            z-index: 1000;
+            pointer-events: none;
+            margin-bottom: 0.4rem;
+            box-shadow: var(--shadow-md);
+            font-weight: 700;
+        }
+
+        /* ============================================================
+           NO DATA STATES
+           ============================================================ */
+        .no-impacted {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            color: var(--text-muted);
+            padding: 1rem;
+            height: 100%;
+            min-height: 120px;
+            font-size: 0.9rem;
+        }
+        .no-impacted i { font-size: 1.75rem; margin-bottom: 0.5rem; display: block; }
+        .no-impacted p { margin-bottom: 0.2rem; font-weight: 700; color: var(--text-secondary); font-size: 0.95rem; }
+        .no-impacted small { color: var(--text-faint); font-size: 0.78rem; font-weight: 500; }
+
+        /* ============================================================
+           ANIMATIONS
+           ============================================================ */
+        @keyframes softBlinkCritical { 0%, 90% { opacity: 1; } 92% { opacity: 0.85; } 94% { opacity: 1; } 96% { opacity: 0.85; } 98% { opacity: 1; } }
+        @keyframes softBlinkWarning { 0%, 92% { opacity: 1; } 94% { opacity: 0.9; } 96% { opacity: 1; } 98% { opacity: 0.9; } }
+        @keyframes softBlinkIsolated { 0%, 88% { opacity: 1; } 91% { opacity: 0.8; } 94% { opacity: 1; } 97% { opacity: 0.8; } }
+
+        .broker-card.critical { border-left: 3px solid var(--danger); animation: softBlinkCritical 5s ease-in-out infinite; }
+        .broker-card.warning { border-left: 3px solid var(--warning); animation: softBlinkWarning 7s ease-in-out infinite; }
+        .broker-card.isolated { border-left: 3px solid var(--isolated); animation: softBlinkIsolated 3s ease-in-out infinite; }
+        .status-badge.critical { animation: softBlinkCritical 5s ease-in-out infinite; }
+        .status-badge.warning { animation: softBlinkWarning 7s ease-in-out infinite; }
+        .status-badge.isolated { animation: softBlinkIsolated 3s ease-in-out infinite; }
+        .impacted-count { animation: softBlinkCritical 5s ease-in-out infinite; }
+        .impacted-count.isolated { animation: softBlinkIsolated 3s ease-in-out infinite; }
+        .status-indicator.critical { animation: softBlinkCritical 5s ease-in-out infinite; }
+        .status-indicator.warning { animation: softBlinkWarning 7s ease-in-out infinite; }
+        .status-indicator.isolated { animation: softBlinkIsolated 3s ease-in-out infinite; }
+
+        .no-blink .broker-card.critical, .no-blink .broker-card.warning, .no-blink .broker-card.isolated,
+        .no-blink .status-badge.critical, .no-blink .status-badge.warning, .no-blink .status-badge.isolated,
+        .no-blink .impacted-count, .no-blink .impacted-count.isolated,
+        .no-blink .status-indicator.critical, .no-blink .status-indicator.warning, .no-blink .status-indicator.isolated { animation: none !important; opacity: 1 !important; }
+
+        /* ============================================================
+           SCROLLBAR
+           ============================================================ */
+        .impacted-content::-webkit-scrollbar,
+        .right-panel::-webkit-scrollbar { width: 8px; }
+        .impacted-content::-webkit-scrollbar-track,
+        .right-panel::-webkit-scrollbar-track { background: var(--scrollbar-track); border-radius: 4px; }
+        .impacted-content::-webkit-scrollbar-thumb,
+        .right-panel::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 4px; }
+        .impacted-content::-webkit-scrollbar-thumb:hover,
+        .right-panel::-webkit-scrollbar-thumb:hover { background: var(--text-faint); }
+
+        /* ============================================================
+           OVERLAY
+           ============================================================ */
+        #chromeVoiceOverlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.95);
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+        .overlay-box {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 2rem;
+            border-radius: 1rem;
+            text-align: center;
+            max-width: 420px;
+            margin: 1rem;
+            color: white;
+        }
+        .overlay-box i { font-size: 3rem; margin-bottom: 0.75rem; }
+        .overlay-box h3 { margin-bottom: 0.5rem; font-size: 1.25rem; }
+        .overlay-box p { margin-bottom: 1rem; line-height: 1.4; font-size: 0.9rem; opacity: 0.95; }
+        .overlay-box button {
+            background: white;
+            color: #667eea;
+            border: none;
+            padding: 0.65rem 1.5rem;
+            border-radius: 0.6rem;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        /* ============================================================
+           RESPONSIVE
+           ============================================================ */
+        @media (max-width: 1200px) {
+            .stats-bar { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+            .main-content { grid-template-columns: 360px minmax(0, 1fr); }
+            .broker-cards-container { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+        }
+
+        @media (max-width: 1024px) {
+            html, body { overflow-x: hidden; overflow-y: auto; }
+            .main-content {
+                grid-template-columns: 1fr;
+                padding: 0.85rem;
+                min-height: auto;
+                align-items: stretch;
+            }
+            .left-panel, .right-panel {
+                width: 100%;
+                height: auto;
+                max-height: none;
+                overflow-y: visible;
+            }
+            .left-panel > .impacted-section {
+                flex: 0 0 auto;
+                min-height: 220px;
+                max-height: 320px;
+            }
+            .impacted-content { max-height: 220px; }
+            .broker-cards-container { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+            .topbar { padding: 0.6rem 1rem; }
+            .topbar-center { justify-content: flex-start; }
+        }
+
+        @media (max-width: 768px) {
+            body { font-size: 16px; }
+            .stats-bar { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 0.6rem 0.85rem; }
+            .stat-mini-value { font-size: 1.15rem; }
+            .broker-cards-container { grid-template-columns: 1fr; gap: 0.8rem; }
+            .server-list { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+            .topbar-center { display: none; }
+            .brand-sub { display: none; }
+        }
+
+        @media (max-width: 480px) {
+            .stats-bar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .controls-row { flex-direction: column; }
+            .controls-row .btn { width: 100%; }
+            .quick-filter-buttons { flex-direction: column; }
+            .quick-filter-btn { width: 100%; }
+        }
+
+        @media print {
+            .topbar, .stats-bar, .banner, .left-panel, .icon-btn { display: none; }
+            .broker-cards-container { display: block; }
+            .broker-card { page-break-inside: avoid; margin-bottom: 20px; }
+        }
+    </style>
+    <script type="text/javascript" src="https://unpkg.com/xlsx@0.15.1/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+
+<div id="chromeVoiceOverlay" style="display: none;">
+    <div class="overlay-box">
+        <i class="fas fa-volume-up"></i>
+        <h3>Enable Voice Alerts</h3>
+        <p>Click anywhere to enable automatic voice alerts for critical server monitoring.</p>
+        <button id="enableVoiceNowBtn">Enable Voice Alerts</button>
+    </div>
+</div>
+
+<%
+    StringBuilder jsBrokerMap = new StringBuilder();
+    if (criticalServersByBroker != null && !criticalServersByBroker.isEmpty()) {
+        int brokerIndex = 0;
+        for (Map.Entry<String, List<String>> entry : criticalServersByBroker.entrySet()) {
+            if (brokerIndex > 0) jsBrokerMap.append(",");
+            String broker = entry.getKey().replace("'", "\\'").replace("\"", "&quot;");
+            jsBrokerMap.append("\"").append(broker).append("\":[");
+            List<String> ips = entry.getValue();
+            for (int i = 0; i < ips.size(); i++) {
+                if (i > 0) jsBrokerMap.append(",");
+                String ip = ips.get(i).replace("'", "\\'").replace("\"", "&quot;");
+                jsBrokerMap.append("\"").append(ip).append("\"");
+            }
+            jsBrokerMap.append("]");
+            brokerIndex++;
+        }
+    }
+%>
+
+<!-- TOPBAR -->
+<div class="topbar">
+    <div class="brand">
+        <div class="brand-logo"><i class="fas fa-server"></i></div>
+        <div>
+            <div class="brand-title">EXP Broker Monitor</div>
+            <div class="brand-sub">Aggregated 10-min slots</div>
+        </div>
+    </div>
+
+    <div class="topbar-center">
+        <span class="pill timer" id="refreshTimer"><i class="fas fa-sync-alt"></i> <span id="ten-countdown">10:00</span></span>
+        <span class="pill window"><i class="fas fa-clock"></i> <%=runTimeDisplay%></span>
+        <% if ("PR".equals(flagStatus)) { %>
+            <span class="pill pr"><i class="fas fa-circle-check"></i> Production</span>
+        <% } else if ("DR".equals(flagStatus)) { %>
+            <span class="pill dr"><i class="fas fa-shield-halved"></i> DR</span>
+        <% } %>
+    </div>
+
+    <div class="topbar-actions">
+        <button class="icon-btn" id="themeToggle" onclick="toggleTheme()" title="Toggle theme (Ctrl+D)">
+            <i class="fas fa-moon" id="themeIcon"></i>
+        </button>
+        <button class="icon-btn" onclick="toggleBlinking()" id="blinkToggleBtn" title="Toggle blinking">
+            <i class="fas fa-eye" id="blinkIcon"></i>
+        </button>
+        <button class="icon-btn" onclick="testVoice()" title="Test voice">
+            <i class="fas fa-play"></i>
+        </button>
+        <button class="icon-btn" onclick="toggleMute()" id="muteBtn" title="Mute/Unmute">
+            <i class="fas fa-volume-up" id="muteIcon"></i>
+        </button>
+    </div>
+</div>
+
+<!-- STATS BAR -->
+<div class="stats-bar">
+    <div class="stat-mini">
+        <div class="stat-mini-icon"><i class="fas fa-server"></i></div>
+        <div class="stat-mini-text">
+            <span class="stat-mini-value"><%=totalBrokers%></span>
+            <span class="stat-mini-label">Brokers</span>
+        </div>
+    </div>
+    <div class="stat-mini info">
+        <div class="stat-mini-icon"><i class="fas fa-network-wired"></i></div>
+        <div class="stat-mini-text">
+            <span class="stat-mini-value"><%=totalServers%></span>
+            <span class="stat-mini-label">Servers</span>
+        </div>
+    </div>
+    <div class="stat-mini isolated">
+        <div class="stat-mini-icon"><i class="fas fa-shield-alt"></i></div>
+        <div class="stat-mini-text">
+            <span class="stat-mini-value"><%=isolatedBrokersCount%></span>
+            <span class="stat-mini-label">Isolated</span>
+        </div>
+    </div>
+    <div class="stat-mini critical">
+        <div class="stat-mini-icon"><i class="fas fa-exclamation-triangle"></i></div>
+        <div class="stat-mini-text">
+            <span class="stat-mini-value"><%=criticalBrokers%></span>
+            <span class="stat-mini-label">Critical</span>
+        </div>
+    </div>
+    <div class="stat-mini warning">
+        <div class="stat-mini-icon"><i class="fas fa-exclamation-circle"></i></div>
+        <div class="stat-mini-text">
+            <span class="stat-mini-value"><%=warningBrokers%></span>
+            <span class="stat-mini-label">Warning</span>
+        </div>
+    </div>
+    <div class="stat-mini healthy">
+        <div class="stat-mini-icon"><i class="fas fa-check-circle"></i></div>
+        <div class="stat-mini-text">
+            <span class="stat-mini-value"><%=healthyBrokers%></span>
+            <span class="stat-mini-label">Healthy</span>
+        </div>
+    </div>
+</div>
+
+<% if (fallbackApplied) { %>
+<div class="banner fallback-banner">
+    <i class="fas fa-info-circle"></i>
+    <span>No data for selected range — showing latest: <strong><%=runTimeDisplay%></strong></span>
+</div>
+<% } else if (slotsIncluded > 1) { %>
+<div class="banner slot-info-banner">
+    <i class="fas fa-layer-group"></i>
+    <span>Aggregated <strong><%=slotsIncluded%> slots</strong> &rarr; <strong><%=runTimeDisplay%></strong></span>
+</div>
+<% } %>
+
+<!-- MAIN CONTENT -->
+<div class="main-content">
+    <div class="left-panel">
+        <!-- Time Filter -->
+        <div class="card">
+            <div class="time-filter-header" onclick="toggleTimeFilter()">
+                <div class="time-filter-title"><i class="fas fa-filter"></i> Time Filter</div>
+                <div class="time-filter-toggle"><i class="fas fa-chevron-down"></i></div>
+            </div>
+            <div class="time-filter-content" id="timeFilterContent">
+                <form id="timeFilterForm" method="GET" class="time-filter-form">
+                    <div class="time-filter-group">
+                        <label class="time-filter-label" for="fromDateTime">From:</label>
+                        <input type="datetime-local" id="fromDateTime" name="fromDateTime" class="time-filter-input" value="<%=fromDateTime%>">
+                    </div>
+                    <div class="time-filter-group">
+                        <label class="time-filter-label" for="toDateTime">To:</label>
+                        <input type="datetime-local" id="toDateTime" name="toDateTime" class="time-filter-input" value="<%=toDateTime%>">
+                    </div>
+                    <div class="time-filter-actions">
+                        <button type="submit" class="btn primary"><i class="fas fa-search"></i> Apply</button>
+                        <button type="button" class="btn" onclick="resetTimeFilter()"><i class="fas fa-rotate-left"></i> Reset</button>
+                    </div>
+                </form>
+                <div class="quick-filter-buttons">
+                    <button type="button" class="quick-filter-btn" onclick="setQuickFilter(10)">10m</button>
+                    <button type="button" class="quick-filter-btn" onclick="setQuickFilter(20)">20m</button>
+                    <button type="button" class="quick-filter-btn" onclick="setQuickFilter(30)">30m</button>
+                    <button type="button" class="quick-filter-btn" onclick="setQuickFilter(60)">1h</button>
+                    <button type="button" class="quick-filter-btn" onclick="setQuickFilter(120)">2h</button>
+                    <button type="button" class="quick-filter-btn" onclick="setQuickFilter(360)">6h</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="card">
+            <div class="controls-row">
+                <button class="btn primary" onclick="openNewPage()"><i class="fas fa-exchange-alt"></i> SYS</button>
+                <button class="btn isolated" onclick="showIsolatedOnly()"><i class="fas fa-shield-alt"></i> ISO Only</button>
+                <button class="btn success" onclick="showAllBrokers()" id="showAllBtn" style="display: none;"><i class="fas fa-globe"></i> All</button>
+            </div>
+        </div>
+
+        <!-- Impacted -->
+        <div class="card impacted-section">
+            <div class="impacted-header">
+                <div class="impacted-title"><i class="fas fa-exclamation-triangle"></i> Impacted Servers <span class="impacted-count"><%=impactedServers%></span></div>
+            </div>
+            <div class="impacted-content">
+                <% if (impactedServers > 0) { %>
+                <div class="impacted-list">
+                    <% for (Map<String, String> server : impactedServersList) { %>
+                    <div class="impacted-server-item <%=server.get("status")%>" data-full-ip="<%=server.get("ip")%>">
+                        <span class="impacted-broker"><%=server.get("broker")%></span>
+                        <span class="impacted-ip"><%=server.get("displayIP")%></span>
+                        <span class="impacted-hits <%=server.get("status")%>"><%=String.format("%,d", Integer.parseInt(server.get("hits")))%></span>
+                    </div>
+                    <% } %>
+                </div>
+                <% } else { %>
+                <div class="no-impacted">
+                    <i class="fas fa-check-circle" style="color: var(--success);"></i>
+                    <p>No Impacted Servers</p>
+                    <small>All systems normal</small>
+                </div>
+                <% } %>
+            </div>
+        </div>
+
+        <!-- Isolated -->
+        <div class="card impacted-section isolated">
+            <div class="impacted-header">
+                <div class="impacted-title isolated"><i class="fas fa-shield-alt"></i> Isolated Servers <span class="impacted-count isolated"><%=isolatedServers%></span></div>
+            </div>
+            <div class="impacted-content">
+                <% if (isolatedServers > 0) { %>
+                <div class="impacted-list">
+                    <% for (Map<String, String> server : isolatedServersList) { %>
+                    <div class="impacted-server-item isolated" data-full-ip="<%=server.get("ip")%>">
+                        <span class="impacted-broker"><%=server.get("broker")%></span>
+                        <span class="impacted-ip"><%=server.get("displayIP")%></span>
+                        <span class="impacted-hits isolated">ISO</span>
+                    </div>
+                    <% } %>
+                </div>
+                <% } else { %>
+                <div class="no-impacted">
+                    <i class="fas fa-check-circle" style="color: var(--success);"></i>
+                    <p>No Isolated Servers</p>
+                    <small>All brokers normal</small>
+                </div>
+                <% } %>
+            </div>
+        </div>
+    </div>
+
+    <div class="right-panel">
+        <div class="broker-cards-container" id="brokerCardsContainer">
+            <%
+                if (brokerDataList.isEmpty()) {
+            %>
+                <div class="card" style="grid-column: 1 / -1; text-align: center; padding: 3rem 1.5rem;">
+                    <i class="fas fa-database" style="font-size: 3rem; color: var(--text-faint); margin-bottom: 0.9rem;"></i>
+                    <h3 style="color: var(--text-secondary); margin-bottom: 0.5rem; font-size: 1.15rem;">No Brokers Found</h3>
+                    <p style="color: var(--text-muted); font-size: 0.9rem;">No data available for selected range.</p>
+                    <button class="btn primary" onclick="goToCleanUrl()" style="margin-top: 1rem;"><i class="fas fa-rotate-right"></i> Load Latest</button>
+                </div>
+            <%
+                } else {
+                    for (Map<String, Object> brokerData : brokerDataList) {
+                        String broker = (String) brokerData.get("broker");
+                        String port = (String) brokerData.get("port");
+                        String brokerStatus = (String) brokerData.get("brokerStatus");
+                        List<Map<String, String>> serverList = (List<Map<String, String>>) brokerData.get("serverList");
+                        int totalHits = (Integer) brokerData.get("totalHits");
+                        int criticalCount = (Integer) brokerData.get("criticalCount");
+                        int warningCount = (Integer) brokerData.get("warningCount");
+                        int isolatedCount = (Integer) brokerData.get("isolatedCount");
+                        int serverCount = (Integer) brokerData.get("serverCount");
+                        int healthyCount = (Integer) brokerData.get("healthyCount");
+            %>
+                <div class="broker-card <%= brokerStatus %>" data-status="<%= brokerStatus %>" data-broker="<%= broker %>">
+                    <div class="broker-header">
+                        <div class="broker-info">
+                            <div class="broker-name"><span class="status-indicator <%= brokerStatus %>"></span><%= broker != null ? broker : "Unknown" %></div>
+                            <div class="broker-port"><i class="fas fa-plug"></i>Port: <%= port != null ? port : "N/A" %></div>
+                        </div>
+                        <div class="broker-status">
+                            <div class="status-badge <%= brokerStatus %>"><%= brokerStatus.equals("healthy") ? "Healthy" : brokerStatus.equals("warning") ? "Warning" : brokerStatus.equals("critical") ? "Critical" : "Isolated" %></div>
+                            <div class="total-hits"><%= String.format("%,d", totalHits) %></div>
+                            <div class="total-hits-label">Total Hits</div>
+                        </div>
+                    </div>
+                    <div class="broker-body">
+                        <div class="server-stats">
+                            <div class="server-stat"><div class="server-stat-value"><%= serverCount %></div><div class="server-stat-label">Total</div></div>
+                            <div class="server-stat"><div class="server-stat-value" style="color: var(--success);"><%= healthyCount %></div><div class="server-stat-label">OK</div></div>
+                            <div class="server-stat"><div class="server-stat-value" style="color: var(--warning);"><%= warningCount %></div><div class="server-stat-label">Warn</div></div>
+                            <div class="server-stat"><div class="server-stat-value" style="color: var(--danger);"><%= criticalCount %></div><div class="server-stat-label">Crit</div></div>
+                            <div class="server-stat"><div class="server-stat-value" style="color: var(--isolated);"><%= isolatedCount %></div><div class="server-stat-label">ISO</div></div>
+                        </div>
+                        <div class="server-list">
+                            <%
+                                for (Map<String, String> server : serverList) {
+                                    String ip = server.get("ip");
+                                    String displayIP = server.get("displayIP");
+                                    String hits = server.get("hits");
+                                    String status = server.get("status");
+                            %>
+                                <div class="server-item" data-full-ip="<%= ip %>">
+                                    <span class="server-ip"><span class="status-indicator <%= status %>"></span><%= displayIP %></span>
+                                    <span class="server-hits <%= status %>">
+                                        <% if (status.equals("isolated")) { %>ISO<% } else { %><%= String.format("%,d", Integer.parseInt(hits)) %><% } %>
+                                    </span>
+                                </div>
+                            <%
+                                }
+                            %>
+                        </div>
+                    </div>
+                    <div class="broker-footer">
+                        <span><i class="far fa-clock"></i> <%=runTimeDisplay%></span>
+                    </div>
+                </div>
+            <%
+                    }
+                }
+            %>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ============================================================
+    // THEME TOGGLE
+    // ============================================================
+    function applyTheme(theme) {
+        document.documentElement.setAttribute('data-theme', theme);
+        const icon = document.getElementById('themeIcon');
+        if (icon) icon.className = theme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+        try { localStorage.setItem('expTheme', theme); } catch(e) {}
+    }
+    function toggleTheme() {
+        const current = document.documentElement.getAttribute('data-theme') || 'light';
+        applyTheme(current === 'dark' ? 'light' : 'dark');
+    }
+    (function() {
+        try {
+            const saved = localStorage.getItem('expTheme');
+            if (saved === 'dark' || saved === 'light') applyTheme(saved);
+            else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) applyTheme('dark');
+            else applyTheme('light');
+        } catch(e) { applyTheme('light'); }
+    })();
+
+    // ============================================================
+    // VOICE ALERT SYSTEM
+    // ============================================================
+    let speechSynthesis = window.speechSynthesis;
+    let isVoiceEnabled = true;
+    let isMuted = false;
+    let isPlaying = false;
+    let voices = [];
+    let userInteracted = false;
+    let voiceInitialized = false;
+    let voicePlayCount = 0;
+    const MAX_VOICE_PLAYS = 3;
+
+    const criticalServersByBroker = { <%= jsBrokerMap.toString() %> };
+    const hasUserInteracted = localStorage.getItem('voiceEnabled') === 'true' || localStorage.getItem('chromeVoiceEnabled') === 'true';
+
+    function cleanForPronunciation(text) {
+        if (!text) return '';
+        let cleaned = text.replace(/EXP/gi, 'E X P');
+        cleaned = cleaned.replace(/NP_SPL/gi, 'N P S P L');
+        cleaned = cleaned.replace(/_/g, ' ');
+        cleaned = cleaned.replace(/\./g, ' dot ');
+        return cleaned;
     }
 
-    static class JarScanResult {
-        boolean hasJavax = false;
-        boolean hasJakarta = false;
-        int javaxClasses = 0;
-        int jakartaClasses = 0;
+    function buildSequentialMessage() {
+        const brokerKeys = Object.keys(criticalServersByBroker);
+        if (brokerKeys.length === 0) return '';
+        let fullMessage = 'Alert! ';
+        let messageParts = [];
+        for (let i = 0; i < brokerKeys.length; i++) {
+            let broker = brokerKeys[i];
+            let servers = criticalServersByBroker[broker];
+            let cleanBroker = cleanForPronunciation(broker);
+            if (servers.length === 1) messageParts.push(cleanBroker + ' server ' + cleanForPronunciation(servers[0]));
+            else {
+                let serverList = servers.map(s => cleanForPronunciation(s)).join(', ');
+                messageParts.push(cleanBroker + ' servers ' + serverList);
+            }
+        }
+        if (messageParts.length === 1) return fullMessage + messageParts[0];
+        return fullMessage + messageParts.join(', then ');
     }
-}
+
+    function getTotalCriticalCount() {
+        let count = 0;
+        for (let broker in criticalServersByBroker) count += criticalServersByBroker[broker].length;
+        return count;
+    }
+
+    function loadVoices() { try { voices = speechSynthesis.getVoices(); } catch(e) {} }
+    if (speechSynthesis) {
+        loadVoices();
+        if (speechSynthesis.onvoiceschanged !== undefined) speechSynthesis.onvoiceschanged = loadVoices;
+    }
+
+    function getBestVoice() {
+        if (voices.length === 0) return null;
+        const preferred = ['Google UK English Female','Google US English','Microsoft David','Microsoft Zira','Samantha','Alex','Google UK English Male','en-US','en-GB','English'];
+        for (let p of preferred) {
+            let voice = voices.find(v => v.name.includes(p) || v.lang.includes(p));
+            if (voice) return voice;
+        }
+        return voices.find(v => v.lang.startsWith('en'));
+    }
+
+    function updateVoiceUI() {
+        const muteIcon = document.getElementById('muteIcon');
+        const muteBtn = document.getElementById('muteBtn');
+        if (!muteIcon || !muteBtn) return;
+        if (isMuted) {
+            muteIcon.className = 'fas fa-volume-mute';
+            muteBtn.style.color = 'var(--danger)';
+            muteBtn.style.borderColor = 'var(--danger)';
+        } else {
+            muteIcon.className = 'fas fa-volume-up';
+            const criticalCount = getTotalCriticalCount();
+            muteBtn.style.color = criticalCount > 0 ? 'var(--danger)' : '';
+            muteBtn.style.borderColor = criticalCount > 0 ? 'var(--danger)' : '';
+        }
+    }
+
+    function speakMessage(message, callback) {
+        if (!isVoiceEnabled || isMuted || !speechSynthesis || !message) { if (callback) callback(); return false; }
+        try { speechSynthesis.cancel(); } catch(e) {}
+        try {
+            const utterance = new SpeechSynthesisUtterance(message);
+            utterance.rate = 0.85; utterance.pitch = 1.1; utterance.volume = 1; utterance.lang = 'en-US';
+            const bestVoice = getBestVoice();
+            if (bestVoice) utterance.voice = bestVoice;
+            utterance.onerror = function() { if(callback) callback(); };
+            utterance.onend = function() { if(callback) callback(); };
+            setTimeout(() => { try { speechSynthesis.speak(utterance); } catch(e) { if(callback) callback(); } }, 50);
+            return true;
+        } catch(e) { if(callback) callback(); return false; }
+    }
+
+    function playVoiceAlert() {
+        if (voicePlayCount >= MAX_VOICE_PLAYS) return;
+        const criticalCount = getTotalCriticalCount();
+        if (criticalCount === 0) return;
+        if (!isVoiceEnabled || isMuted) return;
+        const message = buildSequentialMessage();
+        isPlaying = true;
+        voicePlayCount++;
+        speakMessage(message, function() { isPlaying = false; updateVoiceUI(); });
+        updateVoiceUI();
+    }
+
+    function toggleMute() {
+        isMuted = !isMuted;
+        saveVoicePreferences();
+        if (isMuted) try { speechSynthesis.cancel(); } catch(e) {}
+        isPlaying = false;
+        updateVoiceUI();
+    }
+
+    function loadVoicePreferences() {
+        try {
+            const saved = localStorage.getItem('voiceEnabled');
+            if (saved !== null) isVoiceEnabled = saved === 'true';
+            const muted = localStorage.getItem('voiceMuted');
+            if (muted !== null) isMuted = muted === 'true';
+        } catch(e) {}
+    }
+    function saveVoicePreferences() {
+        try {
+            localStorage.setItem('voiceEnabled', isVoiceEnabled);
+            localStorage.setItem('voiceMuted', isMuted);
+        } catch(e) {}
+    }
+    function testVoice() {
+        if (!userInteracted) { showOverlayAndInitialize(); return; }
+        if (!isVoiceEnabled) { alert('Voice system active. Click Unmute if muted.'); return; }
+        if (isMuted) { alert('Please unmute first'); return; }
+        speakMessage('Voice alert system is working correctly. This is a test message.', function() { alert('Voice test completed!'); });
+    }
+    function showOverlayAndInitialize() { document.getElementById('chromeVoiceOverlay').style.display = 'flex'; }
+    function hideOverlayAndInitialize() {
+        document.getElementById('chromeVoiceOverlay').style.display = 'none';
+        initializeVoiceSystem();
+    }
+    function initializeVoiceSystem() {
+        if (voiceInitialized) return;
+        voiceInitialized = true;
+        userInteracted = true;
+        localStorage.setItem('voiceEnabled', 'true');
+        localStorage.setItem('chromeVoiceEnabled', 'true');
+        loadVoicePreferences();
+        updateVoiceUI();
+        try {
+            const silent = new SpeechSynthesisUtterance('');
+            silent.volume = 0;
+            speechSynthesis.speak(silent);
+        } catch(e) {}
+        setTimeout(function() {
+            if (getTotalCriticalCount() > 0 && !isMuted && voicePlayCount < MAX_VOICE_PLAYS) playVoiceAlert();
+        }, 1500);
+    }
+    function playRefreshVoiceAnnouncement() {
+        if (getTotalCriticalCount() > 0 && isVoiceEnabled && !isMuted && userInteracted && voicePlayCount < MAX_VOICE_PLAYS) {
+            setTimeout(playVoiceAlert, 1500);
+        }
+    }
+
+    function getCleanUrl() { return window.location.pathname; }
+    function goToCleanUrl() { window.location.href = getCleanUrl(); }
+    function manualRefresh() { goToCleanUrl(); }
+
+    function countdown(elementName, minutes, seconds) {
+        var element, endTime, time;
+        function twoDigits(n) { return (n <= 9 ? "0" + n : n); }
+        function updateTimer() {
+            var msLeft = endTime - (+new Date);
+            if (msLeft < 1000) {
+                element.innerHTML = "...";
+                document.getElementById('refreshTimer').classList.add('warning-state');
+                setTimeout(goToCleanUrl, 1000);
+            } else {
+                time = new Date(msLeft);
+                var hours = time.getUTCHours();
+                var mins = time.getUTCMinutes();
+                element.innerHTML = (hours ? hours + ':' + twoDigits(mins) : mins) + ':' + twoDigits(time.getUTCSeconds());
+                if (msLeft < 60000) document.getElementById('refreshTimer').classList.add('warning-state');
+                else document.getElementById('refreshTimer').classList.remove('warning-state');
+                setTimeout(updateTimer, time.getUTCMilliseconds() + 500);
+            }
+        }
+        element = document.getElementById(elementName);
+        endTime = (+new Date) + 1000 * (60 * minutes + seconds) + 500;
+        updateTimer();
+    }
+
+    function toggleTimeFilter() {
+        var content = document.getElementById('timeFilterContent');
+        var toggle = document.querySelector('.time-filter-toggle');
+        content.classList.toggle('expanded');
+        toggle.classList.toggle('expanded');
+    }
+    function resetTimeFilter() { goToCleanUrl(); }
+
+    function setQuickFilter(minutes) {
+        var now = new Date();
+        var start = new Date(now.getTime() - minutes * 60000);
+        document.getElementById('fromDateTime').value = formatDateForInput(start);
+        document.getElementById('toDateTime').value = formatDateForInput(now);
+        document.querySelectorAll('.quick-filter-btn').forEach(b => b.classList.remove('active'));
+        event.target.classList.add('active');
+        document.getElementById('timeFilterForm').submit();
+    }
+    function formatDateForInput(date) {
+        var y = date.getFullYear();
+        var m = String(date.getMonth()+1).padStart(2,'0');
+        var d = String(date.getDate()).padStart(2,'0');
+        var h = String(date.getHours()).padStart(2,'0');
+        var min = String(date.getMinutes()).padStart(2,'0');
+        return y + '-' + m + '-' + d + 'T' + h + ':' + min;
+    }
+    function toggleBlinking() {
+        var body = document.body;
+        var icon = document.getElementById('blinkIcon');
+        if (body.classList.contains('no-blink')) {
+            body.classList.remove('no-blink');
+            icon.className = 'fas fa-eye';
+            localStorage.setItem('blinkingEnabled', 'true');
+        } else {
+            body.classList.add('no-blink');
+            icon.className = 'fas fa-eye-slash';
+            localStorage.setItem('blinkingEnabled', 'false');
+        }
+    }
+    function showIsolatedOnly() {
+        var cards = document.querySelectorAll('.broker-card');
+        var isolatedCount = 0;
+        cards.forEach(function(card) {
+            if (card.classList.contains('isolated')) { card.style.display = 'flex'; isolatedCount++; }
+            else card.style.display = 'none';
+        });
+        document.getElementById('showAllBtn').style.display = 'inline-flex';
+        var container = document.getElementById('brokerCardsContainer');
+        var existing = document.getElementById('noIsolatedMessage');
+        if (isolatedCount === 0 && !existing) {
+            var div = document.createElement('div');
+            div.id = 'noIsolatedMessage';
+            div.className = 'card';
+            div.style.cssText = 'grid-column: 1 / -1; text-align: center; padding: 3rem 1.5rem;';
+            div.innerHTML = '<i class="fas fa-shield-alt" style="font-size: 3rem; color: var(--text-faint); margin-bottom: 0.9rem;"></i><h3 style="color: var(--text-secondary); margin-bottom: 0.5rem; font-size: 1.15rem;">No Isolated Brokers</h3><button class="btn primary" onclick="showAllBrokers()" style="margin-top: 1rem;"><i class="fas fa-globe"></i> Show All</button>';
+            container.appendChild(div);
+        } else if (existing && isolatedCount > 0) existing.remove();
+    }
+    function showAllBrokers() {
+        document.querySelectorAll('.broker-card').forEach(c => c.style.display = 'flex');
+        document.getElementById('showAllBtn').style.display = 'none';
+        var msg = document.getElementById('noIsolatedMessage');
+        if (msg) msg.remove();
+    }
+    function openNewPage() {
+        window.open('<%= request.getContextPath() + "/jsp/A_SYS_SERVERWISE_COUNT_LDAP.jsp" %>', '_blank');
+    }
+
+    document.addEventListener('keydown', function(e) {
+        var isRefreshKey = (e.key === 'F5') ||
+                           (e.ctrlKey && (e.key === 'r' || e.key === 'R')) ||
+                           (e.metaKey && (e.key === 'r' || e.key === 'R'));
+        if (isRefreshKey) {
+            var hasFilter = window.location.search && window.location.search.length > 1;
+            if (hasFilter) { e.preventDefault(); window.location.href = window.location.pathname; return false; }
+        }
+        if (e.ctrlKey && e.key === 'b') { e.preventDefault(); toggleBlinking(); }
+        if (e.ctrlKey && e.key === 'i') { e.preventDefault(); showIsolatedOnly(); }
+        if (e.ctrlKey && e.key === 'a') { e.preventDefault(); showAllBrokers(); }
+        if (e.ctrlKey && e.key === 'v') { e.preventDefault(); testVoice(); }
+        if (e.ctrlKey && e.key === 'm') { e.preventDefault(); toggleMute(); }
+        if (e.ctrlKey && e.key === 'd') { e.preventDefault(); toggleTheme(); }
+    });
+
+    document.addEventListener('DOMContentLoaded', function() {
+        var overlay = document.getElementById('chromeVoiceOverlay');
+        var enableBtn = document.getElementById('enableVoiceNowBtn');
+        if (overlay) overlay.addEventListener('click', function(e) {
+            if (e.target === overlay || e.target === enableBtn) hideOverlayAndInitialize();
+        });
+        if (enableBtn) enableBtn.addEventListener('click', hideOverlayAndInitialize);
+
+        var blinkingPref = localStorage.getItem('blinkingEnabled');
+        if (blinkingPref === 'false') {
+            document.body.classList.add('no-blink');
+            document.getElementById('blinkIcon').className = 'fas fa-eye-slash';
+        }
+
+        countdown('ten-countdown', 10, 0);
+
+        var urlParams = new URLSearchParams(window.location.search);
+        var fromDateTime = urlParams.get('fromDateTime');
+        var toDateTime = urlParams.get('toDateTime');
+        if (fromDateTime && toDateTime) {
+            var diffMinutes = Math.round((new Date(toDateTime) - new Date(fromDateTime)) / (1000 * 60));
+            document.querySelectorAll('.quick-filter-btn').forEach(function(btn) {
+                btn.classList.remove('active');
+                var minutes = parseInt(btn.getAttribute('onclick')?.match(/\d+/) || '60');
+                if (Math.abs(diffMinutes - minutes) < 5) btn.classList.add('active');
+            });
+        }
+
+        if (hasUserInteracted) {
+            userInteracted = true;
+            voiceInitialized = true;
+            loadVoicePreferences();
+            updateVoiceUI();
+            setTimeout(playRefreshVoiceAnnouncement, 1500);
+        } else {
+            setTimeout(function() { if (!userInteracted) showOverlayAndInitialize(); }, 500);
+        }
+    });
+
+    window.addEventListener('beforeunload', function() {
+        saveVoicePreferences();
+        try { speechSynthesis.cancel(); } catch(e) {}
+    });
+</script>
+
+</body>
+</html>
