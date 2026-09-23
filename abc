@@ -1,3 +1,7 @@
+cd /d "F:\jakarta new portal\EISPortalVer2(1)\WebContent\WEB-INF\lib"
+for %f in (*.jar) do @jar tf "%f" 2>nul | findstr /c:"websocket/drawboard/DrawboardContextListener.class" >nul && echo FOUND IN: %f
+
+
 <!DOCTYPE html>
 <%@page import="org.apache.poi.util.SystemOutLogger"%>
 <%@page import="org.json.JSONObject"%>
