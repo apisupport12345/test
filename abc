@@ -1,5 +1,6 @@
 cd /d "F:\jakarta new portal\EISPortalVer2(1)\WebContent\WEB-INF\lib"
 for %f in (*.jar) do @jar tf "%f" 2>nul | findstr /c:"websocket/drawboard/DrawboardContextListener.class" >nul && echo FOUND IN: %f
+jar tf "F:\jakarta new portal\EISPortalVer2(1)\WebContent\WEB-INF\lib\abc.jar" | findstr /i "Drawboard"
 
 
 <!DOCTYPE html>
