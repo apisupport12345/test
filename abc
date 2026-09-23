@@ -4,14 +4,17 @@ import java.math.BigDecimal;
 import java.sql.*;
 import java.sql.Date;
 import java.text.SimpleDateFormat;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.Locale;
 import java.util.concurrent.*;
 
 import com.jdbc.DBUtilityAuto;
 
 public class HourlyQueryCronEISSBIDATA2 {
 
-    private static final int QUERY_TIMEOUT_SECONDS = 1800; // increased to 30 minutes
+    private static final int QUERY_TIMEOUT_SECONDS = 1800; // 30 minutes
     private static final int FETCH_SIZE = 1000;
     private static final int THREAD_POOL_SIZE = 4;
     private static final int MAX_RETRIES = 3;
@@ -20,19 +23,44 @@ public class HourlyQueryCronEISSBIDATA2 {
     private static final int QUERY_START = 0;
     private static final int QUERY_END   = 6;
 
+    // Formatter used only for log labels. LocalDateTime has no zone,
+    // so the pattern must NOT contain 'z'/'zzz'/'Z'/'VV'.
+    private static final DateTimeFormatter LOG_TIME_FMT =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.ENGLISH);
+
+    private static String nowLabel() {
+        return "[" + LocalDateTime.now().format(LOG_TIME_FMT) + "]";
+    }
+
     private static String flagStatus = "DR";
 
     static {
-        try (Connection conn = DBUtilityAuto.getReportDBConnection();
-             Statement smt = conn.createStatement();
-             ResultSet rs = smt.executeQuery("SELECT FLAG FROM connection_master")) {
-            if (rs.next()) {
-                flagStatus = rs.getString("FLAG");
-                if (flagStatus == null) flagStatus = "DR";
+        // Try-with-resources so connections/statements/resultsets are closed
+        // even if an exception is thrown.
+        Connection conn = null;
+        Statement smt = null;
+        ResultSet rs = null;
+        try {
+            conn = DBUtilityAuto.getReportDBConnection();
+            if (conn == null || conn.isClosed()) {
+                throw new SQLException("Report DB connection unavailable");
             }
-            System.out.println("[" + new Date(0) + "] Flag status initialized: " + flagStatus);
+            smt = conn.createStatement();
+            rs = smt.executeQuery("SELECT FLAG FROM connection_master");
+            if (rs.next()) {
+                String f = rs.getString("FLAG");
+                if (f != null && !f.trim().isEmpty()) {
+                    flagStatus = f.trim();
+                }
+            }
+            System.out.println(nowLabel() + " Flag status initialized: " + flagStatus);
         } catch (Exception e) {
-            System.out.println("[" + new Date(0) + "] Flag not found! Using default DR. Error: " + e.getMessage());
+            System.out.println(nowLabel()
+                    + " Flag not found! Using default DR. Error: " + e.getMessage());
+        } finally {
+            try { if (rs != null) rs.close(); } catch (SQLException e) { /* ignore */ }
+            try { if (smt != null) smt.close(); } catch (SQLException e) { /* ignore */ }
+            try { if (conn != null) conn.close(); } catch (SQLException e) { /* ignore */ }
         }
     }
 
@@ -40,9 +68,15 @@ public class HourlyQueryCronEISSBIDATA2 {
         java.util.Date startTime, endTime;
         if (args.length >= 2) {
             try {
-                SimpleDateFormat sdf = new SimpleDateFormat("dd-MMM-yyyy HH:mm:ss");
+                SimpleDateFormat sdf =
+                        new SimpleDateFormat("dd-MMM-yyyy HH:mm:ss", Locale.ENGLISH);
+                sdf.setLenient(false);
                 startTime = sdf.parse(args[0]);
                 endTime = sdf.parse(args[1]);
+                if (!startTime.before(endTime)) {
+                    System.err.println("startTime must be before endTime");
+                    return;
+                }
             } catch (Exception e) {
                 System.err.println("Invalid date format. Use dd-MMM-yyyy HH:mm:ss");
                 return;
@@ -57,10 +91,11 @@ public class HourlyQueryCronEISSBIDATA2 {
             startTime = cal.getTime();
         }
 
-        System.out.println("[" + new Date(0) + "] Running cron (Part 2) for window: " + startTime + " to " + endTime);
-        final String fromDate = formatDate(startTime);
-        final String toDate = formatDate(endTime);
+        System.out.println(nowLabel() + " Running cron (Part 2, queries 0-6) for window: "
+                + startTime + " to " + endTime);
+
         final String partition = getPartition(startTime);
+        System.out.println(nowLabel() + " Using partition: " + partition);
 
         ExecutorService executor = Executors.newFixedThreadPool(THREAD_POOL_SIZE);
         List<Future<?>> futures = new ArrayList<>();
@@ -71,26 +106,41 @@ public class HourlyQueryCronEISSBIDATA2 {
             final int qIdx = queryIndex;
             Future<?> future = executor.submit(() -> {
                 String threadName = Thread.currentThread().getName();
-                System.out.println("[" + threadName + "] Starting query " + qIdx);
+                System.out.println("[" + threadName + "] " + nowLabel()
+                        + " Starting query " + qIdx);
                 int attempt = 1;
                 boolean success = false;
                 while (!success && attempt <= MAX_RETRIES) {
                     long queryStart = System.currentTimeMillis();
                     try {
-                        executeAndInsert(qIdx, fromDate, toDate, partition, startTime, endTime);
+                        executeAndInsert(qIdx, partition, startTime, endTime);
                         success = true;
                         long queryDuration = System.currentTimeMillis() - queryStart;
-                        System.out.println("[" + threadName + "] Query " + qIdx + " completed successfully in " + queryDuration + " ms (attempt " + attempt + ")");
+                        System.out.println("[" + threadName + "] " + nowLabel()
+                                + " Query " + qIdx + " completed successfully in "
+                                + queryDuration + " ms (attempt " + attempt + ")");
                     } catch (Exception e) {
                         long queryDuration = System.currentTimeMillis() - queryStart;
-                        System.err.println("[" + threadName + "] Attempt " + attempt + " failed for query " + qIdx +
-                                           " after " + queryDuration + " ms: " + e.getMessage());
+                        System.err.println("[" + threadName + "] " + nowLabel()
+                                + " Attempt " + attempt + " failed for query " + qIdx
+                                + " after " + queryDuration + " ms: " + e.getMessage());
+
+                        if (isNonRetryable(e)) {
+                            System.err.println("[" + threadName + "] " + nowLabel()
+                                    + " Query " + qIdx
+                                    + " hit a non-retryable error; aborting retries.");
+                            e.printStackTrace();
+                            break;
+                        }
+
                         if (attempt == MAX_RETRIES) {
                             e.printStackTrace();
                         } else {
                             try {
                                 long delay = RETRY_DELAY_MS * attempt;
-                                System.out.println("[" + threadName + "] Retrying query " + qIdx + " after " + delay + " ms");
+                                System.out.println("[" + threadName + "] " + nowLabel()
+                                        + " Retrying query " + qIdx + " after "
+                                        + delay + " ms");
                                 Thread.sleep(delay);
                             } catch (InterruptedException ie) {
                                 Thread.currentThread().interrupt();
@@ -101,7 +151,9 @@ public class HourlyQueryCronEISSBIDATA2 {
                     }
                 }
                 if (!success) {
-                    System.err.println("[" + threadName + "] Query " + qIdx + " failed after " + MAX_RETRIES + " attempts.");
+                    System.err.println("[" + threadName + "] " + nowLabel()
+                            + " Query " + qIdx + " failed after "
+                            + MAX_RETRIES + " attempts.");
                 }
             });
             futures.add(future);
@@ -111,7 +163,8 @@ public class HourlyQueryCronEISSBIDATA2 {
         try {
             if (!executor.awaitTermination(60, TimeUnit.MINUTES)) {
                 executor.shutdownNow();
-                System.err.println("[" + new Date(batchStart) + "] Some queries did not finish within timeout");
+                System.err.println(nowLabel()
+                        + " Some queries did not finish within timeout");
             }
         } catch (InterruptedException e) {
             executor.shutdownNow();
@@ -119,12 +172,44 @@ public class HourlyQueryCronEISSBIDATA2 {
         }
 
         long totalTime = System.currentTimeMillis() - batchStart;
-        System.out.println("[" + new Date(totalTime) + "] All Part 2 queries completed in " + totalTime + " ms");
+        System.out.println(nowLabel() + " All Part 2 queries completed in "
+                + totalTime + " ms");
     }
 
+    /**
+     * Deterministic errors (bad data / bad format) will never succeed on retry.
+     */
+    private static boolean isNonRetryable(Throwable t) {
+        Throwable cause = t;
+        while (cause != null) {
+            if (cause instanceof SQLDataException) {
+                return true;
+            }
+            String msg = cause.getMessage();
+            if (msg != null) {
+                String m = msg.toUpperCase(Locale.ENGLISH);
+                if (m.contains("ORA-01861")     // literal does not match format string
+                        || m.contains("ORA-01858")  // non-numeric where numeric expected
+                        || m.contains("ORA-01843")  // not a valid month
+                        || m.contains("ORA-01722")  // invalid number
+                        || m.contains("ORA-00904")  // invalid identifier
+                        || m.contains("ORA-00942")) { // table or view does not exist
+                    return true;
+                }
+            }
+            cause = cause.getCause();
+        }
+        return false;
+    }
+
+    /**
+     * Kept for formatting the partition name / logging only.
+     * Uses Locale.ENGLISH so MMM always yields JAN..DEC.
+     */
     private static String formatDate(java.util.Date date) {
-        SimpleDateFormat sdf = new SimpleDateFormat("dd-MMM-yyyy HH:mm:ss");
-        return sdf.format(date).toUpperCase();
+        SimpleDateFormat sdf =
+                new SimpleDateFormat("dd-MMM-yyyy HH:mm:ss", Locale.ENGLISH);
+        return sdf.format(date).toUpperCase(Locale.ENGLISH);
     }
 
     private static String getPartition(java.util.Date fromDate) {
@@ -137,8 +222,9 @@ public class HourlyQueryCronEISSBIDATA2 {
         return month + "_" + year;
     }
 
-    private static void executeAndInsert(int queryIndex, String fromDate, String toDate,
-                                         String partition, java.util.Date startTime, java.util.Date endTime) throws Exception {
+    private static void executeAndInsert(int queryIndex, String partition,
+                                         java.util.Date startTime,
+                                         java.util.Date endTime) throws Exception {
         String threadName = Thread.currentThread().getName();
         long methodStart = System.currentTimeMillis();
 
@@ -153,60 +239,74 @@ public class HourlyQueryCronEISSBIDATA2 {
             long connStart = System.currentTimeMillis();
             readConn = DBUtilityAuto.getIIBDBConnection();
             if (readConn == null || readConn.isClosed()) {
-                throw new SQLException("Could not get IIB connection for query " + queryIndex);
+                throw new SQLException("Could not get IIB connection for query "
+                        + queryIndex);
             }
             readConn.setAutoCommit(false);
             readConn.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
             long connDuration = System.currentTimeMillis() - connStart;
-            System.out.println("[" + threadName + "] Query " + queryIndex + " read connection acquired in " + connDuration + " ms");
+            System.out.println("[" + threadName + "] " + nowLabel()
+                    + " Query " + queryIndex + " read connection acquired in "
+                    + connDuration + " ms");
 
             connStart = System.currentTimeMillis();
             writeConn = DBUtilityAuto.getReportDBConnection();
             if (writeConn == null || writeConn.isClosed()) {
-                throw new SQLException("Could not get report connection for query " + queryIndex);
+                throw new SQLException("Could not get report connection for query "
+                        + queryIndex);
             }
             writeConn.setAutoCommit(false);
             connDuration = System.currentTimeMillis() - connStart;
-            System.out.println("[" + threadName + "] Query " + queryIndex + " report connection acquired in " + connDuration + " ms");
+            System.out.println("[" + threadName + "] " + nowLabel()
+                    + " Query " + queryIndex + " report connection acquired in "
+                    + connDuration + " ms");
 
             String query = getQuery(queryIndex, partition);
-            ps = readConn.prepareStatement(query, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
+            ps = readConn.prepareStatement(query,
+                    ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
             ps.setFetchSize(FETCH_SIZE);
             ps.setQueryTimeout(QUERY_TIMEOUT_SECONDS);
-            setQueryParameters(ps, queryIndex, fromDate, toDate);
+            setQueryParameters(ps, queryIndex, startTime, endTime);
 
             long execStart = System.currentTimeMillis();
             rs = ps.executeQuery();
             long execDurationMs = System.currentTimeMillis() - execStart;
             double execDurationSec = execDurationMs / 1000.0;
-            System.out.println("[" + threadName + "] Query " + queryIndex + " SELECT execution took " + execDurationMs + " ms (" + execDurationSec + " sec)");
+            System.out.println("[" + threadName + "] " + nowLabel()
+                    + " Query " + queryIndex + " SELECT execution took "
+                    + execDurationMs + " ms (" + execDurationSec + " sec)");
 
             ResultSetMetaData meta = rs.getMetaData();
             int colCount = meta.getColumnCount();
             List<String> colNames = new ArrayList<>();
             for (int i = 1; i <= colCount; i++) {
-                colNames.add(meta.getColumnName(i).toUpperCase());
+                colNames.add(meta.getColumnName(i).toUpperCase(Locale.ENGLISH));
             }
 
             List<Map<String, Object>> rows = new ArrayList<>();
             while (rs.next()) {
                 Map<String, Object> row = new LinkedHashMap<>();
                 for (int i = 1; i <= colCount; i++) {
-                    row.put(colNames.get(i-1), rs.getObject(i));
+                    row.put(colNames.get(i - 1), rs.getObject(i));
                 }
                 rows.add(row);
             }
-            System.out.println("[" + threadName + "] Query " + queryIndex + " fetched " + rows.size() + " rows");
+            System.out.println("[" + threadName + "] " + nowLabel()
+                    + " Query " + queryIndex + " fetched " + rows.size() + " rows");
 
             String tableName = getTableName(queryIndex);
-            String deleteSQL = "DELETE FROM " + tableName + " WHERE START_TIME = ? AND END_TIME = ?";
+            String deleteSQL = "DELETE FROM " + tableName
+                    + " WHERE START_TIME = ? AND END_TIME = ?";
             deleteStmt = writeConn.prepareStatement(deleteSQL);
             deleteStmt.setTimestamp(1, new Timestamp(startTime.getTime()));
             deleteStmt.setTimestamp(2, new Timestamp(endTime.getTime()));
             int deleted = deleteStmt.executeUpdate();
-            System.out.println("[" + threadName + "] Deleted " + deleted + " existing rows from " + tableName + " for this time window");
+            System.out.println("[" + threadName + "] " + nowLabel()
+                    + " Deleted " + deleted + " existing rows from " + tableName
+                    + " for this time window");
 
-            StringBuilder insertSQL = new StringBuilder("INSERT INTO " + tableName + " (");
+            StringBuilder insertSQL = new StringBuilder("INSERT INTO "
+                    + tableName + " (");
             insertSQL.append("START_TIME, END_TIME, QUERY_DURATION_SEC");
             for (String col : colNames) {
                 insertSQL.append(", ").append(col);
@@ -226,8 +326,10 @@ public class HourlyQueryCronEISSBIDATA2 {
 
             for (Map<String, Object> row : rows) {
                 int paramIndex = 1;
-                insertStmt.setTimestamp(paramIndex++, new Timestamp(startTime.getTime()));
-                insertStmt.setTimestamp(paramIndex++, new Timestamp(endTime.getTime()));
+                insertStmt.setTimestamp(paramIndex++,
+                        new Timestamp(startTime.getTime()));
+                insertStmt.setTimestamp(paramIndex++,
+                        new Timestamp(endTime.getTime()));
                 insertStmt.setDouble(paramIndex++, execDurationSec);
 
                 for (String col : colNames) {
@@ -241,11 +343,18 @@ public class HourlyQueryCronEISSBIDATA2 {
                     } else if (value instanceof Timestamp) {
                         insertStmt.setTimestamp(paramIndex++, (Timestamp) value);
                     } else if (value instanceof java.sql.Date) {
-                        insertStmt.setTimestamp(paramIndex++, new Timestamp(((java.sql.Date) value).getTime()));
+                        insertStmt.setTimestamp(paramIndex++,
+                                new Timestamp(((java.sql.Date) value).getTime()));
                     } else if (value instanceof Integer) {
                         insertStmt.setInt(paramIndex++, (Integer) value);
                     } else if (value instanceof Long) {
                         insertStmt.setLong(paramIndex++, (Long) value);
+                    } else if (value instanceof Double) {
+                        insertStmt.setDouble(paramIndex++, (Double) value);
+                    } else if (value instanceof Float) {
+                        insertStmt.setFloat(paramIndex++, (Float) value);
+                    } else if (value instanceof Boolean) {
+                        insertStmt.setBoolean(paramIndex++, (Boolean) value);
                     } else {
                         insertStmt.setObject(paramIndex++, value);
                     }
@@ -268,33 +377,36 @@ public class HourlyQueryCronEISSBIDATA2 {
             long insertDuration = System.currentTimeMillis() - insertStart;
             writeConn.commit();
 
-            System.out.println("[" + threadName + "] Query " + queryIndex +
-                               " inserted " + rowCount + " rows into " + tableName +
-                               " (insert took " + insertDuration + " ms)");
+            System.out.println("[" + threadName + "] " + nowLabel()
+                    + " Query " + queryIndex + " inserted " + rowCount
+                    + " rows into " + tableName
+                    + " (insert took " + insertDuration + " ms)");
 
             long totalDuration = System.currentTimeMillis() - methodStart;
-            System.out.println("[" + threadName + "] Query " + queryIndex + " total processing time: " + totalDuration + " ms");
+            System.out.println("[" + threadName + "] " + nowLabel()
+                    + " Query " + queryIndex + " total processing time: "
+                    + totalDuration + " ms");
 
         } catch (SQLException e) {
             if (writeConn != null) {
-                try { writeConn.rollback(); } catch (SQLException ex) {}
+                try { writeConn.rollback(); } catch (SQLException ex) { /* ignore */ }
             }
             throw e;
         } catch (Exception e) {
             if (writeConn != null) {
-                try { writeConn.rollback(); } catch (SQLException ex) {}
+                try { writeConn.rollback(); } catch (SQLException ex) { /* ignore */ }
             }
             throw e;
         } finally {
-            try { if (rs != null) rs.close(); } catch (SQLException e) {}
-            try { if (ps != null) ps.close(); } catch (SQLException e) {}
-            try { if (insertStmt != null) insertStmt.close(); } catch (SQLException e) {}
-            try { if (deleteStmt != null) deleteStmt.close(); } catch (SQLException e) {}
+            try { if (rs != null) rs.close(); } catch (SQLException e) { /* ignore */ }
+            try { if (ps != null) ps.close(); } catch (SQLException e) { /* ignore */ }
+            try { if (insertStmt != null) insertStmt.close(); } catch (SQLException e) { /* ignore */ }
+            try { if (deleteStmt != null) deleteStmt.close(); } catch (SQLException e) { /* ignore */ }
             if (readConn != null) {
-                try { readConn.setAutoCommit(true); readConn.close(); } catch (SQLException e) {}
+                try { readConn.setAutoCommit(true); readConn.close(); } catch (SQLException e) { /* ignore */ }
             }
             if (writeConn != null) {
-                try { writeConn.setAutoCommit(true); writeConn.close(); } catch (SQLException e) {}
+                try { writeConn.setAutoCommit(true); writeConn.close(); } catch (SQLException e) { /* ignore */ }
             }
         }
     }
@@ -308,12 +420,17 @@ public class HourlyQueryCronEISSBIDATA2 {
             case 4: return "SBI_CAPS_HOURLY";
             case 5: return "IVR_HOURLY";
             case 6: return "DMZ_HOURLY";
-            default: throw new IllegalArgumentException("Invalid query index for Part 2: " + queryIndex);
+            default: throw new IllegalArgumentException(
+                    "Invalid query index for Part 2: " + queryIndex);
         }
     }
 
+    // ========== QUERY DEFINITIONS (Part 2: queries 0-6) ==========
+    // Date placeholders are plain '?' — bound via setTimestamp() so there is
+    // no TO_DATE format-string dependency (no more ORA-01861).
     private static String getQuery(int queryIndex, String partition) {
-        String part = (partition == null || partition.isEmpty()) ? "" : " PARTITION(" + partition + ")";
+        String part = (partition == null || partition.isEmpty())
+                ? "" : " PARTITION(" + partition + ")";
 
         switch (queryIndex) {
             case 0:
@@ -325,7 +442,8 @@ public class HourlyQueryCronEISSBIDATA2 {
                        "WHERE url IN ('http://eispri.sbi.co.in:3113/aadharVault/refKeyEnq/misc', " +
                        "'http://eispri.sbi.co.in:3113/aadharVault/storeData/misc', " +
                        "'http://eispri.sbi.co.in:3113/aadharVault/fetchAadhar/misc') " +
-                       "AND request_date_time BETWEEN TO_DATE(?, 'DD-MON-YYYY HH24:MI:SS') AND TO_DATE(?, 'DD-MON-YYYY HH24:MI:SS')";
+                       "AND request_date_time BETWEEN ? AND ?";
+
             case 1:
                 return "SELECT /*+ PARALLEL(4) */ COUNT(*) AS TOTAL_HITS, " +
                        "SUM(CASE WHEN ERROR_CODE IS NULL THEN 1 ELSE 0 END) AS SUCCESS, " +
@@ -333,7 +451,8 @@ public class HourlyQueryCronEISSBIDATA2 {
                        "SUM(CASE WHEN ERROR_CODE NOT IN ('SI002', 'SI014', 'SI001', 'SI051') THEN 1 ELSE 0 END) AS BD " +
                        "FROM EISAPP.api_log" + part + " " +
                        "WHERE url = 'http://eispri.sbi.co.in:3013/PANMatchingDetails/misc' " +
-                       "AND request_date_time BETWEEN TO_DATE(?, 'DD-MON-YYYY HH24:MI:SS') AND TO_DATE(?, 'DD-MON-YYYY HH24:MI:SS')";
+                       "AND request_date_time BETWEEN ? AND ?";
+
             case 2:
                 return "SELECT /*+ PARALLEL(4) */ " +
                        "ROUND(SUM(CASE WHEN ERROR_CODE IN ('SI001', 'SI002', 'SI007', 'SI014', 'SI017', 'SI569', 'SI570') THEN 1 ELSE 0 END) * 100 / NULLIF(COUNT(*), 0), 2) AS EIS_TD_PERCENT, " +
@@ -343,7 +462,8 @@ public class HourlyQueryCronEISSBIDATA2 {
                        "AND url IN ('http://eispri.sbi.co.in:3002/ckyc/Creation/customers', " +
                        "'http://eispri.sbi.co.in:3002/ckycPersonalDetails_th/update/customers', " +
                        "'http://eispri.sbi.co.in:3002/ckycPersonalDetails_th/enquiry/customers') " +
-                       "AND request_date_time BETWEEN TO_DATE(?, 'DD-MON-YYYY HH24:MI:SS') AND TO_DATE(?, 'DD-MON-YYYY HH24:MI:SS')";
+                       "AND request_date_time BETWEEN ? AND ?";
+
             case 3:
                 return "SELECT /*+ PARALLEL(4) */ " +
                        "ROUND(SUM(CASE WHEN ERROR_CODE IN ('SI001', 'SI002', 'SI007', 'SI014', 'SI017', 'SI569', 'SI570') THEN 1 ELSE 0 END) * 100 / NULLIF(COUNT(*), 0), 2) AS EIS_TD_PERCENT, " +
@@ -351,38 +471,45 @@ public class HourlyQueryCronEISSBIDATA2 {
                        "FROM EISAPP.api_log" + part + " " +
                        "WHERE URL IN ('http://eispri.sbi.co.in:3021/amlockName/CCSID/ScreeningDetails/customers', " +
                        "'http://eispri.sbi.co.in:3011/amlockName/acknowledgeDetails/misc') " +
-                       "AND REQUEST_DATE_TIME BETWEEN TO_DATE(?, 'DD-MON-YYYY HH24:MI:SS') AND TO_DATE(?, 'DD-MON-YYYY HH24:MI:SS')";
+                       "AND REQUEST_DATE_TIME BETWEEN ? AND ?";
+
             case 4:
                 return "SELECT /*+ PARALLEL(4) */ COUNT(*) AS TOTAL_HITS, " +
                        "SUM(CASE WHEN RESPONSE_STATUS IN ('0', 'SUCCESS') THEN 1 ELSE 0 END) AS SUCCESS, " +
                        "ROUND(SUM(CASE WHEN ERROR_CODE IN ('SI002', 'SI014', 'SI001', 'SI051', 'SI007', 'SI569', 'SI570') THEN 1 ELSE 0 END) * 100 / NULLIF(COUNT(*), 0), 2) AS TD_PERCENT " +
                        "FROM EISAPP.api_log" + part + " " +
                        "WHERE SUBSTR(URN, 4, 2) = 'SA' " +
-                       "AND REQUEST_DATE_TIME BETWEEN TO_DATE(?, 'DD-MON-YYYY HH24:MI:SS') AND TO_DATE(?, 'DD-MON-YYYY HH24:MI:SS')";
+                       "AND REQUEST_DATE_TIME BETWEEN ? AND ?";
+
             case 5:
                 return "SELECT /*+ PARALLEL(4) */ COUNT(*) AS TOTAL_HITS, " +
                        "SUM(CASE WHEN RESPONSE_STATUS IN ('0', 'SUCCESS') THEN 1 ELSE 0 END) AS SUCCESS, " +
                        "ROUND(SUM(CASE WHEN ERROR_CODE IN ('SI002', 'SI014', 'SI001', 'SI051', 'SI007', 'SI569', 'SI570') THEN 1 ELSE 0 END) * 100 / NULLIF(COUNT(*), 0), 2) AS TD_PERCENT " +
                        "FROM EISAPP.api_log" + part + " " +
                        "WHERE BROKER_NAME = 'IVR_EXP' " +
-                       "AND REQUEST_DATE_TIME BETWEEN TO_DATE(?, 'DD-MON-YYYY HH24:MI:SS') AND TO_DATE(?, 'DD-MON-YYYY HH24:MI:SS')";
+                       "AND REQUEST_DATE_TIME BETWEEN ? AND ?";
+
             case 6:
-                // DYNAMIC DMZ â€“ exclude NULL IPs
+                // DMZ – exclude NULL IPs
                 return "SELECT /*+ PARALLEL(4) */ dpg_ip AS IP, COUNT(*) AS COUNT " +
                        "FROM EISAPP.api_log" + part + " " +
-                       "WHERE REQUEST_DATE_TIME BETWEEN TO_DATE(?, 'DD-MON-YYYY HH24:MI:SS') " +
-                       "AND TO_DATE(?, 'DD-MON-YYYY HH24:MI:SS') " +
+                       "WHERE REQUEST_DATE_TIME BETWEEN ? AND ? " +
                        "AND dpg_ip IS NOT NULL " +
                        "GROUP BY dpg_ip";
+
             default:
-                throw new IllegalArgumentException("Unknown query index for Part 2: " + queryIndex);
+                throw new IllegalArgumentException(
+                        "Unknown query index for Part 2: " + queryIndex);
         }
     }
 
-    private static void setQueryParameters(PreparedStatement ps, int queryIndex, String fromDate, String toDate)
-            throws SQLException {
+    private static void setQueryParameters(PreparedStatement ps, int queryIndex,
+                                           java.util.Date startTime,
+                                           java.util.Date endTime) throws SQLException {
+        Timestamp fromTs = new Timestamp(startTime.getTime());
+        Timestamp toTs   = new Timestamp(endTime.getTime());
         // All queries 0-6 require two date parameters
-        ps.setString(1, fromDate);
-        ps.setString(2, toDate);
+        ps.setTimestamp(1, fromTs);
+        ps.setTimestamp(2, toTs);
     }
 }
