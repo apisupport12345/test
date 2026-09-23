@@ -1,10 +1,8 @@
 package com.cron;
 
 import java.sql.*;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
+import java.text.SimpleDateFormat;
 import java.util.*;
-import java.util.Locale;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
@@ -19,7 +17,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.security.cert.X509Certificate;
 
-public class HourlyExpMonitoringCron {
+public class HourlySysMonitoringCron {
 
     private static final int QUERY_TIMEOUT_SECONDS = 1800;
     private static final int FETCH_SIZE = 1000;
@@ -27,56 +25,41 @@ public class HourlyExpMonitoringCron {
     private static final int MAX_RETRIES = 2;
     private static final long RETRY_DELAY_MS = 5000;
 
-    // Formatter used only for log labels. LocalDateTime has no zone,
-    // so pattern must NOT contain 'z'/'zzz'/'Z'/'VV'.
-    private static final DateTimeFormatter LOG_TIME_FMT =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.ENGLISH);
-
-    // Mapping structures
+    // SYS-specific mapping structures
     private static Map<String, String> brokerMapping = new HashMap<>();
     private static Map<String, String> portMapping = new HashMap<>();
     private static Map<String, Integer> brokerOrderMapping = new HashMap<>();
     private static Map<String, List<String>> brokerIPMapping = new HashMap<>();
     private static Map<String, Map<String, Boolean>> isolatedBrokers = new HashMap<>();
 
-    // Cached flag status
-    private static volatile String flagStatus = "DR";
-
-    private static String nowLabel() {
-        return "[" + LocalDateTime.now().format(LOG_TIME_FMT) + "]";
-    }
-
-    private static String sec(long ms) {
-        return String.format(Locale.ENGLISH, "%.2f sec", ms / 1000.0);
-    }
+    // Date formatter for consistent logging
+    private static final SimpleDateFormat LOG_DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
 
     public static void main(String[] args) {
+        // Compute 60-minute rolling window ending at the current 10-minute mark
         Calendar cal = Calendar.getInstance();
         cal.set(Calendar.SECOND, 0);
         cal.set(Calendar.MILLISECOND, 0);
         int minute = cal.get(Calendar.MINUTE);
-        int roundedMinute = (minute / 10) * 10;
+        int roundedMinute = (minute / 10) * 10; // floor to previous 10-min mark
         cal.set(Calendar.MINUTE, roundedMinute);
         java.util.Date endTime = cal.getTime();
         cal.add(Calendar.MINUTE, -60);
         java.util.Date startTime = cal.getTime();
 
-        System.out.println(nowLabel()
-                + " Running EXP Monitoring Cron (10-min trigger, 60-min window): "
-                + LOG_TIME_FMT.format(toLocal(startTime)) + " to "
-                + LOG_TIME_FMT.format(toLocal(endTime)));
-
+        // Fix: Use proper date formatting for logging
+        System.out.println("[" + LOG_DATE_FORMAT.format(new java.util.Date()) + "] Running SYS Monitoring Cron (10-min trigger, 60-min window): " +
+                LOG_DATE_FORMAT.format(startTime) + " to " + LOG_DATE_FORMAT.format(endTime));
         final String partition = getPartition(startTime);
-        System.out.println(nowLabel() + " Using partition: " + partition);
 
         ExecutorService executor = Executors.newFixedThreadPool(THREAD_POOL_SIZE);
+        List<Future<?>> futures = new ArrayList<>();
 
         long batchStart = System.currentTimeMillis();
 
         Future<?> future = executor.submit(() -> {
             String threadName = Thread.currentThread().getName();
-            System.out.println("[" + threadName + "] " + nowLabel()
-                    + " Starting EXP Monitoring");
+            System.out.println("[" + LOG_DATE_FORMAT.format(new java.util.Date()) + "] [" + threadName + "] Starting SYS Monitoring");
             int attempt = 1;
             boolean success = false;
             while (!success && attempt <= MAX_RETRIES) {
@@ -85,29 +68,16 @@ public class HourlyExpMonitoringCron {
                     executeMonitoring(partition, startTime, endTime);
                     success = true;
                     long queryDuration = System.currentTimeMillis() - queryStart;
-                    System.out.println("[" + threadName + "] " + nowLabel()
-                            + " EXP Monitoring completed successfully in "
-                            + sec(queryDuration) + " (attempt " + attempt + ")");
+                    System.out.println("[" + LOG_DATE_FORMAT.format(new java.util.Date()) + "] [" + threadName + "] SYS Monitoring completed successfully in " + queryDuration + " ms (attempt " + attempt + ")");
                 } catch (Exception e) {
                     long queryDuration = System.currentTimeMillis() - queryStart;
-                    System.err.println("[" + threadName + "] " + nowLabel()
-                            + " Attempt " + attempt + " failed after "
-                            + sec(queryDuration) + ": " + e.getMessage());
-
-                    if (isNonRetryable(e)) {
-                        System.err.println("[" + threadName + "] " + nowLabel()
-                                + " Non-retryable error; aborting retries.");
-                        e.printStackTrace();
-                        break;
-                    }
-
+                    System.err.println("[" + LOG_DATE_FORMAT.format(new java.util.Date()) + "] [" + threadName + "] Attempt " + attempt + " failed: " + e.getMessage());
                     if (attempt == MAX_RETRIES) {
                         e.printStackTrace();
                     } else {
                         try {
                             long delay = RETRY_DELAY_MS * attempt;
-                            System.out.println("[" + threadName + "] " + nowLabel()
-                                    + " Retrying after " + sec(delay));
+                            System.out.println("[" + LOG_DATE_FORMAT.format(new java.util.Date()) + "] [" + threadName + "] Retrying after " + delay + " ms");
                             Thread.sleep(delay);
                         } catch (InterruptedException ie) {
                             Thread.currentThread().interrupt();
@@ -118,17 +88,16 @@ public class HourlyExpMonitoringCron {
                 }
             }
             if (!success) {
-                System.err.println("[" + threadName + "] " + nowLabel()
-                        + " EXP Monitoring failed after " + MAX_RETRIES + " attempts.");
+                System.err.println("[" + LOG_DATE_FORMAT.format(new java.util.Date()) + "] [" + threadName + "] SYS Monitoring failed after " + MAX_RETRIES + " attempts.");
             }
         });
+        futures.add(future);
 
         executor.shutdown();
         try {
             if (!executor.awaitTermination(60, TimeUnit.MINUTES)) {
                 executor.shutdownNow();
-                System.err.println(nowLabel()
-                        + " Tasks did not finish within timeout");
+                System.err.println("[" + LOG_DATE_FORMAT.format(new java.util.Date()) + "] Tasks did not finish within timeout");
             }
         } catch (InterruptedException e) {
             executor.shutdownNow();
@@ -136,30 +105,7 @@ public class HourlyExpMonitoringCron {
         }
 
         long totalTime = System.currentTimeMillis() - batchStart;
-        System.out.println(nowLabel() + " EXP Monitoring completed in " + sec(totalTime));
-    }
-
-    private static LocalDateTime toLocal(java.util.Date d) {
-        return LocalDateTime.ofInstant(d.toInstant(), java.time.ZoneId.systemDefault());
-    }
-
-    private static boolean isNonRetryable(Throwable t) {
-        Throwable cause = t;
-        while (cause != null) {
-            if (cause instanceof SQLDataException) return true;
-            String msg = cause.getMessage();
-            if (msg != null) {
-                String m = msg.toUpperCase(Locale.ENGLISH);
-                if (m.contains("ORA-01861") || m.contains("ORA-01858")
-                        || m.contains("ORA-01843") || m.contains("ORA-01722")
-                        || m.contains("ORA-00904") || m.contains("ORA-00942")
-                        || m.contains("ORA-00933") || m.contains("ORA-00979")) {
-                    return true;
-                }
-            }
-            cause = cause.getCause();
-        }
-        return false;
+        System.out.println("[" + LOG_DATE_FORMAT.format(new java.util.Date()) + "] SYS Monitoring completed in " + totalTime + " ms");
     }
 
     private static String getPartition(java.util.Date fromDate) {
@@ -173,8 +119,7 @@ public class HourlyExpMonitoringCron {
     }
 
     private static void executeMonitoring(String partition,
-                                          java.util.Date startTime,
-                                          java.util.Date endTime) throws Exception {
+                                          java.util.Date startTime, java.util.Date endTime) throws Exception {
         long methodStart = System.currentTimeMillis();
         Connection reportConn = null;
         Connection iibConn = null;
@@ -186,8 +131,7 @@ public class HourlyExpMonitoringCron {
         PreparedStatement deleteImpactedStmt = null;
 
         try {
-            // -------- connections --------
-            long connStart = System.currentTimeMillis();
+            // Get connections
             reportConn = DBUtilityAuto.getReportDBConnection();
             iibConn = DBUtilityAuto.getIIBDBConnection();
             if (reportConn == null || iibConn == null) {
@@ -195,106 +139,78 @@ public class HourlyExpMonitoringCron {
             }
             reportConn.setAutoCommit(false);
             iibConn.setAutoCommit(false);
-            System.out.println(nowLabel()
-                    + " Connections acquired in " + sec(System.currentTimeMillis() - connStart));
 
-            // -------- fetch flag once --------
+            // Fetch flag status
+            String flagStatus = "DR";
             try (Statement stmt = reportConn.createStatement();
                  ResultSet rss = stmt.executeQuery("SELECT FLAG FROM connection_master")) {
                 if (rss.next()) {
-                    String f = rss.getString("FLAG");
-                    if (f != null && !f.trim().isEmpty()) {
-                        flagStatus = f.trim();
-                    }
+                    flagStatus = rss.getString("FLAG");
+                    if (flagStatus == null) flagStatus = "DR";
                 }
             }
-            System.out.println(nowLabel() + " Flag status: " + flagStatus);
 
-            // -------- fetch mappings --------
-            long mapStart = System.currentTimeMillis();
+            // Fetch SYS-specific mappings
             fetchBrokerPortMappings(reportConn);
             fetchBrokerOrderMappings(reportConn);
             fetchBrokerIPMappings(reportConn, flagStatus);
-            System.out.println(nowLabel()
-                    + " Mappings loaded in " + sec(System.currentTimeMillis() - mapStart));
 
-            // -------- fetch isolation data --------
-            long isoStart = System.currentTimeMillis();
+            // Fetch isolation data (same URL)
             JSONObject urlData = fetchURLData();
             detectIsolatedBrokers(urlData);
-            System.out.println(nowLabel()
-                    + " Isolation data loaded in " + sec(System.currentTimeMillis() - isoStart));
 
-            // =========================================================================
-            // FAST QUERY — no PIVOT. Small GROUP BY, Java pivots the result below.
-            // This is typically 3-5x faster than the PIVOT-based query because:
-            //   1. GROUP BY is on 3 small dimensions instead of many CASE exprs.
-            //   2. Result set is (brokers × IPs) narrow rows, not a wide PIVOT row.
-            //   3. No expensive PIVOT sort / aggregation pass on the DB side.
-            // =========================================================================
+            // Build dynamic query for SYS
             String caseStatements = generateCaseStatements();
+            String caseStatements1 = generateCaseStatements1();
+            String orderByBroker = generateDynamicOrderByClause();
 
-            String query =
-                    "SELECT /*+ PARALLEL(4) */ " +
-                    caseStatements + ",\n" +
-                    "       TRIM(EXP_ip) AS ip,\n" +
-                    "       COUNT(1) AS TOTAL_HITS\n" +
-                    "FROM eisapp.API_LOG PARTITION(" + partition + ")\n" +
-                    "WHERE API_NAME != 'AmlockScreeningAck_EXP'\n" +
-                    "  AND ((REQUEST_DATE_TIME >= ? AND REQUEST_DATE_TIME < ?)\n" +
-                    "       OR (REQUEST_DATE_TIME IS NULL\n" +
-                    "           AND CREATION_DATE_TIME >= ? AND CREATION_DATE_TIME < ?))\n" +
-                    "GROUP BY " + generateCaseStatements1() + ", TRIM(EXP_ip)";
+            Set<String> allIPs = new HashSet<>();
+            for (List<String> ips : brokerIPMapping.values()) {
+                allIPs.addAll(ips);
+            }
+            String IPs = "";
+            if (!allIPs.isEmpty()) {
+                IPs = String.join(",", allIPs.stream().map(ip -> "'" + ip + "'").toArray(String[]::new));
+            }
 
-            System.out.println(nowLabel()
-                    + " Executing query: start=" + LOG_TIME_FMT.format(toLocal(startTime))
-                    + ", end=" + LOG_TIME_FMT.format(toLocal(endTime))
-                    + ", brokers=" + brokerMapping.size()
-                    + ", brokerIPs=" + brokerIPMapping.size());
+            // Build the base query with parameter placeholders for dates
+            String baseQuery = "SELECT /*+ PARALLEL(04)*/ * FROM (\n" +
+                    "SELECT " + caseStatements + ",\n" +
+                    "TRIM(SYS_ip) AS ip,\n" +
+                    "COUNT(1) AS TOTAL_HITS\n" +
+                    "FROM eisapp.BACKEND_LOG PARTITION(" + partition + ")\n" +
+                    "WHERE API_NAME!='AmlockScreeningAck_SYS'";
+
+            // Time condition with parameter placeholders
+            String timeCondition = " AND ((REQUEST_DATE_TIME >= ? AND REQUEST_DATE_TIME < ?) " +
+                    "OR (REQUEST_DATE_TIME IS NULL AND CREATION_DATE_TIME >= ? AND CREATION_DATE_TIME < ?))";
+
+            String query = baseQuery + timeCondition + "\n" +
+                    "GROUP BY " + caseStatements1 + ", TRIM(SYS_ip))\n" +
+                    "PIVOT (SUM(TOTAL_HITS) AS TOTAL_HITS FOR ip IN (" + IPs + "))\n" +
+                    "ORDER BY \n" + orderByBroker;
+
+            System.out.println("[" + LOG_DATE_FORMAT.format(new java.util.Date()) + "] Executing SYS query with parameters: start=" + 
+                    LOG_DATE_FORMAT.format(startTime) + ", end=" + LOG_DATE_FORMAT.format(endTime));
 
             long execStart = System.currentTimeMillis();
-            ps = iibConn.prepareStatement(query,
-                    ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
+            ps = iibConn.prepareStatement(query);
+            
+            // Set the date parameters
             ps.setTimestamp(1, new Timestamp(startTime.getTime()));
             ps.setTimestamp(2, new Timestamp(endTime.getTime()));
             ps.setTimestamp(3, new Timestamp(startTime.getTime()));
             ps.setTimestamp(4, new Timestamp(endTime.getTime()));
+            
             ps.setFetchSize(FETCH_SIZE);
             ps.setQueryTimeout(QUERY_TIMEOUT_SECONDS);
-
             rs = ps.executeQuery();
             long execDurationMs = System.currentTimeMillis() - execStart;
             double execDurationSec = execDurationMs / 1000.0;
-            System.out.println(nowLabel()
-                    + " Query executed in " + sec(execDurationMs));
 
-            // -------- Java-side pivot: broker -> (ip -> hits) --------
-            long pivotStart = System.currentTimeMillis();
-            Map<String, Map<String, Integer>> brokerIpHits = new LinkedHashMap<>();
-            Map<String, String> brokerPortMap = new LinkedHashMap<>();
-
-            while (rs.next()) {
-                String broker = rs.getString("broker");
-                String port   = rs.getString("PORT");
-                String ip     = rs.getString("ip");
-                int hits      = rs.getInt("TOTAL_HITS");
-                if (broker == null) broker = "UNKNOWN_BROKER";
-                if (port == null)   port   = "UNKNOWN_PORT";
-                if (ip == null)     continue;
-
-                brokerIpHits
-                        .computeIfAbsent(broker, k -> new LinkedHashMap<>())
-                        .put(ip, hits);
-                brokerPortMap.putIfAbsent(broker, port);
-            }
-            System.out.println(nowLabel()
-                    + " Pivoted " + brokerIpHits.size() + " brokers in Java in "
-                    + sec(System.currentTimeMillis() - pivotStart));
-
-            // -------- delete old data for this window --------
-            long deleteStart = System.currentTimeMillis();
-            String deleteBrokerSQL = "DELETE FROM EXP_BROKER_HOURLY_STATS WHERE RUN_START = ? AND RUN_END = ?";
-            String deleteImpactedSQL = "DELETE FROM EXP_IMPACTED_SERVERS_HOURLY WHERE RUN_START = ? AND RUN_END = ?";
+            // Delete old data for this exact window
+            String deleteBrokerSQL = "DELETE FROM SYS_BROKER_HOURLY_STATS WHERE RUN_START = ? AND RUN_END = ?";
+            String deleteImpactedSQL = "DELETE FROM SYS_IMPACTED_SERVERS_HOURLY WHERE RUN_START = ? AND RUN_END = ?";
             deleteBrokerStmt = reportConn.prepareStatement(deleteBrokerSQL);
             deleteImpactedStmt = reportConn.prepareStatement(deleteImpactedSQL);
             deleteBrokerStmt.setTimestamp(1, new Timestamp(startTime.getTime()));
@@ -303,75 +219,63 @@ public class HourlyExpMonitoringCron {
             deleteImpactedStmt.setTimestamp(2, new Timestamp(endTime.getTime()));
             deleteBrokerStmt.executeUpdate();
             deleteImpactedStmt.executeUpdate();
-            System.out.println(nowLabel()
-                    + " Deleted old window rows in " + sec(System.currentTimeMillis() - deleteStart));
 
-            // -------- prepare inserts --------
-            String insertBrokerSQL = "INSERT INTO EXP_BROKER_HOURLY_STATS " +
+            // Prepare insert statements
+            String insertBrokerSQL = "INSERT INTO SYS_BROKER_HOURLY_STATS " +
                     "(RUN_START, RUN_END, BROKER, PORT, TOTAL_HITS, HEALTHY_SERVERS, WARNING_SERVERS, " +
                     "CRITICAL_SERVERS, ISOLATED_SERVERS, TOTAL_SERVERS, STATUS, QUERY_DURATION_SEC) " +
                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
             insertBrokerStmt = reportConn.prepareStatement(insertBrokerSQL);
 
-            String insertImpactedSQL = "INSERT INTO EXP_IMPACTED_SERVERS_HOURLY " +
+            String insertImpactedSQL = "INSERT INTO SYS_IMPACTED_SERVERS_HOURLY " +
                     "(RUN_START, RUN_END, BROKER, IP, HITS, STATUS) VALUES (?, ?, ?, ?, ?, ?)";
             insertImpactedStmt = reportConn.prepareStatement(insertImpactedSQL);
 
-            // -------- process results --------
-            long procStart = System.currentTimeMillis();
-            int brokerCount = 0;
-            int impactedCount = 0;
-            int isolatedCountTotal = 0;
+            // Process results
+            List<Map<String, Object>> brokerDataList = new ArrayList<>();
+            List<Map<String, String>> impactedServersList = new ArrayList<>();
+            List<Map<String, String>> isolatedServersList = new ArrayList<>();
+            Map<String, List<String>> criticalServersByBroker = new LinkedHashMap<>();
 
-            for (Map.Entry<String, Map<String, Integer>> e : brokerIpHits.entrySet()) {
-                String broker = e.getKey();
-                String port = brokerPortMap.getOrDefault(broker, "UNKNOWN_PORT");
-                Map<String, Integer> ipHitsFromDb = e.getValue();
-
+            while (rs.next()) {
+                String broker = rs.getString("broker");
+                String port = rs.getString("PORT");
+                int totalHits = 0;
                 List<String> brokerSpecificIPs = brokerIPMapping.get(broker);
-                if (brokerSpecificIPs == null) brokerSpecificIPs = new ArrayList<>();
-
+                if (brokerSpecificIPs == null) {
+                    brokerSpecificIPs = new ArrayList<>();
+                }
                 List<Map<String, String>> serverList = new ArrayList<>();
                 List<Integer> hitValues = new ArrayList<>();
-                int totalHits = 0;
-
-                // Iterate over the mapping (deterministic order), pull hits from DB map.
                 for (String ip : brokerSpecificIPs) {
-                    int hits = ipHitsFromDb.getOrDefault(ip, 0);
-                    totalHits += hits;
+                    String columnName = "'" + ip + "'_TOTAL_HITS";
                     Map<String, String> serverInfo = new HashMap<>();
-                    serverInfo.put("ip", ip);
-                    serverInfo.put("hits", String.valueOf(hits));
-                    String[] parts = ip.split("\\.");
-                    serverInfo.put("displayIP",
-                            (parts.length >= 4 ? parts[2] + "." + parts[3] : ip));
-                    serverList.add(serverInfo);
-                    hitValues.add(hits);
-                }
-                // Also include any IP returned by DB but missing from mapping (defensive)
-                for (Map.Entry<String, Integer> ipEntry : ipHitsFromDb.entrySet()) {
-                    if (!brokerSpecificIPs.contains(ipEntry.getKey())) {
-                        int hits = ipEntry.getValue();
+                    try {
+                        int hits = rs.getInt(columnName);
                         totalHits += hits;
-                        Map<String, String> serverInfo = new HashMap<>();
-                        String ip = ipEntry.getKey();
                         serverInfo.put("ip", ip);
                         serverInfo.put("hits", String.valueOf(hits));
-                        String[] parts = ip.split("\\.");
-                        serverInfo.put("displayIP",
-                                (parts.length >= 4 ? parts[2] + "." + parts[3] : ip));
+                        serverInfo.put("displayIP", ip.split("\\.")[2] + "." + ip.split("\\.")[3]);
                         serverList.add(serverInfo);
                         hitValues.add(hits);
+                    } catch (SQLException e) {
+                        serverInfo.put("ip", ip);
+                        serverInfo.put("hits", "0");
+                        serverInfo.put("displayIP", ip.split("\\.")[2] + "." + ip.split("\\.")[3]);
+                        serverList.add(serverInfo);
+                        hitValues.add(0);
                     }
                 }
 
                 int sumHits = 0;
                 int validServerCount = 0;
                 for (Integer hit : hitValues) {
-                    if (hit > 0) { sumHits += hit; validServerCount++; }
+                    if (hit > 0) {
+                        sumHits += hit;
+                        validServerCount++;
+                    }
                 }
-                double averageHits = (validServerCount != 0)
-                        ? (double) sumHits / validServerCount : 0;
+                double averageHits = (validServerCount != 0) ? (double) sumHits / validServerCount : 0;
                 double threshold = averageHits * 0.90;
 
                 int criticalCount = 0;
@@ -382,46 +286,95 @@ public class HourlyExpMonitoringCron {
                 for (Map<String, String> server : serverList) {
                     String ip = server.get("ip");
                     int serverHit = Integer.parseInt(server.get("hits"));
-                    String status;
+                    String status = "healthy";
                     boolean isIsolated = false;
-                    if (isolatedBrokers.containsKey(ip)
-                            && isolatedBrokers.get(ip).containsKey(broker)) {
+                    if (isolatedBrokers.containsKey(ip) && isolatedBrokers.get(ip).containsKey(broker)) {
                         isIsolated = isolatedBrokers.get(ip).get(broker);
                     }
-
                     if (isIsolated) {
                         status = "isolated";
                         isolatedCount++;
-                        impactedCount++;
+                        // Insert into impacted table (status = isolated)
+                        insertImpactedStmt.setTimestamp(1, new Timestamp(startTime.getTime()));
+                        insertImpactedStmt.setTimestamp(2, new Timestamp(endTime.getTime()));
+                        insertImpactedStmt.setString(3, broker);
+                        insertImpactedStmt.setString(4, ip);
+                        insertImpactedStmt.setInt(5, serverHit);
+                        insertImpactedStmt.setString(6, "isolated");
+                        insertImpactedStmt.addBatch();
+                        // Add to isolated list
+                        Map<String, String> isolatedServer = new HashMap<>();
+                        isolatedServer.put("broker", broker);
+                        isolatedServer.put("ip", ip);
+                        isolatedServer.put("displayIP", server.get("displayIP"));
+                        isolatedServer.put("hits", String.valueOf(serverHit));
+                        isolatedServer.put("status", "isolated");
+                        isolatedServersList.add(isolatedServer);
                     } else if (serverHit == 0) {
-                        status = "critical";
+                        status = "zero";
                         criticalCount++;
-                        impactedCount++;
+                        // Insert critical
+                        insertImpactedStmt.setTimestamp(1, new Timestamp(startTime.getTime()));
+                        insertImpactedStmt.setTimestamp(2, new Timestamp(endTime.getTime()));
+                        insertImpactedStmt.setString(3, broker);
+                        insertImpactedStmt.setString(4, ip);
+                        insertImpactedStmt.setInt(5, serverHit);
+                        insertImpactedStmt.setString(6, "critical");
+                        insertImpactedStmt.addBatch();
+                        Map<String, String> impactedServer = new HashMap<>();
+                        impactedServer.put("broker", broker);
+                        impactedServer.put("ip", ip);
+                        impactedServer.put("displayIP", server.get("displayIP"));
+                        impactedServer.put("hits", String.valueOf(serverHit));
+                        impactedServer.put("status", "critical");
+                        impactedServersList.add(impactedServer);
+                        criticalServersByBroker.computeIfAbsent(broker, k -> new ArrayList<>()).add(server.get("displayIP"));
                     } else if (serverHit < threshold) {
                         status = "warning";
                         warningCount++;
-                        impactedCount++;
+                        // Insert warning
+                        insertImpactedStmt.setTimestamp(1, new Timestamp(startTime.getTime()));
+                        insertImpactedStmt.setTimestamp(2, new Timestamp(endTime.getTime()));
+                        insertImpactedStmt.setString(3, broker);
+                        insertImpactedStmt.setString(4, ip);
+                        insertImpactedStmt.setInt(5, serverHit);
+                        insertImpactedStmt.setString(6, "warning");
+                        insertImpactedStmt.addBatch();
+                        Map<String, String> impactedServer = new HashMap<>();
+                        impactedServer.put("broker", broker);
+                        impactedServer.put("ip", ip);
+                        impactedServer.put("displayIP", server.get("displayIP"));
+                        impactedServer.put("hits", String.valueOf(serverHit));
+                        impactedServer.put("status", "warning");
+                        impactedServersList.add(impactedServer);
                     } else {
+                        // Healthy - insert into impacted table with status 'healthy'
                         status = "healthy";
                         healthyCount++;
+                        insertImpactedStmt.setTimestamp(1, new Timestamp(startTime.getTime()));
+                        insertImpactedStmt.setTimestamp(2, new Timestamp(endTime.getTime()));
+                        insertImpactedStmt.setString(3, broker);
+                        insertImpactedStmt.setString(4, ip);
+                        insertImpactedStmt.setInt(5, serverHit);
+                        insertImpactedStmt.setString(6, "healthy");
+                        insertImpactedStmt.addBatch();
                     }
-
-                    insertImpactedStmt.setTimestamp(1, new Timestamp(startTime.getTime()));
-                    insertImpactedStmt.setTimestamp(2, new Timestamp(endTime.getTime()));
-                    insertImpactedStmt.setString(3, broker);
-                    insertImpactedStmt.setString(4, ip);
-                    insertImpactedStmt.setInt(5, serverHit);
-                    insertImpactedStmt.setString(6, status);
-                    insertImpactedStmt.addBatch();
+                    server.put("status", status);
                 }
-                isolatedCountTotal += isolatedCount;
 
-                String brokerStatus;
-                if (isolatedCount > 0) brokerStatus = "isolated";
-                else if (criticalCount > 0) brokerStatus = "critical";
-                else if (warningCount > 0) brokerStatus = "warning";
-                else brokerStatus = "healthy";
+                // Determine broker status
+                String brokerStatus = "healthy";
+                if (isolatedCount > 0) {
+                    brokerStatus = "isolated";
+                } else if (criticalCount > 0) {
+                    brokerStatus = "critical";
+                } else if (warningCount > 0) {
+                    brokerStatus = "warning";
+                } else {
+                    brokerStatus = "healthy";
+                }
 
+                // Insert broker stats
                 insertBrokerStmt.setTimestamp(1, new Timestamp(startTime.getTime()));
                 insertBrokerStmt.setTimestamp(2, new Timestamp(endTime.getTime()));
                 insertBrokerStmt.setString(3, broker);
@@ -435,30 +388,26 @@ public class HourlyExpMonitoringCron {
                 insertBrokerStmt.setString(11, brokerStatus);
                 insertBrokerStmt.setDouble(12, execDurationSec);
                 insertBrokerStmt.addBatch();
-                brokerCount++;
             }
 
+            // Execute batch inserts
             insertBrokerStmt.executeBatch();
             insertImpactedStmt.executeBatch();
             reportConn.commit();
 
-            System.out.println(nowLabel()
-                    + " Processing done in " + sec(System.currentTimeMillis() - procStart)
-                    + " (brokers=" + brokerCount
-                    + ", impacted=" + impactedCount
-                    + ", isolated=" + isolatedCountTotal + ")");
-
             long totalDuration = System.currentTimeMillis() - methodStart;
-            System.out.println(nowLabel()
-                    + " EXP Monitoring inserted " + brokerCount
-                    + " brokers and " + impactedCount
-                    + " impacted servers. Total time: " + sec(totalDuration));
+            System.out.println("[" + LOG_DATE_FORMAT.format(new java.util.Date()) + "] SYS Monitoring inserted " + brokerDataList.size() + " brokers and " +
+                    (impactedServersList.size() + isolatedServersList.size()) + " impacted servers. Total time: " + totalDuration + " ms");
 
         } catch (SQLException e) {
-            if (reportConn != null) { try { reportConn.rollback(); } catch (SQLException ex) {} }
+            if (reportConn != null) {
+                try { reportConn.rollback(); } catch (SQLException ex) {}
+            }
             throw e;
         } catch (Exception e) {
-            if (reportConn != null) { try { reportConn.rollback(); } catch (SQLException ex) {} }
+            if (reportConn != null) {
+                try { reportConn.rollback(); } catch (SQLException ex) {}
+            }
             throw e;
         } finally {
             try { if (rs != null) rs.close(); } catch (SQLException e) {}
@@ -467,22 +416,26 @@ public class HourlyExpMonitoringCron {
             try { if (insertImpactedStmt != null) insertImpactedStmt.close(); } catch (SQLException e) {}
             try { if (deleteBrokerStmt != null) deleteBrokerStmt.close(); } catch (SQLException e) {}
             try { if (deleteImpactedStmt != null) deleteImpactedStmt.close(); } catch (SQLException e) {}
-            if (reportConn != null) { try { reportConn.setAutoCommit(true); reportConn.close(); } catch (SQLException e) {} }
-            if (iibConn != null) { try { iibConn.setAutoCommit(true); iibConn.close(); } catch (SQLException e) {} }
+            if (reportConn != null) {
+                try { reportConn.setAutoCommit(true); reportConn.close(); } catch (SQLException e) {}
+            }
+            if (iibConn != null) {
+                try { iibConn.setAutoCommit(true); iibConn.close(); } catch (SQLException e) {}
+            }
         }
     }
 
-    // ========== Helper methods ==========
+    // ========== Helper methods (SYS versions) ==========
     private static void fetchBrokerPortMappings(Connection con) throws SQLException {
-        String query = "SELECT BROKER_NAME, EXP_PORT, MAPPED_PORT FROM EXP_BROKER_PORT_MAPPING";
+        String query = "SELECT BROKER_NAME, SYS_PORT, MAPPED_PORT FROM SYS_BROKER_PORT_MAPPING";
         try (Statement stmt = con.createStatement();
              ResultSet rs = stmt.executeQuery(query)) {
             while (rs.next()) {
                 String brokerName = rs.getString("BROKER_NAME");
-                String expPort = rs.getString("EXP_PORT");
+                String sysPort = rs.getString("SYS_PORT");
                 String mappedPort = rs.getString("MAPPED_PORT");
-                if (brokerName != null && expPort != null && mappedPort != null) {
-                    brokerMapping.put(brokerName.trim(), expPort.trim());
+                if (brokerName != null && sysPort != null && mappedPort != null) {
+                    brokerMapping.put(brokerName.trim(), sysPort.trim());
                     portMapping.put(brokerName.trim(), mappedPort.trim());
                 }
             }
@@ -490,7 +443,7 @@ public class HourlyExpMonitoringCron {
     }
 
     private static void fetchBrokerOrderMappings(Connection con) throws SQLException {
-        String query = "SELECT BROKER_NAME, ORDER_NUMBER FROM EXP_BROKER_PORT_MAPPING";
+        String query = "SELECT BROKER_NAME, ORDER_NUMBER FROM SYS_BROKER_PORT_MAPPING";
         try (Statement stmt = con.createStatement();
              ResultSet rs = stmt.executeQuery(query)) {
             while (rs.next()) {
@@ -504,24 +457,23 @@ public class HourlyExpMonitoringCron {
     }
 
     private static void fetchBrokerIPMappings(Connection con, String currentEnvironment) throws SQLException {
-        String query = "SELECT DISTINCT a.EXP_IP, a.BROKER_NAME FROM EXP_IP_BROKER_DETAILS a ORDER BY a.BROKER_NAME, a.EXP_IP";
+        String query = "SELECT DISTINCT a.SYS_IP, a.SYS_BROKER_NAME FROM SYS_IP_BROKER_DETAILS a ORDER BY a.SYS_BROKER_NAME, a.SYS_IP";
         try (Statement stmt = con.createStatement();
              ResultSet rs = stmt.executeQuery(query)) {
             while (rs.next()) {
-                String brokerName = rs.getString("BROKER_NAME");
-                String expIP = rs.getString("EXP_IP");
-                if (brokerName == null || expIP == null) continue;
+                String brokerName = rs.getString("SYS_BROKER_NAME");
+                String sysIP = rs.getString("SYS_IP");
+                if (brokerName == null || sysIP == null) continue;
                 brokerName = brokerName.trim();
-                expIP = expIP.trim();
-
+                sysIP = sysIP.trim();
                 boolean shouldInclude = false;
                 if ("PR".equals(currentEnvironment)) {
-                    shouldInclude = expIP.startsWith("10.188.24.") || expIP.startsWith("10.188.25.");
+                    shouldInclude = sysIP.startsWith("10.188.24.") || sysIP.startsWith("10.188.25.");
                 } else if ("DR".equals(currentEnvironment)) {
-                    shouldInclude = expIP.startsWith("10.177.40.") || expIP.startsWith("10.177.41.");
+                    shouldInclude = sysIP.startsWith("10.177.40.") || sysIP.startsWith("10.177.41.");
                 }
                 if (shouldInclude) {
-                    brokerIPMapping.computeIfAbsent(brokerName, k -> new ArrayList<>()).add(expIP);
+                    brokerIPMapping.computeIfAbsent(brokerName, k -> new ArrayList<>()).add(sysIP);
                 }
             }
             for (List<String> ips : brokerIPMapping.values()) {
@@ -541,16 +493,17 @@ public class HourlyExpMonitoringCron {
     }
 
     private static JSONObject fetchURLData() {
+        // Same as EXP cron - reuse the code
         JSONObject urlData = new JSONObject();
         HttpURLConnection conn = null;
         BufferedReader reader = null;
         try {
             TrustManager[] trustAllCerts = new TrustManager[]{
-                    new X509TrustManager() {
-                        public X509Certificate[] getAcceptedIssuers() { return null; }
-                        public void checkClientTrusted(X509Certificate[] certs, String authType) {}
-                        public void checkServerTrusted(X509Certificate[] certs, String authType) {}
-                    }
+                new X509TrustManager() {
+                    public java.security.cert.X509Certificate[] getAcceptedIssuers() { return null; }
+                    public void checkClientTrusted(X509Certificate[] certs, String authType) {}
+                    public void checkServerTrusted(X509Certificate[] certs, String authType) {}
+                }
             };
             SSLContext sc = SSLContext.getInstance("SSL");
             sc.init(null, trustAllCerts, new java.security.SecureRandom());
@@ -574,10 +527,11 @@ public class HourlyExpMonitoringCron {
                 while ((line = reader.readLine()) != null) {
                     response.append(line);
                 }
-                urlData = parseJsonWithDuplicates(response.toString());
+                String jsonString = response.toString();
+                urlData = parseJsonWithDuplicates(jsonString);
             }
         } catch (Exception e) {
-            System.err.println(nowLabel() + " Failed to fetch URL data: " + e.getMessage());
+            System.err.println("[" + LOG_DATE_FORMAT.format(new java.util.Date()) + "] Failed to fetch URL data: " + e.getMessage());
         } finally {
             try { if (reader != null) reader.close(); } catch (Exception e) {}
             if (conn != null) conn.disconnect();
@@ -586,11 +540,13 @@ public class HourlyExpMonitoringCron {
     }
 
     private static JSONObject parseJsonWithDuplicates(String jsonString) {
+        // Same as before
         JSONObject result = new JSONObject();
         try {
             result = new JSONObject(jsonString);
             return result;
         } catch (Exception e) {
+            // Custom parser (identical to EXP)
             try {
                 String content = jsonString.trim();
                 if (content.startsWith("{")) {
@@ -645,8 +601,7 @@ public class HourlyExpMonitoringCron {
                     }
                 }
             } catch (Exception ex) {
-                System.err.println(nowLabel()
-                        + " Custom JSON parsing failed: " + ex.getMessage());
+                System.err.println("[" + LOG_DATE_FORMAT.format(new java.util.Date()) + "] Custom JSON parsing failed: " + ex.getMessage());
             }
         }
         return result;
@@ -693,24 +648,24 @@ public class HourlyExpMonitoringCron {
 
         for (Map.Entry<String, String> entry : brokerMapping.entrySet()) {
             String brokerNames = entry.getKey();
-            String expPorts = entry.getValue();
+            String sysPorts = entry.getValue();
             String mappedPort = portMapping.get(entry.getKey());
 
             List<String> brokerList = parseCommaSeparatedValues(brokerNames);
-            List<String> portList = parseCommaSeparatedValues(expPorts);
+            List<String> portList = parseCommaSeparatedValues(sysPorts);
 
             if (brokerNames.contains("AADHAR")) {
-                brokerCase.append(" WHEN TRIM(BROKER_NAME) IN (").append(formatList(brokerList))
-                        .append(") OR TRIM(EXP_PORT) IN (").append(formatList(portList))
-                        .append(") THEN 'AADHAR_EXP'\n");
-                portCase.append(" WHEN TRIM(BROKER_NAME) IN (").append(formatList(brokerList))
-                        .append(") OR TRIM(EXP_PORT) IN (").append(formatList(portList)).append(") THEN '")
+                brokerCase.append(" WHEN TRIM(SYS_BROKER) IN (").append(formatList(brokerList))
+                        .append(") OR TRIM(SYS_PORT) IN (").append(formatList(portList))
+                        .append(") THEN 'AADHAR_SYS'\n");
+                portCase.append(" WHEN TRIM(SYS_BROKER) IN (").append(formatList(brokerList))
+                        .append(") OR TRIM(SYS_PORT) IN (").append(formatList(portList)).append(") THEN '")
                         .append(mappedPort).append("'\n");
             } else {
-                brokerCase.append(" WHEN TRIM(BROKER_NAME) = '").append(brokerNames).append("' OR TRIM(EXP_PORT) = '")
-                        .append(expPorts).append("' THEN '").append(brokerNames).append("'\n");
-                portCase.append(" WHEN TRIM(BROKER_NAME) = '").append(brokerNames).append("' OR TRIM(EXP_PORT) = '")
-                        .append(expPorts).append("' THEN '").append(mappedPort).append("'\n");
+                brokerCase.append(" WHEN TRIM(SYS_BROKER) = '").append(brokerNames).append("' OR TRIM(SYS_PORT) = '")
+                        .append(sysPorts).append("' THEN '").append(brokerNames).append("'\n");
+                portCase.append(" WHEN TRIM(SYS_BROKER) = '").append(brokerNames).append("' OR TRIM(SYS_PORT) = '")
+                        .append(sysPorts).append("' THEN '").append(mappedPort).append("'\n");
             }
         }
 
@@ -725,24 +680,24 @@ public class HourlyExpMonitoringCron {
 
         for (Map.Entry<String, String> entry : brokerMapping.entrySet()) {
             String brokerNames = entry.getKey();
-            String expPorts = entry.getValue();
+            String sysPorts = entry.getValue();
             String mappedPort = portMapping.get(entry.getKey());
 
             List<String> brokerList = parseCommaSeparatedValues(brokerNames);
-            List<String> portList = parseCommaSeparatedValues(expPorts);
+            List<String> portList = parseCommaSeparatedValues(sysPorts);
 
             if (brokerNames.contains("AADHAR")) {
-                brokerCase.append(" WHEN TRIM(BROKER_NAME) IN (").append(formatList(brokerList))
-                        .append(") OR TRIM(EXP_PORT) IN (").append(formatList(portList))
-                        .append(") THEN 'AADHAR_EXP'\n");
-                portCase.append(" WHEN TRIM(BROKER_NAME) IN (").append(formatList(brokerList))
-                        .append(") OR TRIM(EXP_PORT) IN (").append(formatList(portList)).append(") THEN '")
+                brokerCase.append(" WHEN TRIM(SYS_BROKER) IN (").append(formatList(brokerList))
+                        .append(") OR TRIM(SYS_PORT) IN (").append(formatList(portList))
+                        .append(") THEN 'AADHAR_SYS'\n");
+                portCase.append(" WHEN TRIM(SYS_BROKER) IN (").append(formatList(brokerList))
+                        .append(") OR TRIM(SYS_PORT) IN (").append(formatList(portList)).append(") THEN '")
                         .append(mappedPort).append("'\n");
             } else {
-                brokerCase.append(" WHEN TRIM(BROKER_NAME) = '").append(brokerNames).append("' OR TRIM(EXP_PORT) = '")
-                        .append(expPorts).append("' THEN '").append(brokerNames).append("'\n");
-                portCase.append(" WHEN TRIM(BROKER_NAME) = '").append(brokerNames).append("' OR TRIM(EXP_PORT) = '")
-                        .append(expPorts).append("' THEN '").append(mappedPort).append("'\n");
+                brokerCase.append(" WHEN TRIM(SYS_BROKER) = '").append(brokerNames).append("' OR TRIM(SYS_PORT) = '")
+                        .append(sysPorts).append("' THEN '").append(brokerNames).append("'\n");
+                portCase.append(" WHEN TRIM(SYS_BROKER) = '").append(brokerNames).append("' OR TRIM(SYS_PORT) = '")
+                        .append(sysPorts).append("' THEN '").append(mappedPort).append("'\n");
             }
         }
 
@@ -752,7 +707,6 @@ public class HourlyExpMonitoringCron {
     }
 
     private static String generateDynamicOrderByClause() {
-        // NOTE: kept for API compatibility, no longer used in the SQL.
         StringBuilder orderByClause = new StringBuilder("CASE\n");
         for (Map.Entry<String, Integer> entry : brokerOrderMapping.entrySet()) {
             String brokerName = entry.getKey();
@@ -763,7 +717,7 @@ public class HourlyExpMonitoringCron {
             for (String broker : brokerNames) {
                 String trimmedBroker = broker.trim();
                 if (!trimmedBroker.isEmpty()) {
-                    String aliasName = broker.contains("AADHAR") ? "AADHAR_EXP" : trimmedBroker;
+                    String aliasName = broker.contains("AADHAR") ? "AADHAR_SYS" : trimmedBroker;
                     orderByClause.append(" WHEN TRIM(broker) = '")
                             .append(aliasName)
                             .append("' THEN ")
