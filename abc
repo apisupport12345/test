@@ -16,12 +16,13 @@ public class HourlyQueryCronEISSBIDATA1 {
 
     private static final int QUERY_TIMEOUT_SECONDS = 1800;
     private static final int FETCH_SIZE = 1000;
-    private static final int THREAD_POOL_SIZE = 4;
+    private static final int THREAD_POOL_SIZE = 3;
     private static final int MAX_RETRIES = 3;
     private static final long RETRY_DELAY_MS = 5000;
 
+    // Only queries 7-11 handled now (12 & 13 removed)
     private static final int QUERY_START = 7;
-    private static final int QUERY_END   = 13;
+    private static final int QUERY_END   = 11;
 
     private static final DateTimeFormatter LOG_TIME_FMT =
             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.ENGLISH);
@@ -62,7 +63,7 @@ public class HourlyQueryCronEISSBIDATA1 {
         }
 
         System.out.println(nowLabel()
-                + " Running cron (Part 1, queries 7-13) for window: "
+                + " Running cron (Part 1, queries 7-11) for window: "
                 + startTime + " to " + endTime);
 
         final String partition = getPartition(startTime);
@@ -189,7 +190,8 @@ public class HourlyQueryCronEISSBIDATA1 {
 
         try {
             long connStart = System.currentTimeMillis();
-            if (queryIndex == 11 || queryIndex == 12 || queryIndex == 13) {
+            // Query 11 uses SIDB; others use IIB
+            if (queryIndex == 11) {
                 try {
                     readConn = DBUtilityAuto.getSIDBConnection();
                 } catch (Exception e) {
@@ -348,8 +350,6 @@ public class HourlyQueryCronEISSBIDATA1 {
             case 9:  return "DEAF_AUDIT_HOURLY";
             case 10: return "EIS_INACTIVE_HOURLY";
             case 11: return "EKYC_HOURLY";
-            case 12: return "PMJJBY_HOURLY";
-            case 13: return "PMSBY_HOURLY";
             default: throw new IllegalArgumentException("Invalid query index for Part 1: " + queryIndex);
         }
     }
@@ -385,18 +385,6 @@ public class HourlyQueryCronEISSBIDATA1 {
                        "ROUND((SUM(CASE WHEN ERROR_CODE IN ('SI392', 'SI207') THEN 1 ELSE 0 END)/NULLIF(COUNT(1), 0))*100, 2) AS TD_PERCENT " +
                        "FROM SBISI.EKYC_log " +
                        "WHERE REQ_DATE_TIME BETWEEN ? AND ?";
-            case 12:
-                return "SELECT /*+ PARALLEL(4) */ status_code, COUNT(1) AS COUNT " +
-                       "FROM SBISI.pmjjby_renewal_txn_master " +
-                       "WHERE txn_cycle = 1 " +
-                       "GROUP BY status_code " +
-                       "ORDER BY status_code";
-            case 13:
-                return "SELECT /*+ PARALLEL(4) */ status_code, COUNT(1) AS COUNT " +
-                       "FROM SBISI.pmsby_renewal_txn_master " +
-                       "WHERE txn_cycle = 1 " +
-                       "GROUP BY status_code " +
-                       "ORDER BY status_code";
             default:
                 throw new IllegalArgumentException("Unknown query index for Part 1: " + queryIndex);
         }
@@ -407,9 +395,8 @@ public class HourlyQueryCronEISSBIDATA1 {
                                            java.util.Date endTime) throws SQLException {
         Timestamp fromTs = new Timestamp(startTime.getTime());
         Timestamp toTs   = new Timestamp(endTime.getTime());
-        if (queryIndex >= 7 && queryIndex <= 11) {
-            ps.setTimestamp(1, fromTs);
-            ps.setTimestamp(2, toTs);
-        }
+        // Queries 7-11 all use two date params
+        ps.setTimestamp(1, fromTs);
+        ps.setTimestamp(2, toTs);
     }
 }
