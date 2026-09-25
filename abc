@@ -1,4 +1,4 @@
-Bhai, ye raha ready-to-send email format. Tu bas `[ ]` wale brackets apne details se replace kar dena. 👇
+Bhai, email mein table copy-paste karne pe format toot jaata hai — ye common problem hai. Isliye main table ko **simple bullet points** mein convert kar deta hoon, jo har email client (Gmail, Outlook, etc.) mein sahi se print hoga. 👇
 
 ---
 
@@ -26,15 +26,13 @@ Dynatrace comes with a fixed, constant UI that cannot be modified as per user ne
 **4. Drill-Down Functionality**
 Dynatrace lacks drill-down functionality in our use case. Our portal supports multi-level drill-down, allowing users to move from a high-level overview down to granular details with ease.
 
-**Summary:**
+**Quick Comparison:**
 
-| Feature | Dynatrace | Our Portal |
-|---|---|---|
-| Data Source | Depends on our crons | Live DB (direct) |
-| If Crons Fail | No data displayed | Still functional |
-| Data Freshness | ~10 min delay | Real-time |
-| UI Flexibility | Fixed / constant | Fully customizable |
-| Drill-Down | Not available | Available |
+- **Data Source** → Dynatrace: Depends on our crons | Our Portal: Live DB (direct)
+- **If Crons Fail** → Dynatrace: No data displayed | Our Portal: Still functional
+- **Data Freshness** → Dynatrace: ~10 min delay | Our Portal: Real-time
+- **UI Flexibility** → Dynatrace: Fixed / constant | Our Portal: Fully customizable
+- **Drill-Down** → Dynatrace: Not available | Our Portal: Available
 
 In light of the above points, I believe our in-house portal is a more reliable, real-time, and flexible solution compared to Dynatrace.
 
@@ -50,4 +48,6 @@ Best Regards,
 
 ---
 
-Agar tu chahe toh main isko **short & crisp version** ya **more formal/leadership tone** mein bhi bana sakta hoon. Bata dena bhai. 👍
+Ab ye copy-paste karne pe bhi **format safe rahega**. 👍
+
+Agar chahe toh main isse **numbered comparison format** mein bhi bana sakta hoon (jaise "1. Data Source — Dynatrace: X, Our Portal: Y") — jo aur bhi clean lagta hai email mein. Bata dena.
