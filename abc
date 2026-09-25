@@ -1,81 +1,415 @@
-[2026-09-25 11:51:32] Running Part 1 (queries 0-3) for window: Fri Sep 25 10:00:00 IST 2026 to Fri Sep 25 11:00:00 IST 2026
-[2026-09-25 11:51:32] Using partition: SEP_26
-[pool-1-thread-1] [2026-09-25 11:51:32] Starting query 0
-[pool-1-thread-2] [2026-09-25 11:51:32] Starting query 1
-[DBConfig] Config file found: D:\AppConfig\db.properties
-[DBConfig] Config loaded successfully from: D:\AppConfig\db.properties
-Connected to PRIMARY DB 1
-Flag Status: PR, Location: HI
-Flag check connection closed
-getIIBDBConnection - flagStatus: PR, DB_ENVLOCATION: HI
-Using cached flag values - Flag: PR, Location: HI
-getIIBDBConnection - flagStatus: PR, DB_ENVLOCATION: HI
-In Mumbai Environment
-In Mumbai PR
-In Mumbai Environment
-In Mumbai PR
-IIB Mumbai PR Connected: jdbc:oracle:thin:@10.176.0.107:1787/MIBDRCDB_SRV
-IIB Mumbai PR Connected: jdbc:oracle:thin:@10.176.0.107:1787/MIBDRCDB_SRV
-[pool-1-thread-2] [2026-09-25 11:51:33] Query 1 read connection acquired in 0.95 sec
-[pool-1-thread-1] [2026-09-25 11:51:33] Query 0 read connection acquired in 0.95 sec
-Using cached flag values - Flag: PR, Location: HI
-getReportDBConnection - flagStatus: PR
-Connecting to Report PR Database
-Using cached flag values - Flag: PR, Location: HI
-getReportDBConnection - flagStatus: PR
-Connecting to Report PR Database
-Report PR Connected
-[pool-1-thread-2] [2026-09-25 11:51:33] Query 1 report connection acquired in 0.11 sec
-Report PR Connected
-[pool-1-thread-1] [2026-09-25 11:51:33] Query 0 report connection acquired in 0.12 sec
-[pool-1-thread-1] [2026-09-25 11:52:34] Query 0 SELECT execution took 60.61 sec
-[pool-1-thread-1] [2026-09-25 11:52:34] Query 0 fetched 1 rows
-[pool-1-thread-1] [2026-09-25 11:52:34] Deleted 0 existing rows from EIS_TD_PERCENTAGE_HOURLY
-[pool-1-thread-1] [2026-09-25 11:52:34] Query 0 inserted 1 rows into EIS_TD_PERCENTAGE_HOURLY (insert took 0.00 sec)
-[pool-1-thread-1] [2026-09-25 11:52:34] Query 0 total processing time: 61.70 sec
-[pool-1-thread-1] [2026-09-25 11:52:34] Query 0 completed successfully in 61.72 sec (attempt 1)
-[pool-1-thread-1] [2026-09-25 11:52:34] Starting query 2
-Connected to PRIMARY DB 1
-Flag Status: PR, Location: HI
-Flag check connection closed
-getIIBDBConnection - flagStatus: PR, DB_ENVLOCATION: HI
-In Mumbai Environment
-In Mumbai PR
-IIB Mumbai PR Connected: jdbc:oracle:thin:@10.176.0.107:1787/MIBDRCDB_SRV
-[pool-1-thread-1] [2026-09-25 11:52:34] Query 2 read connection acquired in 0.32 sec
-Using cached flag values - Flag: PR, Location: HI
-getReportDBConnection - flagStatus: PR
-Connecting to Report PR Database
-Report PR Connected
-[pool-1-thread-1] [2026-09-25 11:52:34] Query 2 report connection acquired in 0.15 sec
-[pool-1-thread-2] [2026-09-25 11:53:32] Query 1 SELECT execution took 119.01 sec
-[pool-1-thread-2] [2026-09-25 11:53:32] Query 1 fetched 5 rows
-[pool-1-thread-2] [2026-09-25 11:53:32] Deleted 0 existing rows from MAJOR_DOWNSTREAM_HOURLY
-[pool-1-thread-2] [2026-09-25 11:53:32] Query 1 inserted 5 rows into MAJOR_DOWNSTREAM_HOURLY (insert took 0.00 sec)
-[pool-1-thread-2] [2026-09-25 11:53:32] Query 1 total processing time: 120.09 sec
-[pool-1-thread-2] [2026-09-25 11:53:32] Query 1 completed successfully in 120.11 sec (attempt 1)
-[pool-1-thread-2] [2026-09-25 11:53:32] Starting query 3
-Using cached flag values - Flag: PR, Location: HI
-getIIBDBConnection - flagStatus: PR, DB_ENVLOCATION: HI
-In Mumbai Environment
-In Mumbai PR
-IIB Mumbai PR Connected: jdbc:oracle:thin:@10.176.0.107:1787/MIBDRCDB_SRV
-[pool-1-thread-2] [2026-09-25 11:53:32] Query 3 read connection acquired in 0.24 sec
-Using cached flag values - Flag: PR, Location: HI
-getReportDBConnection - flagStatus: PR
-Connecting to Report PR Database
-Report PR Connected
-[pool-1-thread-2] [2026-09-25 11:53:33] Query 3 report connection acquired in 0.09 sec
-[pool-1-thread-1] [2026-09-25 11:56:04] Query 2 SELECT execution took 209.78 sec
-[pool-1-thread-1] [2026-09-25 11:56:04] Query 2 fetched 1 rows
-[pool-1-thread-1] [2026-09-25 11:56:04] Deleted 0 existing rows from CKYC_STATUS_HOURLY
-[pool-1-thread-1] [2026-09-25 11:56:04] Query 2 inserted 1 rows into CKYC_STATUS_HOURLY (insert took 0.00 sec)
-[pool-1-thread-1] [2026-09-25 11:56:04] Query 2 total processing time: 210.25 sec
-[pool-1-thread-1] [2026-09-25 11:56:04] Query 2 completed successfully in 210.28 sec (attempt 1)
-[pool-1-thread-2] [2026-09-25 11:56:30] Query 3 SELECT execution took 177.91 sec
-[pool-1-thread-2] [2026-09-25 11:56:30] Query 3 fetched 1 rows
-[pool-1-thread-2] [2026-09-25 11:56:30] Deleted 0 existing rows from PAN_STATUS_HOURLY
-[pool-1-thread-2] [2026-09-25 11:56:30] Query 3 inserted 1 rows into PAN_STATUS_HOURLY (insert took 0.00 sec)
-[pool-1-thread-2] [2026-09-25 11:56:30] Query 3 total processing time: 178.25 sec
-[pool-1-thread-2] [2026-09-25 11:56:31] Query 3 completed successfully in 178.28 sec (attempt 1)
-[2026-09-25 11:56:31] All Part 1 queries completed in 298.39 sec
+package com.cron;
+
+import java.math.BigDecimal;
+import java.sql.*;
+import java.text.SimpleDateFormat;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.util.*;
+import java.util.Locale;
+import java.util.concurrent.*;
+
+import com.jdbc.DBUtilityAuto;
+
+public class HourlyQueryCronStatMgmtPart1 {
+
+    private static final int QUERY_TIMEOUT_SECONDS = 1800;
+    private static final int FETCH_SIZE = 1000;
+    private static final int THREAD_POOL_SIZE = 2;
+    private static final int MAX_RETRIES = 3;
+    private static final long RETRY_DELAY_MS = 5000;
+
+    private static final int QUERY_START = 0;
+    private static final int QUERY_END   = 3;
+
+    private static final DateTimeFormatter LOG_TIME_FMT =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.ENGLISH);
+
+    private static String nowLabel() {
+        return "[" + LocalDateTime.now().format(LOG_TIME_FMT) + "]";
+    }
+
+    private static String sec(long ms) {
+        return String.format(Locale.ENGLISH, "%.2f sec", ms / 1000.0);
+    }
+
+    public static void main(String[] args) {
+        java.util.Date startTime, endTime;
+        if (args.length >= 2) {
+            try {
+                SimpleDateFormat sdf =
+                        new SimpleDateFormat("dd-MMM-yyyy HH:mm:ss", Locale.ENGLISH);
+                sdf.setLenient(false);
+                startTime = sdf.parse(args[0]);
+                endTime = sdf.parse(args[1]);
+                if (!startTime.before(endTime)) {
+                    System.err.println("startTime must be before endTime");
+                    return;
+                }
+            } catch (Exception e) {
+                System.err.println("Invalid date format. Use dd-MMM-yyyy HH:mm:ss");
+                return;
+            }
+        } else {
+            Calendar cal = Calendar.getInstance();
+            cal.set(Calendar.MINUTE, 0);
+            cal.set(Calendar.SECOND, 0);
+            cal.set(Calendar.MILLISECOND, 0);
+            endTime = cal.getTime();
+            cal.add(Calendar.HOUR_OF_DAY, -1);
+            startTime = cal.getTime();
+        }
+
+        System.out.println(nowLabel() + " Running Part 1 (queries 0-3) for window: "
+                + startTime + " to " + endTime);
+
+        final String partition = getPartition(startTime);
+        System.out.println(nowLabel() + " Using partition: " + partition);
+
+        ExecutorService executor = Executors.newFixedThreadPool(THREAD_POOL_SIZE);
+        List<Future<?>> futures = new ArrayList<>();
+
+        long batchStart = System.currentTimeMillis();
+
+        for (int queryIndex = QUERY_START; queryIndex <= QUERY_END; queryIndex++) {
+            final int qIdx = queryIndex;
+            Future<?> future = executor.submit(() -> {
+                String threadName = Thread.currentThread().getName();
+                System.out.println("[" + threadName + "] " + nowLabel()
+                        + " Starting query " + qIdx);
+                int attempt = 1;
+                boolean success = false;
+                while (!success && attempt <= MAX_RETRIES) {
+                    long queryStart = System.currentTimeMillis();
+                    try {
+                        executeAndInsert(qIdx, partition, startTime, endTime);
+                        success = true;
+                        long queryDuration = System.currentTimeMillis() - queryStart;
+                        System.out.println("[" + threadName + "] " + nowLabel()
+                                + " Query " + qIdx + " completed successfully in "
+                                + sec(queryDuration) + " (attempt " + attempt + ")");
+                    } catch (Exception e) {
+                        long queryDuration = System.currentTimeMillis() - queryStart;
+                        System.err.println("[" + threadName + "] " + nowLabel()
+                                + " Attempt " + attempt + " failed for query " + qIdx
+                                + " after " + sec(queryDuration) + ": " + e.getMessage());
+
+                        if (isNonRetryable(e)) {
+                            System.err.println("[" + threadName + "] " + nowLabel()
+                                    + " Query " + qIdx
+                                    + " hit a non-retryable error; aborting retries.");
+                            e.printStackTrace();
+                            break;
+                        }
+
+                        if (attempt == MAX_RETRIES) {
+                            e.printStackTrace();
+                        } else {
+                            try {
+                                long delay = RETRY_DELAY_MS * attempt;
+                                System.out.println("[" + threadName + "] " + nowLabel()
+                                        + " Retrying query " + qIdx + " after "
+                                        + sec(delay));
+                                Thread.sleep(delay);
+                            } catch (InterruptedException ie) {
+                                Thread.currentThread().interrupt();
+                                break;
+                            }
+                        }
+                        attempt++;
+                    }
+                }
+                if (!success) {
+                    System.err.println("[" + threadName + "] " + nowLabel()
+                            + " Query " + qIdx + " failed after "
+                            + MAX_RETRIES + " attempts.");
+                }
+            });
+            futures.add(future);
+        }
+
+        executor.shutdown();
+        try {
+            if (!executor.awaitTermination(60, TimeUnit.MINUTES)) {
+                executor.shutdownNow();
+                System.err.println(nowLabel()
+                        + " Some Part 1 queries did not finish within timeout");
+            }
+        } catch (InterruptedException e) {
+            executor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+
+        long totalTime = System.currentTimeMillis() - batchStart;
+        System.out.println(nowLabel() + " All Part 1 queries completed in "
+                + sec(totalTime));
+    }
+
+    private static boolean isNonRetryable(Throwable t) {
+        Throwable cause = t;
+        while (cause != null) {
+            if (cause instanceof SQLDataException) return true;
+            String msg = cause.getMessage();
+            if (msg != null) {
+                String m = msg.toUpperCase(Locale.ENGLISH);
+                if (m.contains("ORA-01861") || m.contains("ORA-01858")
+                        || m.contains("ORA-01843") || m.contains("ORA-01722")
+                        || m.contains("ORA-00904") || m.contains("ORA-00942")) {
+                    return true;
+                }
+            }
+            cause = cause.getCause();
+        }
+        return false;
+    }
+
+    private static String getPartition(java.util.Date fromDate) {
+        Calendar cal = Calendar.getInstance();
+        cal.setTime(fromDate);
+        String[] months = {"JAN","FEB","MAR","APR","MAY","JUN",
+                           "JUL","AUG","SEP","OCT","NOV","DEC"};
+        String month = months[cal.get(Calendar.MONTH)];
+        String year = String.valueOf(cal.get(Calendar.YEAR)).substring(2);
+        return month + "_" + year;
+    }
+
+    private static void executeAndInsert(int queryIndex, String partition,
+                                         java.util.Date startTime,
+                                         java.util.Date endTime) throws Exception {
+        String threadName = Thread.currentThread().getName();
+        long methodStart = System.currentTimeMillis();
+
+        Connection readConn = null;
+        Connection writeConn = null;
+        PreparedStatement ps = null;
+        ResultSet rs = null;
+        PreparedStatement insertStmt = null;
+        PreparedStatement deleteStmt = null;
+
+        try {
+            long connStart = System.currentTimeMillis();
+            readConn = DBUtilityAuto.getIIBDBConnection();
+            if (readConn == null || readConn.isClosed()) {
+                throw new SQLException("Could not get IIB connection for query " + queryIndex);
+            }
+            readConn.setAutoCommit(false);
+            readConn.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
+            long connDuration = System.currentTimeMillis() - connStart;
+            System.out.println("[" + threadName + "] " + nowLabel()
+                    + " Query " + queryIndex + " read connection acquired in "
+                    + sec(connDuration));
+
+            connStart = System.currentTimeMillis();
+            writeConn = DBUtilityAuto.getReportDBConnection();
+            if (writeConn == null || writeConn.isClosed()) {
+                throw new SQLException("Could not get report connection for query " + queryIndex);
+            }
+            writeConn.setAutoCommit(false);
+            connDuration = System.currentTimeMillis() - connStart;
+            System.out.println("[" + threadName + "] " + nowLabel()
+                    + " Query " + queryIndex + " report connection acquired in "
+                    + sec(connDuration));
+
+            String query = getQuery(queryIndex, partition);
+            ps = readConn.prepareStatement(query,
+                    ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
+            ps.setFetchSize(FETCH_SIZE);
+            ps.setQueryTimeout(QUERY_TIMEOUT_SECONDS);
+            setParameters(ps, queryIndex, startTime, endTime);
+
+            long execStart = System.currentTimeMillis();
+            rs = ps.executeQuery();
+            long execDurationMs = System.currentTimeMillis() - execStart;
+            double execDurationSec = execDurationMs / 1000.0;
+            System.out.println("[" + threadName + "] " + nowLabel()
+                    + " Query " + queryIndex + " SELECT execution took "
+                    + sec(execDurationMs));
+
+            ResultSetMetaData meta = rs.getMetaData();
+            int colCount = meta.getColumnCount();
+            List<String> colNames = new ArrayList<>();
+            for (int i = 1; i <= colCount; i++) {
+                colNames.add(meta.getColumnName(i).toUpperCase(Locale.ENGLISH));
+            }
+
+            List<Map<String, Object>> rows = new ArrayList<>();
+            while (rs.next()) {
+                Map<String, Object> row = new LinkedHashMap<>();
+                for (int i = 1; i <= colCount; i++) {
+                    row.put(colNames.get(i - 1), rs.getObject(i));
+                }
+                rows.add(row);
+            }
+            System.out.println("[" + threadName + "] " + nowLabel()
+                    + " Query " + queryIndex + " fetched " + rows.size() + " rows");
+
+            String tableName = getTableName(queryIndex);
+            String deleteSQL = "DELETE FROM " + tableName
+                    + " WHERE START_TIME = ? AND END_TIME = ?";
+            deleteStmt = writeConn.prepareStatement(deleteSQL);
+            deleteStmt.setTimestamp(1, new Timestamp(startTime.getTime()));
+            deleteStmt.setTimestamp(2, new Timestamp(endTime.getTime()));
+            int deleted = deleteStmt.executeUpdate();
+            System.out.println("[" + threadName + "] " + nowLabel()
+                    + " Deleted " + deleted + " existing rows from " + tableName);
+
+            StringBuilder insertSQL = new StringBuilder("INSERT INTO " + tableName + " (");
+            insertSQL.append("START_TIME, END_TIME, QUERY_DURATION_SEC");
+            for (String col : colNames) insertSQL.append(", ").append(col);
+            insertSQL.append(") VALUES (?, ?, ?");
+            for (int i = 0; i < colCount; i++) insertSQL.append(", ?");
+            insertSQL.append(")");
+
+            insertStmt = writeConn.prepareStatement(insertSQL.toString());
+
+            long insertStart = System.currentTimeMillis();
+            int rowCount = 0;
+            int batchSize = 0;
+            final int BATCH_LIMIT = 1000;
+
+            for (Map<String, Object> row : rows) {
+                int paramIndex = 1;
+                insertStmt.setTimestamp(paramIndex++, new Timestamp(startTime.getTime()));
+                insertStmt.setTimestamp(paramIndex++, new Timestamp(endTime.getTime()));
+                insertStmt.setDouble(paramIndex++, execDurationSec);
+
+                for (String col : colNames) {
+                    Object value = row.get(col);
+                    if (value == null) insertStmt.setNull(paramIndex++, Types.NULL);
+                    else if (value instanceof BigDecimal) insertStmt.setBigDecimal(paramIndex++, (BigDecimal) value);
+                    else if (value instanceof String) insertStmt.setString(paramIndex++, (String) value);
+                    else if (value instanceof Timestamp) insertStmt.setTimestamp(paramIndex++, (Timestamp) value);
+                    else if (value instanceof java.sql.Date) insertStmt.setTimestamp(paramIndex++, new Timestamp(((java.sql.Date) value).getTime()));
+                    else if (value instanceof Integer) insertStmt.setInt(paramIndex++, (Integer) value);
+                    else if (value instanceof Long) insertStmt.setLong(paramIndex++, (Long) value);
+                    else if (value instanceof Double) insertStmt.setDouble(paramIndex++, (Double) value);
+                    else if (value instanceof Float) insertStmt.setFloat(paramIndex++, (Float) value);
+                    else if (value instanceof Boolean) insertStmt.setBoolean(paramIndex++, (Boolean) value);
+                    else insertStmt.setObject(paramIndex++, value);
+                }
+                insertStmt.addBatch();
+                rowCount++;
+                batchSize++;
+                if (batchSize >= BATCH_LIMIT) {
+                    insertStmt.executeBatch();
+                    insertStmt.clearBatch();
+                    batchSize = 0;
+                }
+            }
+            if (batchSize > 0) {
+                insertStmt.executeBatch();
+                insertStmt.clearBatch();
+            }
+
+            long insertDuration = System.currentTimeMillis() - insertStart;
+            writeConn.commit();
+
+            System.out.println("[" + threadName + "] " + nowLabel()
+                    + " Query " + queryIndex + " inserted " + rowCount
+                    + " rows into " + tableName
+                    + " (insert took " + sec(insertDuration) + ")");
+
+            long totalDuration = System.currentTimeMillis() - methodStart;
+            System.out.println("[" + threadName + "] " + nowLabel()
+                    + " Query " + queryIndex + " total processing time: "
+                    + sec(totalDuration));
+
+        } catch (SQLException e) {
+            if (writeConn != null) { try { writeConn.rollback(); } catch (SQLException ex) {} }
+            throw e;
+        } catch (Exception e) {
+            if (writeConn != null) { try { writeConn.rollback(); } catch (SQLException ex) {} }
+            throw e;
+        } finally {
+            try { if (rs != null) rs.close(); } catch (SQLException e) {}
+            try { if (ps != null) ps.close(); } catch (SQLException e) {}
+            try { if (insertStmt != null) insertStmt.close(); } catch (SQLException e) {}
+            try { if (deleteStmt != null) deleteStmt.close(); } catch (SQLException e) {}
+            if (readConn != null) { try { readConn.setAutoCommit(true); readConn.close(); } catch (SQLException e) {} }
+            if (writeConn != null) { try { writeConn.setAutoCommit(true); writeConn.close(); } catch (SQLException e) {} }
+        }
+    }
+
+    private static String getQuery(int queryIndex, String partition) {
+        String[] queries = {
+            "SELECT /*+ PARALLEL(4) */ COUNT(*) AS TOTAL_COUNT, " +
+            "COUNT(CASE WHEN ERROR_CODE IN ('SI002','SI014','SI001','SI051','SI007','SI569','SI570') THEN 1 END) AS TD_COUNT, " +
+            "ROUND((COUNT(CASE WHEN ERROR_CODE IN ('SI002','SI014','SI001','SI051','SI007','SI569','SI570') THEN 1 END) * 100.0) / " +
+            "NULLIF(COUNT(*), 0), 2) AS TD_PERCENT " +
+            "FROM EISAPP.api_log PARTITION(" + partition + ") " +
+            "WHERE request_date_time BETWEEN ? AND ?",
+
+            "SELECT /*+ PARALLEL(4) */ txn_endpoint, COUNT(*) AS TOTAL_COUNT, " +
+            "COUNT(CASE WHEN (ERROR_CODE IS NULL OR NVL(SUBSTR(error_code,3,3),'A') NOT IN ('001','002','007','051','014') " +
+            "OR error_code IN ('00014','70007','00017','CK001')) THEN 1 END) AS SUCCESS_COUNT, " +
+            "ROUND((COUNT(CASE WHEN (ERROR_CODE IS NULL OR NVL(SUBSTR(error_code,3,3),'A') NOT IN ('001','002','007','051','014') " +
+            "OR error_code IN ('00014','70007','00017','CK001')) THEN 1 END) * 100.0) / NULLIF(COUNT(*), 0), 2) AS SUCCESS_PERCENT, " +
+            "COUNT(CASE WHEN SUBSTR(error_code,3,3) IN ('001','002','007','051','014','111') AND error_code <> '00014' THEN 1 END) AS TD_COUNT, " +
+            "ROUND((COUNT(CASE WHEN SUBSTR(error_code,3,3) IN ('001','002','007','051','014','111') AND error_code <> '00014' THEN 1 END) * 100.0) / " +
+            "NULLIF(COUNT(*), 0), 2) AS TD_PERCENT " +
+            "FROM eisapp.BACKEND_LOG PARTITION(" + partition + ") " +
+            "WHERE (txn_endpoint IN ('DCMS','Vault','NSDL','HRMS') AND request_date_time BETWEEN ? AND ?) " +
+            "OR (txn_endpoint = 'ATM' AND creation_date_time BETWEEN ? AND ?) " +
+            "GROUP BY txn_endpoint ORDER BY txn_endpoint",
+
+            "SELECT /*+ PARALLEL(4) */ COUNT(*) AS TOTAL_COUNT, " +
+            "COUNT(CASE WHEN ERROR_CODE IS NULL OR NVL(SUBSTR(error_code,3,3),'A') NOT IN ('001','002','007','051','014') " +
+            "OR error_code IN ('00014','70007','00017','CK001') THEN 1 END) AS SUCCESS_COUNT, " +
+            "ROUND((COUNT(CASE WHEN ERROR_CODE IS NULL OR NVL(SUBSTR(error_code,3,3),'A') NOT IN ('001','002','007','051','014') " +
+            "OR error_code IN ('00014','70007','00017','CK001') THEN 1 END) * 100.0) / NULLIF(COUNT(*), 0), 2) AS SUCCESS_PERCENTAGE " +
+            "FROM eisapp.BACKEND_LOG PARTITION(" + partition + ") " +
+            "WHERE txn_endpoint='CKYC' AND request_date_time BETWEEN ? AND ?",
+
+            "SELECT /*+ PARALLEL(4) */ COUNT(*) AS TOTAL_COUNT, " +
+            "COUNT(CASE WHEN error_code IS NULL AND response_status = '0' THEN 1 END) AS SUCCESS_COUNT, " +
+            "COUNT(CASE WHEN (NVL(SUBSTR(error_code,3,3),'A') NOT IN ('001','002','007','051','014') " +
+            "OR error_code IN ('00014','70007')) AND RESPONSE_STATUS NOT IN ('0','SUCCESS') THEN 1 END) AS OTHER_COUNT, " +
+            "ROUND((COUNT(CASE WHEN error_code IS NULL AND response_status = '0' THEN 1 END) + " +
+            "COUNT(CASE WHEN (NVL(SUBSTR(error_code,3,3),'A') NOT IN ('001','002','007','051','014') " +
+            "OR error_code IN ('00014','70007')) AND RESPONSE_STATUS NOT IN ('0','SUCCESS') THEN 1 END)) * 100.0 / " +
+            "NULLIF(COUNT(*), 0), 2) AS PAN_SUCCESS " +
+            "FROM EISAPP.api_log PARTITION(" + partition + ") " +
+            "WHERE url IN ('http://eispri.sbi.co.in:3002/dedupOn_bth/PANMobile/customers', " +
+            "'http://eispri.sbi.co.in:3002/dedupOn/PANMobile/customers', " +
+            "'http://eispri.sbi.co.in:3016/misc/PAN/Enquiry/details/misc', " +
+            "'http://eispri.sbi.co.in:3013/misc/PAN/Details/misc', " +
+            "'http://eispri.sbi.co.in:3013/misc/PAN_bth/Details/misc', " +
+            "'http://eispri.sbi.co.in:3002/dedupOn_th/PANMobile/customers', " +
+            "'http://eispri.sbi.co.in:3002/dedupOn_bth/PANMobileCheck/customers', " +
+            "'http://eispri.sbi.co.in:3013/misc/PAN_th/Details/misc') " +
+            "AND request_date_time BETWEEN ? AND ?"
+        };
+        return queries[queryIndex];
+    }
+
+    private static void setParameters(PreparedStatement ps, int queryIndex,
+                                      java.util.Date startTime,
+                                      java.util.Date endTime) throws SQLException {
+        Timestamp fromTs = new Timestamp(startTime.getTime());
+        Timestamp toTs   = new Timestamp(endTime.getTime());
+        switch (queryIndex) {
+            case 0: case 2: case 3:
+                ps.setTimestamp(1, fromTs);
+                ps.setTimestamp(2, toTs);
+                break;
+            case 1:
+                ps.setTimestamp(1, fromTs);
+                ps.setTimestamp(2, toTs);
+                ps.setTimestamp(3, fromTs);
+                ps.setTimestamp(4, toTs);
+                break;
+            default:
+                throw new IllegalArgumentException("Invalid query index for Part 1: " + queryIndex);
+        }
+    }
+
+    private static String getTableName(int queryIndex) {
+        switch (queryIndex) {
+            case 0: return "EIS_TD_PERCENTAGE_HOURLY";
+            case 1: return "MAJOR_DOWNSTREAM_HOURLY";
+            case 2: return "CKYC_STATUS_HOURLY";
+            case 3: return "PAN_STATUS_HOURLY";
+            default: throw new IllegalArgumentException("Invalid query index for Part 1: " + queryIndex);
+        }
+    }
+}
