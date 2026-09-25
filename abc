@@ -1,8 +1,14 @@
-cd /home/app/obi_dev
+Dear Akshay,
 
-echo "===== FULL OUTPUT WITH STDERR ====="
-java -jar HourlyQueryMgmtPart1.jar "25-Sep-2026 11:00:00" "25-Sep-2026 12:00:00" 2>&1
+PFA output 
 
-echo ""
-echo "===== JAR KE ANDAR KYA HAI ====="
-unzip -l HourlyQueryMgmtPart1.jar | grep -iE "ojdbc|oracle/jdbc|HourlyQuery|DBUtility"
+[eisdev@eisportal ~]$ cd /home/obiee/obi_dev/
+[eisdev@eisportal obi_dev]$ unzip -l HourlyQueryMgmtPart1.jar | grep -iE "ojdbc|oracle/jdbc|HourlyQuery|DBUtility"
+Archive:  HourlyQueryMgmtPart1.jar
+    21265  09-25-2026 11:50   com/cron/HourlyQueryCronEISSBIDATA2.class
+    20259  09-25-2026 11:50   com/cron/HourlyQueryCronStatMgmtPart2.class
+    18308  09-25-2026 11:50   com/cron/HourlyQueryCronEISSBIDATA1.class
+    20389  09-25-2026 11:50   com/cron/HourlyQueryCronStatMgmtPart1.class
+     2255  09-25-2026 11:50   com/jdbc/DBUtility.class
+    12629  09-25-2026 11:50   com/jdbc/DBUtilityAuto.class
+  4521359  09-25-2026 11:54   ojdbc10.jar
