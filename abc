@@ -1,53 +1,49 @@
-Bhai, email mein table copy-paste karne pe format toot jaata hai — ye common problem hai. Isliye main table ko **simple bullet points** mein convert kar deta hoon, jo har email client (Gmail, Outlook, etc.) mein sahi se print hoga. 👇
-
----
-
-**To:** [Sir ka email address]
-**Cc:** [Agar koi aur add karna ho]
-**Subject:** Proposal: Our In-House Monitoring Portal vs. Dynatrace
-
----
-
-Respected Sir,
-
-I hope this email finds you well.
-
-I would like to bring to your attention a comparison between our in-house monitoring portal and Dynatrace, highlighting why our portal is better suited to our requirements.
-
-**1. Dependency on Custom Crons**
-Dynatrace is entirely dependent on the crons that we build. If our crons stop or fail, Dynatrace will not display any data at all. Our portal, on the other hand, does not collapse if a single pipeline breaks.
-
-**2. Real-Time Data vs. 10-Minute Delay**
-Our Admin Portal runs directly on the live database, which means the data shown is always real-time. Dynatrace, being dependent on our crons, introduces a delay of approximately 10 minutes before data is reflected. For effective monitoring, this delay is significant.
-
-**3. Customizable UI vs. Fixed UI**
-Dynatrace comes with a fixed, constant UI that cannot be modified as per user needs. Our portal offers a fully customizable UI, which we can design and adapt exactly according to the end user's requirements.
-
-**4. Drill-Down Functionality**
-Dynatrace lacks drill-down functionality in our use case. Our portal supports multi-level drill-down, allowing users to move from a high-level overview down to granular details with ease.
-
-**Quick Comparison:**
-
-- **Data Source** → Dynatrace: Depends on our crons | Our Portal: Live DB (direct)
-- **If Crons Fail** → Dynatrace: No data displayed | Our Portal: Still functional
-- **Data Freshness** → Dynatrace: ~10 min delay | Our Portal: Real-time
-- **UI Flexibility** → Dynatrace: Fixed / constant | Our Portal: Fully customizable
-- **Drill-Down** → Dynatrace: Not available | Our Portal: Available
-
-In light of the above points, I believe our in-house portal is a more reliable, real-time, and flexible solution compared to Dynatrace.
-
-I would be happy to discuss this further and walk you through a demo at your convenience.
-
-Looking forward to your response.
-
-Best Regards,
-**[Your Name]**
-**[Your Designation]**
-**[Your Team / Department]**
-**[Contact Number]**
-
----
-
-Ab ye copy-paste karne pe bhi **format safe rahega**. 👍
-
-Agar chahe toh main isse **numbered comparison format** mein bhi bana sakta hoon (jaise "1. Data Source — Dynatrace: X, Our Portal: Y") — jo aur bhi clean lagta hai email mein. Bata dena.
+[root@eisportal obi_dev]# java -jar HourlyQueryCronStatMgmtPart2.jar
+[2026-09-25 11:37:38] Running Part 2 (queries 4-7) for window: Fri Sep 25 10:00:00 IST 2026 to Fri Sep 25 11:00:00 IST 2026
+[2026-09-25 11:37:38] Using partition: SEP_26
+[pool-1-thread-1] [2026-09-25 11:37:38] Starting query 4
+[pool-1-thread-2] [2026-09-25 11:37:38] Starting query 5
+[DBConfig] Config file found: /home/app/config/db.properties
+[DBConfig] Config loaded successfully from: /home/app/config/db.properties
+[pool-1-thread-2] [2026-09-25 11:37:39] Starting query 6
+[pool-1-thread-1] [2026-09-25 11:37:39] Starting query 7
+[2026-09-25 11:37:39] All Part 2 queries completed in 0.96 sec
+[root@eisportal obi_dev]# java -jar HourlyQueryMgmtPart1.jar
+[2026-09-25 11:37:57] Running EXP Monitoring Cron (10-min trigger, 60-min window): 2026-09-25 10:30:00 to 2026-09-25 11:30:00
+[2026-09-25 11:37:57] Using partition: SEP_26
+[pool-1-thread-1] [2026-09-25 11:37:57] Starting EXP Monitoring
+[DBConfig] Config file found: /home/app/config/db.properties
+[DBConfig] Config loaded successfully from: /home/app/config/db.properties
+[2026-09-25 11:37:57] EXP Monitoring completed in 0.01 sec
+[root@eisportal obi_dev]# java -jar HourlyQuerycronData2.jar
+[DBConfig] Config file found: /home/app/config/db.properties
+[DBConfig] Config loaded successfully from: /home/app/config/db.properties
+Exception in thread "main" java.lang.UnsupportedClassVersionError: oracle/jdbc/driver/OracleDriver has been compiled by a more recent version of the Java Runtime (class file version 54.0), this version of the Java Runtime only recognizes class file versions up to 52.0
+        at java.lang.ClassLoader.defineClass1(Native Method)
+        at java.lang.ClassLoader.defineClass(ClassLoader.java:756)
+        at java.security.SecureClassLoader.defineClass(SecureClassLoader.java:142)
+        at java.net.URLClassLoader.defineClass(URLClassLoader.java:473)
+        at java.net.URLClassLoader.access$100(URLClassLoader.java:74)
+        at java.net.URLClassLoader$1.run(URLClassLoader.java:369)
+        at java.net.URLClassLoader$1.run(URLClassLoader.java:363)
+        at java.security.AccessController.doPrivileged(Native Method)
+        at java.net.URLClassLoader.findClass(URLClassLoader.java:362)
+        at java.lang.ClassLoader.loadClass(ClassLoader.java:418)
+        at java.lang.ClassLoader.loadClass(ClassLoader.java:351)
+        at java.lang.Class.forName0(Native Method)
+        at java.lang.Class.forName(Class.java:264)
+        at com.jdbc.DBUtilityAuto.flag(DBUtilityAuto.java:33)
+        at com.jdbc.DBUtilityAuto.getReportDBConnection(DBUtilityAuto.java:279)
+        at com.cron.HourlyQueryCronEISSBIDATA2.<clinit>(HourlyQueryCronEISSBIDATA2.java:43)
+        at java.lang.Class.forName0(Native Method)
+        at java.lang.Class.forName(Class.java:348)
+        at org.eclipse.jdt.internal.jarinjarloader.JarRsrcLoader.main(JarRsrcLoader.java:61)
+[root@eisportal obi_dev]# java -jar HourlyQuerycronData2.jar^C
+[root@eisportal obi_dev]#
+[root@eisportal obi_dev]#
+[root@eisportal obi_dev]#
+[root@eisportal obi_dev]#
+[root@eisportal obi_dev]# java -version
+java version "1.8.0_341"
+Java(TM) SE Runtime Environment (build 1.8.0_341-b10)
+Java HotSpot(TM) 64-Bit Server VM (build 25.341-b10, mixed mode)
