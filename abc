@@ -1,49 +1,81 @@
-[root@eisportal obi_dev]# java -jar HourlyQueryCronStatMgmtPart2.jar
-[2026-09-25 11:37:38] Running Part 2 (queries 4-7) for window: Fri Sep 25 10:00:00 IST 2026 to Fri Sep 25 11:00:00 IST 2026
-[2026-09-25 11:37:38] Using partition: SEP_26
-[pool-1-thread-1] [2026-09-25 11:37:38] Starting query 4
-[pool-1-thread-2] [2026-09-25 11:37:38] Starting query 5
-[DBConfig] Config file found: /home/app/config/db.properties
-[DBConfig] Config loaded successfully from: /home/app/config/db.properties
-[pool-1-thread-2] [2026-09-25 11:37:39] Starting query 6
-[pool-1-thread-1] [2026-09-25 11:37:39] Starting query 7
-[2026-09-25 11:37:39] All Part 2 queries completed in 0.96 sec
-[root@eisportal obi_dev]# java -jar HourlyQueryMgmtPart1.jar
-[2026-09-25 11:37:57] Running EXP Monitoring Cron (10-min trigger, 60-min window): 2026-09-25 10:30:00 to 2026-09-25 11:30:00
-[2026-09-25 11:37:57] Using partition: SEP_26
-[pool-1-thread-1] [2026-09-25 11:37:57] Starting EXP Monitoring
-[DBConfig] Config file found: /home/app/config/db.properties
-[DBConfig] Config loaded successfully from: /home/app/config/db.properties
-[2026-09-25 11:37:57] EXP Monitoring completed in 0.01 sec
-[root@eisportal obi_dev]# java -jar HourlyQuerycronData2.jar
-[DBConfig] Config file found: /home/app/config/db.properties
-[DBConfig] Config loaded successfully from: /home/app/config/db.properties
-Exception in thread "main" java.lang.UnsupportedClassVersionError: oracle/jdbc/driver/OracleDriver has been compiled by a more recent version of the Java Runtime (class file version 54.0), this version of the Java Runtime only recognizes class file versions up to 52.0
-        at java.lang.ClassLoader.defineClass1(Native Method)
-        at java.lang.ClassLoader.defineClass(ClassLoader.java:756)
-        at java.security.SecureClassLoader.defineClass(SecureClassLoader.java:142)
-        at java.net.URLClassLoader.defineClass(URLClassLoader.java:473)
-        at java.net.URLClassLoader.access$100(URLClassLoader.java:74)
-        at java.net.URLClassLoader$1.run(URLClassLoader.java:369)
-        at java.net.URLClassLoader$1.run(URLClassLoader.java:363)
-        at java.security.AccessController.doPrivileged(Native Method)
-        at java.net.URLClassLoader.findClass(URLClassLoader.java:362)
-        at java.lang.ClassLoader.loadClass(ClassLoader.java:418)
-        at java.lang.ClassLoader.loadClass(ClassLoader.java:351)
-        at java.lang.Class.forName0(Native Method)
-        at java.lang.Class.forName(Class.java:264)
-        at com.jdbc.DBUtilityAuto.flag(DBUtilityAuto.java:33)
-        at com.jdbc.DBUtilityAuto.getReportDBConnection(DBUtilityAuto.java:279)
-        at com.cron.HourlyQueryCronEISSBIDATA2.<clinit>(HourlyQueryCronEISSBIDATA2.java:43)
-        at java.lang.Class.forName0(Native Method)
-        at java.lang.Class.forName(Class.java:348)
-        at org.eclipse.jdt.internal.jarinjarloader.JarRsrcLoader.main(JarRsrcLoader.java:61)
-[root@eisportal obi_dev]# java -jar HourlyQuerycronData2.jar^C
-[root@eisportal obi_dev]#
-[root@eisportal obi_dev]#
-[root@eisportal obi_dev]#
-[root@eisportal obi_dev]#
-[root@eisportal obi_dev]# java -version
-java version "1.8.0_341"
-Java(TM) SE Runtime Environment (build 1.8.0_341-b10)
-Java HotSpot(TM) 64-Bit Server VM (build 25.341-b10, mixed mode)
+[2026-09-25 11:51:32] Running Part 1 (queries 0-3) for window: Fri Sep 25 10:00:00 IST 2026 to Fri Sep 25 11:00:00 IST 2026
+[2026-09-25 11:51:32] Using partition: SEP_26
+[pool-1-thread-1] [2026-09-25 11:51:32] Starting query 0
+[pool-1-thread-2] [2026-09-25 11:51:32] Starting query 1
+[DBConfig] Config file found: D:\AppConfig\db.properties
+[DBConfig] Config loaded successfully from: D:\AppConfig\db.properties
+Connected to PRIMARY DB 1
+Flag Status: PR, Location: HI
+Flag check connection closed
+getIIBDBConnection - flagStatus: PR, DB_ENVLOCATION: HI
+Using cached flag values - Flag: PR, Location: HI
+getIIBDBConnection - flagStatus: PR, DB_ENVLOCATION: HI
+In Mumbai Environment
+In Mumbai PR
+In Mumbai Environment
+In Mumbai PR
+IIB Mumbai PR Connected: jdbc:oracle:thin:@10.176.0.107:1787/MIBDRCDB_SRV
+IIB Mumbai PR Connected: jdbc:oracle:thin:@10.176.0.107:1787/MIBDRCDB_SRV
+[pool-1-thread-2] [2026-09-25 11:51:33] Query 1 read connection acquired in 0.95 sec
+[pool-1-thread-1] [2026-09-25 11:51:33] Query 0 read connection acquired in 0.95 sec
+Using cached flag values - Flag: PR, Location: HI
+getReportDBConnection - flagStatus: PR
+Connecting to Report PR Database
+Using cached flag values - Flag: PR, Location: HI
+getReportDBConnection - flagStatus: PR
+Connecting to Report PR Database
+Report PR Connected
+[pool-1-thread-2] [2026-09-25 11:51:33] Query 1 report connection acquired in 0.11 sec
+Report PR Connected
+[pool-1-thread-1] [2026-09-25 11:51:33] Query 0 report connection acquired in 0.12 sec
+[pool-1-thread-1] [2026-09-25 11:52:34] Query 0 SELECT execution took 60.61 sec
+[pool-1-thread-1] [2026-09-25 11:52:34] Query 0 fetched 1 rows
+[pool-1-thread-1] [2026-09-25 11:52:34] Deleted 0 existing rows from EIS_TD_PERCENTAGE_HOURLY
+[pool-1-thread-1] [2026-09-25 11:52:34] Query 0 inserted 1 rows into EIS_TD_PERCENTAGE_HOURLY (insert took 0.00 sec)
+[pool-1-thread-1] [2026-09-25 11:52:34] Query 0 total processing time: 61.70 sec
+[pool-1-thread-1] [2026-09-25 11:52:34] Query 0 completed successfully in 61.72 sec (attempt 1)
+[pool-1-thread-1] [2026-09-25 11:52:34] Starting query 2
+Connected to PRIMARY DB 1
+Flag Status: PR, Location: HI
+Flag check connection closed
+getIIBDBConnection - flagStatus: PR, DB_ENVLOCATION: HI
+In Mumbai Environment
+In Mumbai PR
+IIB Mumbai PR Connected: jdbc:oracle:thin:@10.176.0.107:1787/MIBDRCDB_SRV
+[pool-1-thread-1] [2026-09-25 11:52:34] Query 2 read connection acquired in 0.32 sec
+Using cached flag values - Flag: PR, Location: HI
+getReportDBConnection - flagStatus: PR
+Connecting to Report PR Database
+Report PR Connected
+[pool-1-thread-1] [2026-09-25 11:52:34] Query 2 report connection acquired in 0.15 sec
+[pool-1-thread-2] [2026-09-25 11:53:32] Query 1 SELECT execution took 119.01 sec
+[pool-1-thread-2] [2026-09-25 11:53:32] Query 1 fetched 5 rows
+[pool-1-thread-2] [2026-09-25 11:53:32] Deleted 0 existing rows from MAJOR_DOWNSTREAM_HOURLY
+[pool-1-thread-2] [2026-09-25 11:53:32] Query 1 inserted 5 rows into MAJOR_DOWNSTREAM_HOURLY (insert took 0.00 sec)
+[pool-1-thread-2] [2026-09-25 11:53:32] Query 1 total processing time: 120.09 sec
+[pool-1-thread-2] [2026-09-25 11:53:32] Query 1 completed successfully in 120.11 sec (attempt 1)
+[pool-1-thread-2] [2026-09-25 11:53:32] Starting query 3
+Using cached flag values - Flag: PR, Location: HI
+getIIBDBConnection - flagStatus: PR, DB_ENVLOCATION: HI
+In Mumbai Environment
+In Mumbai PR
+IIB Mumbai PR Connected: jdbc:oracle:thin:@10.176.0.107:1787/MIBDRCDB_SRV
+[pool-1-thread-2] [2026-09-25 11:53:32] Query 3 read connection acquired in 0.24 sec
+Using cached flag values - Flag: PR, Location: HI
+getReportDBConnection - flagStatus: PR
+Connecting to Report PR Database
+Report PR Connected
+[pool-1-thread-2] [2026-09-25 11:53:33] Query 3 report connection acquired in 0.09 sec
+[pool-1-thread-1] [2026-09-25 11:56:04] Query 2 SELECT execution took 209.78 sec
+[pool-1-thread-1] [2026-09-25 11:56:04] Query 2 fetched 1 rows
+[pool-1-thread-1] [2026-09-25 11:56:04] Deleted 0 existing rows from CKYC_STATUS_HOURLY
+[pool-1-thread-1] [2026-09-25 11:56:04] Query 2 inserted 1 rows into CKYC_STATUS_HOURLY (insert took 0.00 sec)
+[pool-1-thread-1] [2026-09-25 11:56:04] Query 2 total processing time: 210.25 sec
+[pool-1-thread-1] [2026-09-25 11:56:04] Query 2 completed successfully in 210.28 sec (attempt 1)
+[pool-1-thread-2] [2026-09-25 11:56:30] Query 3 SELECT execution took 177.91 sec
+[pool-1-thread-2] [2026-09-25 11:56:30] Query 3 fetched 1 rows
+[pool-1-thread-2] [2026-09-25 11:56:30] Deleted 0 existing rows from PAN_STATUS_HOURLY
+[pool-1-thread-2] [2026-09-25 11:56:30] Query 3 inserted 1 rows into PAN_STATUS_HOURLY (insert took 0.00 sec)
+[pool-1-thread-2] [2026-09-25 11:56:30] Query 3 total processing time: 178.25 sec
+[pool-1-thread-2] [2026-09-25 11:56:31] Query 3 completed successfully in 178.28 sec (attempt 1)
+[2026-09-25 11:56:31] All Part 1 queries completed in 298.39 sec
