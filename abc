@@ -1,402 +1,53 @@
-package com.cron;
+Bhai, ye raha ready-to-send email format. Tu bas `[ ]` wale brackets apne details se replace kar dena. 👇
 
-import java.math.BigDecimal;
-import java.sql.*;
-import java.sql.Date;
-import java.text.SimpleDateFormat;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-import java.util.*;
-import java.util.Locale;
-import java.util.concurrent.*;
+---
 
-import com.jdbc.DBUtilityAuto;
+**To:** [Sir ka email address]
+**Cc:** [Agar koi aur add karna ho]
+**Subject:** Proposal: Our In-House Monitoring Portal vs. Dynatrace
 
-public class HourlyQueryCronEISSBIDATA1 {
+---
 
-    private static final int QUERY_TIMEOUT_SECONDS = 1800;
-    private static final int FETCH_SIZE = 1000;
-    private static final int THREAD_POOL_SIZE = 3;
-    private static final int MAX_RETRIES = 3;
-    private static final long RETRY_DELAY_MS = 5000;
+Respected Sir,
 
-    // Only queries 7-11 handled now (12 & 13 removed)
-    private static final int QUERY_START = 7;
-    private static final int QUERY_END   = 11;
+I hope this email finds you well.
 
-    private static final DateTimeFormatter LOG_TIME_FMT =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss", Locale.ENGLISH);
+I would like to bring to your attention a comparison between our in-house monitoring portal and Dynatrace, highlighting why our portal is better suited to our requirements.
 
-    private static String nowLabel() {
-        return "[" + LocalDateTime.now().format(LOG_TIME_FMT) + "]";
-    }
+**1. Dependency on Custom Crons**
+Dynatrace is entirely dependent on the crons that we build. If our crons stop or fail, Dynatrace will not display any data at all. Our portal, on the other hand, does not collapse if a single pipeline breaks.
 
-    private static String sec(long ms) {
-        return String.format(Locale.ENGLISH, "%.2f sec", ms / 1000.0);
-    }
+**2. Real-Time Data vs. 10-Minute Delay**
+Our Admin Portal runs directly on the live database, which means the data shown is always real-time. Dynatrace, being dependent on our crons, introduces a delay of approximately 10 minutes before data is reflected. For effective monitoring, this delay is significant.
 
-    public static void main(String[] args) {
-        java.util.Date startTime, endTime;
-        if (args.length >= 2) {
-            try {
-                SimpleDateFormat sdf =
-                        new SimpleDateFormat("dd-MMM-yyyy HH:mm:ss", Locale.ENGLISH);
-                sdf.setLenient(false);
-                startTime = sdf.parse(args[0]);
-                endTime = sdf.parse(args[1]);
-                if (!startTime.before(endTime)) {
-                    System.err.println("startTime must be before endTime");
-                    return;
-                }
-            } catch (Exception e) {
-                System.err.println("Invalid date format. Use dd-MMM-yyyy HH:mm:ss");
-                return;
-            }
-        } else {
-            Calendar cal = Calendar.getInstance();
-            cal.set(Calendar.MINUTE, 0);
-            cal.set(Calendar.SECOND, 0);
-            cal.set(Calendar.MILLISECOND, 0);
-            endTime = cal.getTime();
-            cal.add(Calendar.HOUR_OF_DAY, -1);
-            startTime = cal.getTime();
-        }
+**3. Customizable UI vs. Fixed UI**
+Dynatrace comes with a fixed, constant UI that cannot be modified as per user needs. Our portal offers a fully customizable UI, which we can design and adapt exactly according to the end user's requirements.
 
-        System.out.println(nowLabel()
-                + " Running cron (Part 1, queries 7-11) for window: "
-                + startTime + " to " + endTime);
+**4. Drill-Down Functionality**
+Dynatrace lacks drill-down functionality in our use case. Our portal supports multi-level drill-down, allowing users to move from a high-level overview down to granular details with ease.
 
-        final String partition = getPartition(startTime);
-        System.out.println(nowLabel() + " Using partition: "
-                + (partition == null || partition.isEmpty() ? "<none>" : partition));
+**Summary:**
 
-        ExecutorService executor = Executors.newFixedThreadPool(THREAD_POOL_SIZE);
-        List<Future<?>> futures = new ArrayList<>();
+| Feature | Dynatrace | Our Portal |
+|---|---|---|
+| Data Source | Depends on our crons | Live DB (direct) |
+| If Crons Fail | No data displayed | Still functional |
+| Data Freshness | ~10 min delay | Real-time |
+| UI Flexibility | Fixed / constant | Fully customizable |
+| Drill-Down | Not available | Available |
 
-        long batchStart = System.currentTimeMillis();
+In light of the above points, I believe our in-house portal is a more reliable, real-time, and flexible solution compared to Dynatrace.
 
-        for (int queryIndex = QUERY_START; queryIndex <= QUERY_END; queryIndex++) {
-            final int qIdx = queryIndex;
-            Future<?> future = executor.submit(() -> {
-                String threadName = Thread.currentThread().getName();
-                System.out.println("[" + threadName + "] " + nowLabel()
-                        + " Starting query " + qIdx);
-                int attempt = 1;
-                boolean success = false;
-                while (!success && attempt <= MAX_RETRIES) {
-                    long queryStart = System.currentTimeMillis();
-                    try {
-                        executeAndInsert(qIdx, partition, startTime, endTime);
-                        success = true;
-                        long queryDuration = System.currentTimeMillis() - queryStart;
-                        System.out.println("[" + threadName + "] " + nowLabel()
-                                + " Query " + qIdx + " completed successfully in "
-                                + sec(queryDuration) + " (attempt " + attempt + ")");
-                    } catch (Exception e) {
-                        long queryDuration = System.currentTimeMillis() - queryStart;
-                        System.err.println("[" + threadName + "] " + nowLabel()
-                                + " Attempt " + attempt + " failed for query " + qIdx
-                                + " after " + sec(queryDuration) + ": " + e.getMessage());
+I would be happy to discuss this further and walk you through a demo at your convenience.
 
-                        if (isNonRetryable(e)) {
-                            System.err.println("[" + threadName + "] " + nowLabel()
-                                    + " Query " + qIdx
-                                    + " hit a non-retryable error; aborting retries.");
-                            e.printStackTrace();
-                            break;
-                        }
+Looking forward to your response.
 
-                        if (attempt == MAX_RETRIES) {
-                            e.printStackTrace();
-                        } else {
-                            try {
-                                long delay = RETRY_DELAY_MS * attempt;
-                                System.out.println("[" + threadName + "] " + nowLabel()
-                                        + " Retrying query " + qIdx + " after " + sec(delay));
-                                Thread.sleep(delay);
-                            } catch (InterruptedException ie) {
-                                Thread.currentThread().interrupt();
-                                break;
-                            }
-                        }
-                        attempt++;
-                    }
-                }
-                if (!success) {
-                    System.err.println("[" + threadName + "] " + nowLabel()
-                            + " Query " + qIdx + " failed after "
-                            + MAX_RETRIES + " attempts.");
-                }
-            });
-            futures.add(future);
-        }
+Best Regards,
+**[Your Name]**
+**[Your Designation]**
+**[Your Team / Department]**
+**[Contact Number]**
 
-        executor.shutdown();
-        try {
-            if (!executor.awaitTermination(60, TimeUnit.MINUTES)) {
-                executor.shutdownNow();
-                System.err.println(nowLabel()
-                        + " Some queries did not finish within timeout");
-            }
-        } catch (InterruptedException e) {
-            executor.shutdownNow();
-            Thread.currentThread().interrupt();
-        }
+---
 
-        long totalTime = System.currentTimeMillis() - batchStart;
-        System.out.println(nowLabel() + " All Part 1 queries completed in " + sec(totalTime));
-    }
-
-    private static boolean isNonRetryable(Throwable t) {
-        Throwable cause = t;
-        while (cause != null) {
-            if (cause instanceof SQLDataException) return true;
-            String msg = cause.getMessage();
-            if (msg != null) {
-                String m = msg.toUpperCase(Locale.ENGLISH);
-                if (m.contains("ORA-01861") || m.contains("ORA-01858")
-                        || m.contains("ORA-01843") || m.contains("ORA-01722")
-                        || m.contains("ORA-00904") || m.contains("ORA-00942")) {
-                    return true;
-                }
-            }
-            cause = cause.getCause();
-        }
-        return false;
-    }
-
-    private static String getPartition(java.util.Date fromDate) {
-        Calendar cal = Calendar.getInstance();
-        cal.setTime(fromDate);
-        String[] months = {"JAN","FEB","MAR","APR","MAY","JUN",
-                           "JUL","AUG","SEP","OCT","NOV","DEC"};
-        String month = months[cal.get(Calendar.MONTH)];
-        String year = String.valueOf(cal.get(Calendar.YEAR)).substring(2);
-        return month + "_" + year;
-    }
-
-    private static void executeAndInsert(int queryIndex, String partition,
-                                         java.util.Date startTime,
-                                         java.util.Date endTime) throws Exception {
-        String threadName = Thread.currentThread().getName();
-        long methodStart = System.currentTimeMillis();
-
-        Connection readConn = null;
-        Connection writeConn = null;
-        PreparedStatement ps = null;
-        ResultSet rs = null;
-        PreparedStatement insertStmt = null;
-        PreparedStatement deleteStmt = null;
-
-        try {
-            long connStart = System.currentTimeMillis();
-            // Query 11 uses SIDB; others use IIB
-            if (queryIndex == 11) {
-                try {
-                    readConn = DBUtilityAuto.getSIDBConnection();
-                } catch (Exception e) {
-                    System.out.println("[" + threadName + "] " + nowLabel()
-                            + " SIDB failed, trying IIB for query " + queryIndex);
-                    readConn = DBUtilityAuto.getIIBDBConnection();
-                }
-            } else {
-                readConn = DBUtilityAuto.getIIBDBConnection();
-            }
-            if (readConn == null || readConn.isClosed()) {
-                throw new SQLException("Could not get read connection for query " + queryIndex);
-            }
-            readConn.setAutoCommit(false);
-            readConn.setTransactionIsolation(Connection.TRANSACTION_READ_COMMITTED);
-            long connDuration = System.currentTimeMillis() - connStart;
-            System.out.println("[" + threadName + "] " + nowLabel()
-                    + " Query " + queryIndex + " read connection acquired in "
-                    + sec(connDuration));
-
-            connStart = System.currentTimeMillis();
-            writeConn = DBUtilityAuto.getReportDBConnection();
-            if (writeConn == null || writeConn.isClosed()) {
-                throw new SQLException("Could not get report connection for query " + queryIndex);
-            }
-            writeConn.setAutoCommit(false);
-            connDuration = System.currentTimeMillis() - connStart;
-            System.out.println("[" + threadName + "] " + nowLabel()
-                    + " Query " + queryIndex + " report connection acquired in "
-                    + sec(connDuration));
-
-            String query = getQuery(queryIndex, partition);
-            ps = readConn.prepareStatement(query,
-                    ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
-            ps.setFetchSize(FETCH_SIZE);
-            ps.setQueryTimeout(QUERY_TIMEOUT_SECONDS);
-            setQueryParameters(ps, queryIndex, startTime, endTime);
-
-            long execStart = System.currentTimeMillis();
-            rs = ps.executeQuery();
-            long execDurationMs = System.currentTimeMillis() - execStart;
-            double execDurationSec = execDurationMs / 1000.0;
-            System.out.println("[" + threadName + "] " + nowLabel()
-                    + " Query " + queryIndex + " SELECT execution took "
-                    + sec(execDurationMs));
-
-            ResultSetMetaData meta = rs.getMetaData();
-            int colCount = meta.getColumnCount();
-            List<String> colNames = new ArrayList<>();
-            for (int i = 1; i <= colCount; i++) {
-                colNames.add(meta.getColumnName(i).toUpperCase(Locale.ENGLISH));
-            }
-
-            List<Map<String, Object>> rows = new ArrayList<>();
-            while (rs.next()) {
-                Map<String, Object> row = new LinkedHashMap<>();
-                for (int i = 1; i <= colCount; i++) {
-                    row.put(colNames.get(i - 1), rs.getObject(i));
-                }
-                rows.add(row);
-            }
-            System.out.println("[" + threadName + "] " + nowLabel()
-                    + " Query " + queryIndex + " fetched " + rows.size() + " rows");
-
-            String tableName = getTableName(queryIndex);
-            String deleteSQL = "DELETE FROM " + tableName
-                    + " WHERE START_TIME = ? AND END_TIME = ?";
-            deleteStmt = writeConn.prepareStatement(deleteSQL);
-            deleteStmt.setTimestamp(1, new Timestamp(startTime.getTime()));
-            deleteStmt.setTimestamp(2, new Timestamp(endTime.getTime()));
-            int deleted = deleteStmt.executeUpdate();
-            System.out.println("[" + threadName + "] " + nowLabel()
-                    + " Deleted " + deleted + " existing rows from " + tableName);
-
-            StringBuilder insertSQL = new StringBuilder("INSERT INTO " + tableName + " (");
-            insertSQL.append("START_TIME, END_TIME, QUERY_DURATION_SEC");
-            for (String col : colNames) insertSQL.append(", ").append(col);
-            insertSQL.append(") VALUES (?, ?, ?");
-            for (int i = 0; i < colCount; i++) insertSQL.append(", ?");
-            insertSQL.append(")");
-
-            insertStmt = writeConn.prepareStatement(insertSQL.toString());
-
-            long insertStart = System.currentTimeMillis();
-            int rowCount = 0;
-            int batchSize = 0;
-            final int BATCH_LIMIT = 1000;
-
-            for (Map<String, Object> row : rows) {
-                int paramIndex = 1;
-                insertStmt.setTimestamp(paramIndex++, new Timestamp(startTime.getTime()));
-                insertStmt.setTimestamp(paramIndex++, new Timestamp(endTime.getTime()));
-                insertStmt.setDouble(paramIndex++, execDurationSec);
-
-                for (String col : colNames) {
-                    Object value = row.get(col);
-                    if (value == null) insertStmt.setNull(paramIndex++, Types.NULL);
-                    else if (value instanceof BigDecimal) insertStmt.setBigDecimal(paramIndex++, (BigDecimal) value);
-                    else if (value instanceof String) insertStmt.setString(paramIndex++, (String) value);
-                    else if (value instanceof Timestamp) insertStmt.setTimestamp(paramIndex++, (Timestamp) value);
-                    else if (value instanceof java.sql.Date) insertStmt.setTimestamp(paramIndex++, new Timestamp(((java.sql.Date) value).getTime()));
-                    else if (value instanceof Integer) insertStmt.setInt(paramIndex++, (Integer) value);
-                    else if (value instanceof Long) insertStmt.setLong(paramIndex++, (Long) value);
-                    else if (value instanceof Double) insertStmt.setDouble(paramIndex++, (Double) value);
-                    else if (value instanceof Float) insertStmt.setFloat(paramIndex++, (Float) value);
-                    else if (value instanceof Boolean) insertStmt.setBoolean(paramIndex++, (Boolean) value);
-                    else insertStmt.setObject(paramIndex++, value);
-                }
-                insertStmt.addBatch();
-                rowCount++;
-                batchSize++;
-                if (batchSize >= BATCH_LIMIT) {
-                    insertStmt.executeBatch();
-                    insertStmt.clearBatch();
-                    batchSize = 0;
-                }
-            }
-            if (batchSize > 0) {
-                insertStmt.executeBatch();
-                insertStmt.clearBatch();
-            }
-
-            long insertDuration = System.currentTimeMillis() - insertStart;
-            writeConn.commit();
-
-            System.out.println("[" + threadName + "] " + nowLabel()
-                    + " Query " + queryIndex + " inserted " + rowCount
-                    + " rows into " + tableName
-                    + " (insert took " + sec(insertDuration) + ")");
-
-            long totalDuration = System.currentTimeMillis() - methodStart;
-            System.out.println("[" + threadName + "] " + nowLabel()
-                    + " Query " + queryIndex + " total processing time: "
-                    + sec(totalDuration));
-
-        } catch (SQLException e) {
-            if (writeConn != null) { try { writeConn.rollback(); } catch (SQLException ex) {} }
-            throw e;
-        } catch (Exception e) {
-            if (writeConn != null) { try { writeConn.rollback(); } catch (SQLException ex) {} }
-            throw e;
-        } finally {
-            try { if (rs != null) rs.close(); } catch (SQLException e) {}
-            try { if (ps != null) ps.close(); } catch (SQLException e) {}
-            try { if (insertStmt != null) insertStmt.close(); } catch (SQLException e) {}
-            try { if (deleteStmt != null) deleteStmt.close(); } catch (SQLException e) {}
-            if (readConn != null) { try { readConn.setAutoCommit(true); readConn.close(); } catch (SQLException e) {} }
-            if (writeConn != null) { try { writeConn.setAutoCommit(true); writeConn.close(); } catch (SQLException e) {} }
-        }
-    }
-
-    private static String getTableName(int queryIndex) {
-        switch (queryIndex) {
-            case 7:  return "DMZ_OUTBOUND_HOURLY";
-            case 8:  return "DEAF_LOGGING_HOURLY";
-            case 9:  return "DEAF_AUDIT_HOURLY";
-            case 10: return "EIS_INACTIVE_HOURLY";
-            case 11: return "EKYC_HOURLY";
-            default: throw new IllegalArgumentException("Invalid query index for Part 1: " + queryIndex);
-        }
-    }
-
-    private static String getQuery(int queryIndex, String partition) {
-        String part = (partition == null || partition.isEmpty())
-                ? "" : " PARTITION(" + partition + ")";
-
-        switch (queryIndex) {
-            case 7:
-                return "SELECT /*+ PARALLEL(4) */ COUNT(*) AS Total_hits " +
-                       "FROM EISAPP.backend_log" + part + " " +
-                       "WHERE END_POINT_PORT = '7443' " +
-                       "AND REQUEST_DATE_TIME BETWEEN ? AND ?";
-            case 8:
-                return "SELECT /*+ PARALLEL(4) */ COUNT(*) AS TOTAL_HITS " +
-                       "FROM EISAPP.deaf_logging " +
-                       "WHERE CREATION_DATE_TIME BETWEEN ? AND ?";
-            case 9:
-                return "SELECT /*+ PARALLEL(4) */ COUNT(*) AS TOTAL_HITS " +
-                       "FROM EISAPP.deaf_audit " +
-                       "WHERE CREATION_DATE_TIME BETWEEN ? AND ?";
-            case 10:
-                return "SELECT /*+ PARALLEL(4) */ 'EIS Application In Active' AS Application_InActive, COUNT(*) AS COUNT " +
-                       "FROM EISAPP.api_log" + part + " " +
-                       "WHERE ERROR_CODE = 'SI002' " +
-                       "AND LOWER(ERROR_DESCRIPTION) LIKE '%eis application inactive%' " +
-                       "AND REQUEST_DATE_TIME BETWEEN ? AND ? " +
-                       "GROUP BY 'EIS Application In Active'";
-            case 11:
-                return "SELECT /*+ PARALLEL(4) */ COUNT(1) AS TOTAL_HITS, " +
-                       "SUM(CASE WHEN ERROR_CODE IS NULL THEN 1 ELSE 0 END) AS SUCCESS, " +
-                       "ROUND((SUM(CASE WHEN ERROR_CODE IN ('SI392', 'SI207') THEN 1 ELSE 0 END)/NULLIF(COUNT(1), 0))*100, 2) AS TD_PERCENT " +
-                       "FROM SBISI.EKYC_log " +
-                       "WHERE REQ_DATE_TIME BETWEEN ? AND ?";
-            default:
-                throw new IllegalArgumentException("Unknown query index for Part 1: " + queryIndex);
-        }
-    }
-
-    private static void setQueryParameters(PreparedStatement ps, int queryIndex,
-                                           java.util.Date startTime,
-                                           java.util.Date endTime) throws SQLException {
-        Timestamp fromTs = new Timestamp(startTime.getTime());
-        Timestamp toTs   = new Timestamp(endTime.getTime());
-        // Queries 7-11 all use two date params
-        ps.setTimestamp(1, fromTs);
-        ps.setTimestamp(2, toTs);
-    }
-}
+Agar tu chahe toh main isko **short & crisp version** ya **more formal/leadership tone** mein bhi bana sakta hoon. Bata dena bhai. 👍
