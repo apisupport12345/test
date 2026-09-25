@@ -1,10 +1,8 @@
-[eisdev@eisportal obi_dev]$ java -jar HourlyQueryMgmtPart1.jar "25-Sep-2026 11:00:00" "25-Sep-2026 12:00:00"
-[2026-09-25 12:30:20] Running Part 1 (queries 0-3) for window: Fri Sep 25 11:00:00 IST 2026 to Fri Sep 25 12:00:00 IST 2026
-[2026-09-25 12:30:20] Using partition: SEP_26
-[pool-1-thread-1] [2026-09-25 12:30:20] Starting query 0
-[pool-1-thread-2] [2026-09-25 12:30:20] Starting query 1
-[DBConfig] Config file found: /home/app/config/db.properties
-[DBConfig] Config loaded successfully from: /home/app/config/db.properties
-[pool-1-thread-2] [2026-09-25 12:30:21] Starting query 2
-[pool-1-thread-1] [2026-09-25 12:30:21] Starting query 3
-[2026-09-25 12:30:21] All Part 1 queries completed in 0.97 sec
+cd /home/app/obi_dev
+
+echo "===== FULL OUTPUT WITH STDERR ====="
+java -jar HourlyQueryMgmtPart1.jar "25-Sep-2026 11:00:00" "25-Sep-2026 12:00:00" 2>&1
+
+echo ""
+echo "===== JAR KE ANDAR KYA HAI ====="
+unzip -l HourlyQueryMgmtPart1.jar | grep -iE "ojdbc|oracle/jdbc|HourlyQuery|DBUtility"
